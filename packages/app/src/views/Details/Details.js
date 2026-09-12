@@ -1220,6 +1220,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 			<ClassicDetailScreen
 				item={item}
 				serverUrl={effectiveServerUrl}
+				serverToken={initialItem?._serverAccessToken || jellyfinApi.getApiKey()}
 				settings={settings}
 				isEpisode={isEpisode}
 				isSeries={isSeries}
