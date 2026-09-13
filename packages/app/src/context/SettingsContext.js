@@ -86,7 +86,8 @@ const normalizeDetailScreenStyle = (value) => {
 	if (value === 'classic') return 'v1';
 	if (value === 'modern') return 'v2';
 	if (value === 'spotlight') return 'v3';
-	return value === 'v1' || value === 'v2' || value === 'v3' ? value : 'v2';
+	if (value === 'nouveau') return 'v4';
+	return value === 'v1' || value === 'v2' || value === 'v3' || value === 'v4' ? value : 'v2';
 };
 
 const normalizeGuid = (id) => {
@@ -229,7 +230,7 @@ export const SYNCABLE_KEYS = [
 	'mediaBarOverlayColor', 'mediaBarOverlayOpacity',
 	'homeRows', 'homeRowsStyle', 'modernCardsOnMyMediaRow', 'detailScreenStyle', 'detailExpandedTabs', 'fullScreenRows', 'homeRowsPosterSize', 'useSeriesThumbnails',
 	'hideDetailsMediaDescription', 'detailUseSeriesThumbnails', 'hideHomeMediaDescription',
-	'personalRatingStyle', 'recentlyReleasedSeriesType', 'mergeRecentRowsByType', 'playlistsGroupByType',
+	'personalRatingStyle', 'recentlyReleasedSeriesType', 'mergeRecentRowsByType', 'playlistsGroupByType', 'groupItemsIntoCollections',
 	'useDetailedSubHeadings', 'showMediaDetailsOnLibraryPage', 'hideBackdropsInLibraries',
 	'syncplayEnabled', 'syncplayAutoOpen',
 	'showSyncPlayButton',

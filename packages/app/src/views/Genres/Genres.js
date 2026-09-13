@@ -134,12 +134,16 @@ const Genres = ({onSelectGenre, onHome, backHandlerRef}) => {
 					genreList = genresResult.Items || [];
 				}
 
+				const groupCollections = Boolean(settings.groupItemsIntoCollections);
 				const BATCH_SIZE = 10;
+				const usedBackdropIds = new Set();
 				const getGenreData = async (genre) => {
 					try {
 						const itemParams = {
 							Genres: genre.Name,
-							IncludeItemTypes: 'Movie,Series',
+							IncludeItemTypes: groupCollections ? 'Movie,Series,BoxSet' : 'Movie,Series',
+							ExcludeItemTypes: 'Playlist,Episode,Season,Folder',
+							CollapseBoxSetItems: groupCollections,
 							Recursive: true,
 							Limit: 5,
 							SortBy: 'Random',
@@ -174,14 +178,18 @@ const Genres = ({onSelectGenre, onHome, backHandlerRef}) => {
 
 						if (itemCount === 0) return null;
 
+						// Each card takes a backdrop no other has taken, repeating one only when it has to.
+						const withBackdrops = items
+							.map((item) => ({item, backdropId: getBackdropId(item)}))
+							.filter((entry) => entry.backdropId);
+						const chosen = withBackdrops.find((entry) => !usedBackdropIds.has(entry.backdropId)) ||
+							withBackdrops[0];
+
 						let backdropUrl = null;
-						for (const item of items) {
-							const backdropId = getBackdropId(item);
-							if (backdropId) {
-								const itemServerUrl = item._serverUrl || serverUrl;
-								backdropUrl = getImageUrl(itemServerUrl, backdropId, 'Backdrop', {maxWidth: 780, quality: 80});
-								break;
-							}
+						if (chosen) {
+							const itemServerUrl = chosen.item._serverUrl || serverUrl;
+							backdropUrl = getImageUrl(itemServerUrl, chosen.backdropId, 'Backdrop', {maxWidth: 780, quality: 80});
+							usedBackdropIds.add(chosen.backdropId);
 						}
 
 						return {
@@ -218,7 +226,7 @@ const Genres = ({onSelectGenre, onHome, backHandlerRef}) => {
 		};
 
 		loadGenres();
-	}, [api, serverUrl, selectedLibrary, unifiedMode]);
+	}, [api, serverUrl, selectedLibrary, unifiedMode, settings.groupItemsIntoCollections]);
 
 	const sortedGenres = useMemo(() => {
 		const sorted = [...genres];

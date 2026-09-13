@@ -246,7 +246,7 @@ export const SETTINGS_SCHEMA = [
 				description: () => $L('Style, background blur, and tab behavior'),
 				rows: [
 					{kind: KIND.SECTION, id: 'detailsDisplay', label: () => $L('Display')},
-					{kind: KIND.OPTION, key: 'detailScreenStyle', label: () => $L('Details Screen Style'), desc: () => $L('Classic is the original centered moonfin layout. Modern is a responsive cinematic layout. Spotlight puts the artwork first, with summary cards that open what they name.'), options: getDetailScreenStyleOptions, fallback: () => $L('Modern'), icon: 'movie'},
+					{kind: KIND.OPTION, key: 'detailScreenStyle', label: () => $L('Details Screen Style'), desc: () => $L('Classic is the original centered moonfin layout. Modern is a responsive cinematic layout. Spotlight puts the artwork first, with summary cards that open what they name. Nouveau stacks every section down one scrolling page.'), options: getDetailScreenStyleOptions, fallback: () => $L('Modern'), icon: 'movie'},
 					{
 						kind: KIND.OPTION,
 						key: 'backdropBlurDetail',
@@ -267,7 +267,7 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.NAV, id: 'detailMetadata', label: () => $L('Metadata Row'), desc: () => $L('Choose which metadata items the details screen shows and reorder them'), icon: 'reorder', action: (ctx) => ctx.actions.openDetailMetadata()},
 					{kind: KIND.TOGGLE, key: 'detailShowTechnicalDetails', label: () => $L('Show Technical Details'), desc: () => $L('Show codec, resolution, and stream information in banner summary'), icon: 'info'},
 					{kind: KIND.TOGGLE, key: 'hideDetailsMediaDescription', label: () => $L('Hide Media Description on Details Page'), desc: () => $L('Hide the movie or episode descriptive text.'), icon: 'hide'},
-					{kind: KIND.TOGGLE, key: 'detailUseSeriesThumbnails', label: () => $L('Use Series Thumbnails on Details Page'), desc: () => $L('Replace all thumbnails on Classic details page with series thumbnail'), icon: 'aspectratio', when: (ctx) => ctx.settings.detailScreenStyle === 'v1'}
+					{kind: KIND.TOGGLE, key: 'detailUseSeriesThumbnails', label: () => $L('Use Series Thumbnails on Details Page'), desc: () => $L('Replace thumbnails on the details page with the series thumbnail'), icon: 'aspectratio', when: (ctx) => ctx.settings.detailScreenStyle === 'v1' || ctx.settings.detailScreenStyle === 'v4'}
 				]
 			},
 			{
@@ -440,6 +440,7 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.TOGGLE, key: 'unifiedLibraryMode', label: () => $L('Multi-Server Libraries'), desc: () => $L('Show libraries from all connected servers'), icon: 'dns'},
 					{kind: KIND.OPTION, key: 'recentlyReleasedSeriesType', label: () => $L('Recently Released Series Sort By'), desc: () => $L('Sort Recently Released Series home rows by series, latest season, or latest episode air date'), options: getRecentlyReleasedSeriesTypeOptions, fallback: () => $L('Series'), icon: 'tv'},
 					{kind: KIND.SECTION, id: 'libraryView', label: () => $L('Library View')},
+					{kind: KIND.TOGGLE, key: 'groupItemsIntoCollections', label: () => $L('Group into Collections'), desc: () => $L('Group movies and series into collections when browsing libraries and genres.'), icon: 'photo_library'},
 					{kind: KIND.TOGGLE, key: 'showMediaDetailsOnLibraryPage', label: () => $L('Show Media Details'), desc: () => $L('Show details of the selected item at the top of Library pages.'), icon: 'info'},
 					{kind: KIND.TOGGLE, key: 'hideBackdropsInLibraries', label: () => $L('Hide Backdrops while Browsing?'), desc: () => $L('Hide backdrops when browsing libraries'), icon: 'hide_image'}
 				]

@@ -1395,6 +1395,70 @@ const SpotlightDetail = ({items, t}) => {
 	);
 };
 
+const NouveauRailRow = ({label, count, wide, t}) => (
+	<div style={{marginTop: 18}}>
+		<div style={{fontSize: 13, fontWeight: 700, color: t.onSurfaceA(0.85)}}>{label}</div>
+		<div style={{marginTop: 8, display: 'flex'}}>
+			{Array.from({length: count}, (_, i) => (
+				<div
+					key={i}
+					style={{
+						width: wide ? 96 : 54,
+						height: wide ? 54 : 81,
+						marginRight: 10,
+						borderRadius: 6,
+						backgroundColor: t.onSurfaceA(i === 0 ? 0.28 : 0.14)
+					}}
+				/>
+			))}
+		</div>
+	</div>
+);
+
+// Nouveau puts the hero at the top and then stacks every section down the page as its own rail,
+// so the preview shows the hero shallow and two rails already under it.
+const NouveauDetail = ({items, t}) => {
+	const item = items[0];
+	const gradientScale = 0.58;
+	const metaStyle = {fontSize: 14, color: t.onSurfaceA(0.75)};
+	const meta = [];
+	if (item.year) meta.push(<span key='year' style={metaStyle}>{item.year}</span>);
+	if (item.officialRating) meta.push(<span key='rating' style={{...metaStyle, marginLeft: 16}}>{item.officialRating}</span>);
+	if (item.genres.length > 0) meta.push(<span key='genres' style={{...metaStyle, marginLeft: 16}}>{item.genres.slice(0, 3).join(' · ')}</span>);
+	return (
+		<div style={{position: 'relative', width: '100%', height: '100%'}}>
+			<Artwork url={item.backdropUrl} position='right center' t={t} />
+			<div style={{...ABS_FILL, backgroundColor: 'rgba(0, 0, 0, 0.32)'}} />
+			<div style={{...ABS_FILL, background: `linear-gradient(to right, ${t.backgroundA(0.96 * gradientScale)} 0%, ${t.backgroundA(0.86 * gradientScale)} 18%, ${t.backgroundA(0.58 * gradientScale)} 38%, ${t.backgroundA(0.22 * gradientScale)} 60%, ${t.backgroundA(0)} 82%)`}} />
+			<div style={{...ABS_FILL, background: `linear-gradient(to top, ${t.backgroundA(1.0 * gradientScale)} 0%, ${t.backgroundA(0.96 * gradientScale)} 20%, ${t.backgroundA(0.76 * gradientScale)} 45%, ${t.backgroundA(0)} 80%)`}} />
+			<div style={{...ABS_FILL, overflow: 'hidden', padding: '48px 40px 0 40px', display: 'flex', flexDirection: 'column'}}>
+				<div style={{width: Math.min(1100, Math.max(450, DESIGN_W * 0.85))}}>
+					<LogoOrTitle item={item} width={260} height={62} fallbackStyle={{fontSize: 30, fontWeight: 700, color: t.onSurface}} />
+					<div style={{marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center'}}>{meta}</div>
+					<div style={{marginTop: 6}}>
+						<CommunityRating item={item} t={t} />
+					</div>
+					{item.overview && (
+						<div style={{marginTop: 8, maxWidth: 760, fontSize: 13, lineHeight: 1.45, color: t.onSurfaceA(0.85), ...clampLines(2)}}>
+							{item.overview}
+						</div>
+					)}
+					<div style={{marginTop: 14, display: 'flex', alignItems: 'center'}}>
+						<div style={{height: 46, minWidth: 170, padding: '0 14px 0 10px', backgroundColor: t.accent, borderRadius: 23, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+							<MIcon name='play_arrow' size={22} color={t.onAccent} />
+							<div style={{marginLeft: 4, fontSize: 13, fontWeight: 700, color: t.onAccent}}>{$L('Play')}</div>
+						</div>
+						<CircleButton icon='favorite' t={t} />
+						<CircleButton icon='more_horiz' t={t} />
+					</div>
+					<NouveauRailRow label={$L('Chapters')} count={5} wide t={t} />
+					<NouveauRailRow label={$L('Recommendations')} count={7} t={t} />
+				</div>
+			</div>
+		</div>
+	);
+};
+
 const FallbackDetail = ({modern, t}) => {
 	const strong = t.onSurfaceA(0.78);
 	const weak = t.onSurfaceA(0.3);
@@ -1471,6 +1535,7 @@ export const DetailStylePreview = ({variant}) => {
 	const render = useCallback((items) => {
 		if (variant === 'v1') return <ClassicDetail items={items} t={t} />;
 		if (variant === 'v3') return <SpotlightDetail items={items} t={t} />;
+		if (variant === 'v4') return <NouveauDetail items={items} t={t} />;
 		return <ModernDetail items={items} t={t} />;
 	}, [variant, t]);
 	return <LivePreview render={render} fallback={<FallbackDetail modern={variant !== 'v1'} t={t} />} />;

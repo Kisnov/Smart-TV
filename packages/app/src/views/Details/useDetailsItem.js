@@ -52,6 +52,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 	const [episodes, setEpisodes] = useState([]);
 	const [seriesEpisodes, setSeriesEpisodes] = useState([]);
 	const [similar, setSimilar] = useState([]);
+	const [similarLoaded, setSimilarLoaded] = useState(false);
 	const [extras, setExtras] = useState([]);
 	const [cast, setCast] = useState([]);
 	const [nextUp, setNextUp] = useState([]);
@@ -92,6 +93,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		setSeriesEpisodes([]);
 		setEpisodeRatings({});
 		setSimilar([]);
+		setSimilarLoaded(false);
 		setExtras([]);
 		setCast([]);
 		setNextUp([]);
@@ -207,12 +209,18 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 
 			const bg = async () => {
 				if (data.Type === 'Series') {
-					const [seasonsData, nextUpData] = await Promise.all([
+					// Nouveau shows one season's episodes at a time behind a selector. Asking for the
+					// whole run once and splitting it here beats a fetch per season, since the
+					// viewer walks the selector and would otherwise wait at every step.
+					const wantsEpisodes = settingsRef.current?.detailScreenStyle === 'v4';
+					const [seasonsData, nextUpData, episodesData] = await Promise.all([
 						effectiveApi.getSeasons(itemId).catch(() => null),
-						effectiveApi.getNextUp(1, itemId).catch(() => null)
+						effectiveApi.getNextUp(1, itemId).catch(() => null),
+						wantsEpisodes ? effectiveApi.getEpisodes(itemId).catch(() => null) : null
 					]);
 					if (seasonsData) setSeasons(tagWithServerInfo(seasonsData.Items || []));
 					if (nextUpData?.Items?.length > 0) setNextUp(tagWithServerInfo(nextUpData.Items));
+					if (episodesData) setSeriesEpisodes(tagWithServerInfo(episodesData.Items || []));
 				}
 
 				if (data.Type === 'Season') {
@@ -331,6 +339,9 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 					setSimilar(tagWithServerInfo(similarResult.data.Items || []));
 					setSimilarSource(similarResult.source);
 				}
+				// Recorded whether or not anything came back, so a section that holds its place
+				// while the answer is out knows when to stop holding it.
+				setSimilarLoaded(true);
 				if (extrasData) setExtras(tagWithServerInfo(extrasData.filter(e => e.Id !== itemId)));
 				for (const boxSet of collections) {
 					const colData = await effectiveApi.getItems({
@@ -461,6 +472,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		missingCollectionItems,
 		parentCollections,
 		similarSource,
+		similarLoaded,
 		loadMoreCollectionItems,
 		albumTracks,
 		artistAlbums,

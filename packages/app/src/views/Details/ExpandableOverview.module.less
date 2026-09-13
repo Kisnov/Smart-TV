@@ -21,11 +21,23 @@
 	opacity: 0.8;
 }
 
+// Nouveau sets its copy smaller and shorter, since this sits at the top of a page of rails rather
+// than filling the screen on its own.
+.textNouveau {
+	font-size: 18px;
+	line-height: 1.36;
+	opacity: 0.87;
+}
+
 .collapsed {
 	display: -webkit-box;
 	-webkit-line-clamp: 4;
 	-webkit-box-orient: vertical;
 	overflow: hidden;
+}
+
+.textNouveau.collapsed {
+	-webkit-line-clamp: 3;
 }
 
 // Only text long enough to need a Read More gets a box drawn round it, since
