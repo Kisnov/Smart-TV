@@ -26,7 +26,7 @@ import {formatFileSize} from '../../utils/formatFileSize';
 import {pickEpisodePlayTarget, shouldResumeTarget} from '../../utils/episodePlayTarget';
 import {collectionQueue, collectionPlayTarget} from '../../utils/collectionPlayback';
 
-import {isSeerrOnlyItem, libraryIdOf} from '../../utils/seerrTarget';
+import {isSeerrOnlyItem, libraryIdOf, personRouteFor} from '../../utils/seerrTarget';
 import {buildSeerrDetailItem} from '../../utils/seerrDetailItem';
 import {COLLECTION_ITEM_TYPES, IDENTIFIABLE_TYPES, getMediaBadges, seriesThumbUrl, shuffleArray, splitCastAndCrew} from './detailsMedia';
 import useDetailsItem from './useDetailsItem';
@@ -653,17 +653,18 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		if (card?._seerrRaw) seerrNav?.onSelectItem?.(card._seerrRaw);
 	}, [seerrNav]);
 
+	const openPerson = useCallback((person) => {
+		const route = personRouteFor(person, seerrOnly);
+		if (!route) return;
+		if (route.seerr) seerrNav?.onSelectPerson?.(route.id, route.name);
+		else onSelectPerson?.({Id: route.id});
+	}, [onSelectPerson, seerrOnly, seerrNav]);
+
 	const handleCastSelect = useCallback((ev) => {
 		const personId = ev.currentTarget.dataset.personId;
 		if (!personId) return;
-		// A Seerr cast member is a TMDB person, so they open on the Seerr side of the app.
-		if (seerrOnly) {
-			const person = item?.People?.find((p) => p.Id === personId);
-			seerrNav?.onSelectPerson?.(Number(personId), person?.Name);
-			return;
-		}
-		onSelectPerson?.({Id: personId});
-	}, [onSelectPerson, seerrOnly, seerrNav, item]);
+		openPerson(item?.People?.find((p) => p.Id === personId) || {Id: personId});
+	}, [openPerson, item]);
 
 	const handlePlaylistItemSelect = useCallback((ev) => {
 		const plItemId = ev.currentTarget.dataset.playlistItemId;
@@ -1040,7 +1041,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					handleExtraSelect={handleExtraSelect}
 					handleTrackPlay={handleTrackPlay}
 					onSelectItem={onSelectItem}
-					onSelectPerson={onSelectPerson}
+					onSelectPerson={openPerson}
 					onSelectStudio={onSelectStudio}
 					similarSource={similarSource}
 					similarLoaded={similarLoaded}
