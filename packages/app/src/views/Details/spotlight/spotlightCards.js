@@ -98,13 +98,13 @@ class CardBuilder {
 				collections: () => this.collectionsCard()
 			};
 			case 'Season': return {
-				episodes: () => this.episodesCard($L('Seasons and Episodes')),
+				episodes: () => this.seasonEpisodesCard(),
 				people: () => this.peopleCard(),
 				chapters_extras: () => this.chaptersExtrasCard(),
 				similar: () => this.similarCard()
 			};
 			case 'Episode': return {
-				episodes: () => this.episodesCard($L('More Episodes')),
+				episodes: () => this.moreEpisodesCard(),
 				people: () => this.peopleCard(),
 				chapters_extras: () => this.chaptersExtrasCard(),
 				similar: () => this.similarCard()
@@ -254,33 +254,93 @@ class CardBuilder {
 	}
 
 	seasonsCard() {
-		const {seasons = [], item, seriesEpisodes = [], nextUp = [], serverUrl, fallbackImageUrl} = this.s;
+		const {seasons = [], item, seriesEpisodes = [], nextUp = [], seerr, serverUrl, fallbackImageUrl} = this.s;
 		if (!seasons.length) return null;
 		const episodeCount = seriesEpisodes.length || item?.RecursiveItemCount || 0;
+		const name = (item?.Name || '').trim();
 
 		return {
 			id: 'seasons',
-			title: $L('Seasons and Episodes'),
+			title: $L('Seasons'),
+			// Once it is open the modal is the show itself, so it takes the show's name and
+			// leaves the counts to the heading under it.
+			modalTitle: name || $L('Seasons'),
 			subtitle: joinSubtitle([
 				countLabel(seasons.length, $L('1 season'), $L('{count} seasons')),
 				episodeCount > 0 ? countLabel(episodeCount, $L('1 episode'), $L('{count} episodes')) : null
 			]),
 			imageUrl: firstPosterImageUrl(serverUrl, [...nextUp, ...seriesEpisodes]) || fallbackImageUrl,
 			icon: CARD_ICONS.episodes,
-			sections: [mediaSection($L('Seasons'), seasons)]
+			sections: [{...mediaSection($L('Seasons'), seasons), seasonStatus: seerr?.seasonMarkers}]
 		};
 	}
 
-	episodesCard(title) {
-		const {episodes = [], serverUrl, fallbackImageUrl} = this.s;
+	seasonEpisodesCard() {
+		const {episodes = [], item, serverUrl, fallbackImageUrl} = this.s;
 		if (!episodes.length) return null;
+		const series = (item?.SeriesName || '').trim();
+
 		return {
 			id: 'episodes',
-			title,
+			title: $L('Episodes'),
+			// A season is named "Season 1" on its own, which says nothing about which show it
+			// belongs to once the modal has covered the page behind it.
+			modalTitle: series ? `${series} - ${item?.Name}` : item?.Name,
 			subtitle: countLabel(episodes.length, $L('1 episode'), $L('{count} episodes')),
 			imageUrl: firstPosterImageUrl(serverUrl, episodes) || fallbackImageUrl,
 			icon: CARD_ICONS.episodes,
 			sections: [mediaSection($L('Episodes'), episodes, 'landscape')]
+		};
+	}
+
+	// The whole run rather than just this episode's season, split into a foldable section per
+	// season with only the one being watched left open.
+	moreEpisodesCard() {
+		const {episodes = [], seriesEpisodes = [], item, serverUrl, fallbackImageUrl} = this.s;
+		const all = seriesEpisodes.length ? seriesEpisodes : episodes;
+		if (!all.length) return null;
+
+		const currentSeason = item?.ParentIndexNumber;
+		const seasonOf = (episode) => (episode.ParentIndexNumber != null
+			? episode.ParentIndexNumber
+			: (currentSeason != null ? currentSeason : 1));
+
+		const groups = new Map();
+		[...all]
+			.sort((a, b) => (seasonOf(a) - seasonOf(b)) || ((a.IndexNumber || 0) - (b.IndexNumber || 0)))
+			.forEach((episode) => {
+				const season = seasonOf(episode);
+				if (!groups.has(season)) groups.set(season, []);
+				groups.get(season).push(episode);
+			});
+
+		// A show with one season has nothing to choose between, so it opens. Otherwise the
+		// season number says which one is being watched, and where an episode carries no number
+		// the section holding it does.
+		const holdsThisEpisode = (seasonEpisodes) => seasonEpisodes.some((episode) =>
+			episode.Id === item?.Id || (item?.SeasonId && episode.SeasonId === item.SeasonId));
+		const isCurrent = (season, seasonEpisodes) => groups.size === 1 ||
+			(currentSeason != null ? season === currentSeason : holdsThisEpisode(seasonEpisodes));
+
+		return {
+			id: 'episodes',
+			title: $L('More Episodes'),
+			subtitle: joinSubtitle([
+				groups.size > 1 ? countLabel(groups.size, $L('1 season'), $L('{count} seasons')) : null,
+				countLabel(all.length, $L('1 episode'), $L('{count} episodes'))
+			]),
+			imageUrl: firstPosterImageUrl(serverUrl, all) || fallbackImageUrl,
+			icon: CARD_ICONS.episodes,
+			sections: [...groups.entries()].map(([season, seasonEpisodes]) => ({
+				...mediaSection(
+					season === 0 ? $L('Specials') : $L('Season {number}').replace('{number}', season),
+					seasonEpisodes,
+					'landscape'
+				),
+				id: `season-${season}`,
+				collapsible: true,
+				expanded: isCurrent(season, seasonEpisodes)
+			}))
 		};
 	}
 

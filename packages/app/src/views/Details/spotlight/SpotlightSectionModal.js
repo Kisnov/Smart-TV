@@ -1,9 +1,11 @@
-import {useEffect, useCallback, useRef} from 'react';
+import {useEffect, useCallback, useRef, useState} from 'react';
 import Spotlight from '@enact/spotlight';
 import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDecorator';
 import {Scroller} from '@enact/sandstone/Scroller';
 
 import {iconViewBox} from '../../../components/icons/iconViewBox';
+import {DETAIL_ICON_PATHS} from '../detailIcons';
+import {SpottableDiv} from '../detailsSpottables';
 import SpotlightSection from './SpotlightGrids';
 
 import css from './SpotlightSectionModal.module.less';
@@ -30,9 +32,22 @@ const HEADING_CLEARANCE = 12;
 // unfocused box into view, so the grown edge needs room or it is clipped.
 const CARD_CLEARANCE = 20;
 
+// What a foldable section is keyed on, so the viewer's choice survives the card being rebuilt
+// underneath them as the Seerr lookups land.
+const sectionKey = (section, index) => section.id || section.title || String(index);
+
 const SpotlightSectionModal = ({card, serverUrl, actions, seerr, onNearEnd}) => {
 	const nearEndRef = useRef(onNearEnd);
 	nearEndRef.current = onNearEnd;
+
+	// Only what the viewer has folded or unfolded themselves, so a section they have not
+	// touched keeps whatever the card asked for.
+	const [expandedByKey, setExpandedByKey] = useState({});
+
+	const handleToggleSection = useCallback((ev) => {
+		const {sectionKey: key, expanded} = ev.currentTarget.dataset;
+		setExpandedByKey((held) => ({...held, [key]: expanded !== 'true'}));
+	}, []);
 
 	// The remote lands on the first cell rather than the panel, so a press moves through the
 	// content straight away. A section that draws no focusable cell of its own leaves the id
@@ -101,6 +116,16 @@ const SpotlightSectionModal = ({card, serverUrl, actions, seerr, onNearEnd}) => 
 
 	if (!card) return null;
 
+	const isExpanded = (section, index) => {
+		if (!section.collapsible) return true;
+		const held = expandedByKey[sectionKey(section, index)];
+		return held == null ? section.expanded !== false : held;
+	};
+	// The remote lands on the first cell it can reach, which is not in the first section when
+	// that one is folded shut.
+	const expandedFlags = card.sections.map(isExpanded);
+	const firstOpenIndex = expandedFlags.indexOf(true);
+
 	return (
 		<div className={css.overlay}>
 			<ModalContainer className={css.panel} spotlightId="spotlight-modal">
@@ -110,27 +135,57 @@ const SpotlightSectionModal = ({card, serverUrl, actions, seerr, onNearEnd}) => 
 							<path d={card.icon} />
 						</svg>
 					)}
-					<span className={css.headerTitle}>{card.title}</span>
+					<span className={css.headerTitle}>{card.modalTitle || card.title}</span>
 				</div>
 				<Scroller className={css.body} direction="vertical" horizontalScrollbar="hidden" verticalScrollbar="hidden" onScroll={handleScroll} cbScrollTo={handleScrollTo}>
 					<div className={css.scrollContent} ref={contentRef}>
-						{card.sections.map((section, index) => (
-							<div key={`${section.kind}-${section.title || index}`} className={css.section} onFocus={handleSectionFocus}>
-								{section.title && (
-									<div className={css.sectionHeader}>
-										<span className={css.sectionTitle}>{section.title}</span>
-										{section.count != null && <span className={css.sectionCount}>{section.count}</span>}
-									</div>
-								)}
-								<SpotlightSection
-									section={section}
-									serverUrl={serverUrl}
-									actions={actions}
-									seerr={seerr}
-									firstSpotlightId={index === 0 ? FIRST_CELL_ID : undefined}
-								/>
-							</div>
-						))}
+						{card.sections.map((section, index) => {
+							const key = sectionKey(section, index);
+							const expanded = expandedFlags[index];
+							const heading = section.title && (
+								<>
+									<span className={css.sectionTitle}>{section.title}</span>
+									{section.count != null && <span className={css.sectionCount}>{section.count}</span>}
+								</>
+							);
+							return (
+								<div
+									key={`${section.kind}-${key}`}
+									className={`${css.section} ${section.collapsible && !expanded ? css.sectionFolded : ''}`}
+									onFocus={handleSectionFocus}
+								>
+									{section.collapsible
+										? (
+											<SpottableDiv
+												className={`${css.sectionHeader} ${css.sectionToggle}`}
+												data-section-key={key}
+												data-expanded={expanded ? 'true' : 'false'}
+												onClick={handleToggleSection}
+											>
+												<svg
+													className={css.sectionChevron}
+													viewBox={iconViewBox(expanded ? DETAIL_ICON_PATHS.expandMore : DETAIL_ICON_PATHS.chevronRight)}
+													fill="currentColor"
+													aria-hidden="true"
+												>
+													<path d={expanded ? DETAIL_ICON_PATHS.expandMore : DETAIL_ICON_PATHS.chevronRight} />
+												</svg>
+												{heading}
+											</SpottableDiv>
+										)
+										: section.title && <div className={css.sectionHeader}>{heading}</div>}
+									{expanded && (
+										<SpotlightSection
+											section={section}
+											serverUrl={serverUrl}
+											actions={actions}
+											seerr={seerr}
+											firstSpotlightId={index === firstOpenIndex ? FIRST_CELL_ID : undefined}
+										/>
+									)}
+								</div>
+							);
+						})}
 					</div>
 				</Scroller>
 			</ModalContainer>

@@ -50,6 +50,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 	const [isSeed, setIsSeed] = useState(() => Boolean(seedFrom(initialItem, itemId)));
 	const [seasons, setSeasons] = useState([]);
 	const [episodes, setEpisodes] = useState([]);
+	const [seriesEpisodes, setSeriesEpisodes] = useState([]);
 	const [similar, setSimilar] = useState([]);
 	const [extras, setExtras] = useState([]);
 	const [cast, setCast] = useState([]);
@@ -88,6 +89,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		// stay on screen under the next title.
 		setSeasons([]);
 		setEpisodes([]);
+		setSeriesEpisodes([]);
 		setEpisodeRatings({});
 		setSimilar([]);
 		setExtras([]);
@@ -220,10 +222,18 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 
 				if (data.Type === 'Episode') {
 					const seasonId = data.SeasonId || data.ParentId;
-					if (data.SeriesId && seasonId) {
-						const episodesData = await effectiveApi.getEpisodes(data.SeriesId, seasonId).catch(() => null);
-						if (episodesData) setEpisodes(tagWithServerInfo(episodesData.Items || []));
-					}
+					// Spotlight offers the whole run grouped by season, which this episode's own
+					// season cant fill. No other style shows it, so no other style pays for it.
+					const wantsWholeSeries = Boolean(data.SeriesId) &&
+						settingsRef.current?.detailScreenStyle === 'v3';
+					const [seasonData, seriesData] = await Promise.all([
+						data.SeriesId && seasonId
+							? effectiveApi.getEpisodes(data.SeriesId, seasonId).catch(() => null)
+							: null,
+						wantsWholeSeries ? effectiveApi.getEpisodes(data.SeriesId).catch(() => null) : null
+					]);
+					if (seasonData) setEpisodes(tagWithServerInfo(seasonData.Items || []));
+					if (seriesData) setSeriesEpisodes(tagWithServerInfo(seriesData.Items || []));
 				}
 
 				if (data.Type === 'BoxSet') {
@@ -441,6 +451,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		isLoading,
 		seasons,
 		episodes,
+		seriesEpisodes,
 		similar,
 		extras,
 		cast,

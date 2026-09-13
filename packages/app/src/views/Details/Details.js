@@ -127,7 +127,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		skip: seerrOnly
 	});
 	const {
-		setItem, isLoading: libraryLoading, isSeed, seasons, episodes, similar, extras, cast, nextUp, nextEpisode,
+		setItem, isLoading: libraryLoading, isSeed, seasons, episodes, seriesEpisodes, similar, extras, cast, nextUp, nextEpisode,
 		collectionItems, missingCollectionItems, parentCollections, similarSource, loadMoreCollectionItems, albumTracks, artistAlbums,
 		playlistItems, setPlaylistItems, episodeRatings, refreshItem,
 		selectedVersionIndex, setSelectedVersionIndex,
@@ -987,6 +987,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					resumeTimeText={resumeTimeText}
 					seasons={seasons}
 					episodes={episodes}
+					seriesEpisodes={seriesEpisodes}
 					similar={similar}
 					extras={extras}
 					cast={detailCast}

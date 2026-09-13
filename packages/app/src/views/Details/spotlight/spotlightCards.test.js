@@ -52,17 +52,40 @@ describe('spotlightCardsFor', () => {
 		expect(card.subtitle).toBe('1 person');
 	});
 
-	it('leads a series with the seasons card', () => {
+	it('leads a series with the seasons card, named for the show once opened', () => {
 		const cards = spotlightCardsFor(state({
-			item: {Id: 'item-1', Type: 'Series'},
+			item: {Id: 'item-1', Type: 'Series', Name: 'Deadwood'},
 			seasons: [child('season-1', 'Season')],
 			cast: [child('p1')]
 		}));
 		expect(ids(cards)).toEqual(['seasons', 'people']);
+		expect(cards[0].title).toBe('Seasons');
+		expect(cards[0].modalTitle).toBe('Deadwood');
 		expect(cards[0].subtitle).toBe('1 season');
 	});
 
-	it('offers an episode the rest of its season', () => {
+	it('hands the seasons grid whatever seerr knows about each season', () => {
+		const markers = new Map([[1, 5]]);
+		const card = spotlightCardsFor(state({
+			item: {Id: 'item-1', Type: 'Series'},
+			seasons: [child('season-1', 'Season')],
+			seerr: {seasonMarkers: markers}
+		}))[0];
+		expect(card.sections[0].seasonStatus).toBe(markers);
+	});
+
+	it('names a season card for the show it belongs to', () => {
+		const cards = spotlightCardsFor(state({
+			item: {Id: 'item-1', Type: 'Season', Name: 'Season 1', SeriesName: 'Deadwood'},
+			episodes: [child('e1', 'Episode'), child('e2', 'Episode')]
+		}));
+		expect(ids(cards)).toEqual(['episodes']);
+		expect(cards[0].title).toBe('Episodes');
+		expect(cards[0].modalTitle).toBe('Deadwood - Season 1');
+		expect(cards[0].subtitle).toBe('2 episodes');
+	});
+
+	it('offers an episode the rest of its season, left open when it is the only one', () => {
 		const cards = spotlightCardsFor(state({
 			item: {Id: 'item-1', Type: 'Episode'},
 			episodes: [child('e1', 'Episode'), child('e2', 'Episode')]
@@ -70,6 +93,31 @@ describe('spotlightCardsFor', () => {
 		expect(ids(cards)).toEqual(['episodes']);
 		expect(cards[0].title).toBe('More Episodes');
 		expect(cards[0].subtitle).toBe('2 episodes');
+		expect(cards[0].sections[0]).toMatchObject({title: 'Season 1', collapsible: true, expanded: true});
+	});
+
+	it("groups an episode's whole run by season with only its own open", () => {
+		const episode = (Id, season, index) => child(Id, 'Episode', {ParentIndexNumber: season, IndexNumber: index});
+		const card = spotlightCardsFor(state({
+			item: {Id: 'e-s2-1', Type: 'Episode', ParentIndexNumber: 2},
+			episodes: [episode('e-s2-1', 2, 1)],
+			seriesEpisodes: [episode('e-s2-1', 2, 1), episode('e-s1-2', 1, 2), episode('e-s1-1', 1, 1)]
+		}))[0];
+		expect(card.subtitle).toBe('2 seasons · 3 episodes');
+		expect(titles(card)).toEqual(['Season 1', 'Season 2']);
+		expect(card.sections.map((section) => section.expanded)).toEqual([false, true]);
+		expect(card.sections[0].items.map((i) => i.Id)).toEqual(['e-s1-1', 'e-s1-2']);
+	});
+
+	it('names season zero the specials', () => {
+		const card = spotlightCardsFor(state({
+			item: {Id: 'e1', Type: 'Episode', ParentIndexNumber: 1},
+			seriesEpisodes: [
+				child('e1', 'Episode', {ParentIndexNumber: 1, IndexNumber: 1}),
+				child('sp1', 'Episode', {ParentIndexNumber: 0, IndexNumber: 1})
+			]
+		}))[0];
+		expect(titles(card)).toEqual(['Specials', 'Season 1']);
 	});
 
 	it('gives a music album a track list with its total runtime', () => {

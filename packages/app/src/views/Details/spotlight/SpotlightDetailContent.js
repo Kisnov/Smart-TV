@@ -36,7 +36,7 @@ const SpotlightDetailContent = (props) => {
 		item, settings, effectiveServerUrl, seerr, seerrNav, seerrOnly,
 		isPerson, isEpisode, backdropUrl, posterUrl, logoUrl, onLogoError,
 		year, officialRating, seasonCount, genres = [], tagline, techBadges = [], techSize,
-		overviewBackRef, episodes = [], birthDate, birthPlace,
+		overviewBackRef, episodes = [], seriesEpisodes = [], birthDate, birthPlace,
 		effectiveApi, serverToken, seasons = [], similar = [], similarSource, extras = [], cast = [], crew = [],
 		nextUp = [], collectionItems = [], missingCollectionItems = [], parentCollections = [],
 		albumTracks = [], artistAlbums = [], playlistItems = [], personMovies = [], personSeries = [],
@@ -116,8 +116,7 @@ const SpotlightDetailContent = (props) => {
 
 	const cardState = useMemo(() => ({
 		item, serverUrl: effectiveServerUrl, settings, seerrOnly,
-		seasons, episodes, similar, similarSource, extras, cast, crew, nextUp,
-		seriesEpisodes: episodes,
+		seasons, episodes, seriesEpisodes, similar, similarSource, extras, cast, crew, nextUp,
 		collectionItems, missingCollectionItems, parentCollections,
 		albumTracks, artistAlbums, playlistItems,
 		personMovies, personSeries, filmography: otherCredits,
@@ -127,15 +126,16 @@ const SpotlightDetailContent = (props) => {
 			recommendations: seerr.recommendationCards || [],
 			similar: seerr.similarCards || [],
 			hasChips: hasSeerrChips(seerr.details),
-			hasFacts: hasMediaFacts(seerr.details, seerr.mediaType)
+			hasFacts: hasMediaFacts(seerr.details, seerr.mediaType),
+			seasonMarkers: settings.showSeerrAvailabilityBadges !== false ? seerr.seasonMarkers : null
 		},
 		fallbackImageUrl: backdropUrl
 	}), [
-		item, effectiveServerUrl, settings, seerrOnly, seasons, episodes, similar, similarSource,
+		item, effectiveServerUrl, settings, seerrOnly, seasons, episodes, seriesEpisodes, similar, similarSource,
 		extras, cast, crew, nextUp, collectionItems, missingCollectionItems, parentCollections,
 		albumTracks, artistAlbums, playlistItems, personMovies, personSeries, otherCredits,
 		seerrCredits, studioCards, canManagePlaylist, backdropUrl,
-		seerr.recommendationCards, seerr.similarCards, seerr.details, seerr.mediaType
+		seerr.recommendationCards, seerr.similarCards, seerr.details, seerr.mediaType, seerr.seasonMarkers
 	]);
 
 	const cardActions = useMemo(() => ({
@@ -218,9 +218,11 @@ const SpotlightDetailContent = (props) => {
 		if (isEpisode) {
 			return (
 				<>
-					{logoUrl
-						? <img className={`${css.logo} ${css.logoEpisode}`} src={logoUrl} alt={item.SeriesName} onError={onLogoError} />
-						: item.SeriesName && <div className={css.seriesLabel}>{item.SeriesName}</div>}
+					<div className={css.seriesSlot}>
+						{logoUrl
+							? <img className={`${css.logo} ${css.logoEpisode}`} src={logoUrl} alt={item.SeriesName} onError={onLogoError} />
+							: item.SeriesName && <div className={css.seriesLabel}>{item.SeriesName}</div>}
+					</div>
 					<h1 className={css.title}>{item.Name}</h1>
 				</>
 			);

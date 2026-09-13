@@ -220,7 +220,7 @@ const ModernActionButtons = (props) => {
 				)}
 				{inline.map((btn) => <Fragment key={btn.id}>{btn.render()}</Fragment>)}
 				{behindMenu.length > 0 && (
-					<ActionButton path={DETAIL_ICON_PATHS.moreHoriz} label={$L('More actions')} onClick={handleOpenMenu} />
+					<ActionButton path={DETAIL_ICON_PATHS.moreHoriz} label={$L('More Actions')} onClick={handleOpenMenu} />
 				)}
 			</RowContainer>
 			{menuOpen && (
