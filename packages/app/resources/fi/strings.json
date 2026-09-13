@@ -725,7 +725,7 @@
     "episode": "Jakso",
     "episodes": "Jaksot",
     "failed": "Epäonnistui",
-    "genres": "Genret",
+    "genres": "genret",
     "items": "Kohteet",
     "requested": "Pyydetty",
     "{count} Episodes": "{count} Jaksot",
@@ -1755,5 +1755,12 @@
     "Recommendation Source": "Suosittelujen Lähde",
     "TMDb Similarity": "TMDb:n Samankaltaisuus",
     "View style": "Näkymän tyyli",
-    "Watch now": "Katsele nyt"
+    "Watch now": "Katsele nyt",
+    "Include missing items on Collection pages": "Lisää puuttuvat kohteet Kokoelma-sivuille",
+    "Preferences": "Asetukset",
+    "Show Live TV Button": "Näytä Live TV Painike",
+    "Show Missing Collection Items": "Näytä Puuttuvat Kokoelman Kohteet",
+    "Show Seerr Availability Badges": "Näytä Seer Saatavuusmerkinnät",
+    "Show season availability badges on media details pages": "Näytä kauden saatavuustiedot mediatiedot sivuilla",
+    "Show the Live TV button in the navigation bar when the server has a Live TV library": "Näytä ”Live TV” -painike navigointipalkissa, kun palvelimella on Live TV -kirjasto"
 }
