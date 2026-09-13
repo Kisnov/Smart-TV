@@ -298,7 +298,7 @@ const SpotlightDetailContent = (props) => {
 										)}
 										{piece.kind === 'upcoming' && (
 											<span className={`${css.statusBadge} ${css.statusUpcoming}`}>
-												<svg className={css.metaIcon} viewBox={iconViewBox(DETAIL_ICON_PATHS.calendar)} fill="currentColor" aria-hidden="true" style={{width: 16, height: 16, marginRight: 6, verticalAlign: -2}}>
+												<svg className={css.metaIcon} viewBox={iconViewBox(DETAIL_ICON_PATHS.calendar)} fill="currentColor" aria-hidden="true">
 													<path d={DETAIL_ICON_PATHS.calendar} />
 												</svg>
 												{piece.text}

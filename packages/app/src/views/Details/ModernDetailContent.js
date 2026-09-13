@@ -613,7 +613,7 @@ const ModernDetailContent = (props) => {
 								)}
 								{piece.kind === 'upcoming' && (
 									<span className={`${css.statusBadge} ${css.statusUpcoming}`}>
-										<svg className={css.metaIcon} viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" style={{width: 18, height: 18, marginRight: 6, verticalAlign: -3}}>
+										<svg className={css.metaIcon} viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
 											<path d={DETAIL_ICON_PATHS.calendar} />
 										</svg>
 										{piece.text}

@@ -93,10 +93,10 @@ const ClassicDetailScreen = ({
 
 	const upcomingEpisodeText = useMemo(() => formatUpcomingEpisode(upcomingEpisode), [upcomingEpisode]);
 
-	const orderedItems = arrange(DETAIL_METADATA, {
+	const orderedItems = useMemo(() => arrange(DETAIL_METADATA, {
 		order: settings.detailMetadataOrderTv,
 		hidden: settings.hiddenDetailMetadataTv
-	});
+	}), [settings.detailMetadataOrderTv, settings.hiddenDetailMetadataTv]);
 
 	const renderMetadataPiece = (id) => {
 		switch (id) {
@@ -141,7 +141,7 @@ const ClassicDetailScreen = ({
 					return (
 						<span key="upcomingEpisodeDate" className={css.infoItem}>
 							<span className={`${css.badge} ${css.badgeUpcoming}`}>
-								<svg viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" style={{width: 16, height: 16, marginRight: 6, verticalAlign: -2}}>
+								<svg className={css.badgeIcon} viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
 									<path d={DETAIL_ICON_PATHS.calendar} />
 								</svg>
 								{upcomingEpisodeText}
@@ -165,11 +165,7 @@ const ClassicDetailScreen = ({
 		}
 	};
 
-	const metadataElements = useMemo(
-		() => orderedItems.map((meta) => renderMetadataPiece(meta.id)).filter(Boolean),
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[orderedItems, year, officialRating, isSeries, seasonCount, runtime, endsAt, item.Status, upcomingEpisodeText, genres, seerr]
-	);
+	const metadataElements = orderedItems.map((meta) => renderMetadataPiece(meta.id)).filter(Boolean);
 
 	return (
 		<>

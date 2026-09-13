@@ -10,11 +10,6 @@ const MONTHS = [
 	'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
 ];
 
-/**
- * Formats an upcoming episode release into intuitive relative dates
- * (Today, Tomorrow, localized weekday, or localized month + day)
- * alongside season and episode code (e.g. Next: Today (S2:E1)).
- */
 export const formatUpcomingEpisode = (info, now = new Date()) => {
 	if (!info || !info.airDate) return null;
 	const {airDate, seasonNumber, episodeNumber} = info;
@@ -40,12 +35,10 @@ export const formatUpcomingEpisode = (info, now = new Date()) => {
 	return `${$L('Next')}: ${dateStr}${epCode}`;
 };
 
-// In-memory cache per series Id (resets on app reload / session)
 const seriesCache = new Map();
 
-// In-memory Sonarr calendar cache: tvdbId -> earliest UpcomingEpisode
-let sonarrCalendarByTvdb = new Map();
-let sonarrCalendarByTmdb = new Map();
+const sonarrCalendarByTvdb = new Map();
+const sonarrCalendarByTmdb = new Map();
 let lastSonarrFetch = 0;
 const SONARR_CACHE_TTL_MS = 30 * 60 * 1000;
 
@@ -75,7 +68,7 @@ const isoDate = (offsetDays) => {
 
 const ensureSonarrCalendar = async () => {
 	const now = Date.now();
-	if (lastSonarrFetch && (now - lastSonarrFetch < SONARR_CACHE_TTL_MS) && sonarrCalendarByTvdb.size > 0) {
+	if (lastSonarrFetch && (now - lastSonarrFetch < SONARR_CACHE_TTL_MS)) {
 		return;
 	}
 
@@ -145,10 +138,6 @@ const ensureSonarrCalendar = async () => {
 	lastSonarrFetch = Date.now();
 };
 
-/**
- * Resolves upcoming episode release information for a series.
- * Prioritizes Sonarr Calendar, falling back to TMDB.
- */
 export const fetchUpcomingEpisode = async ({item, settings, serverUrl, serverToken}) => {
 	if (!item) return null;
 	const seriesId = item.Type === 'Series' ? item.Id : (item.SeriesId || item.Id);
@@ -162,7 +151,6 @@ export const fetchUpcomingEpisode = async ({item, settings, serverUrl, serverTok
 	const tvdbId = providerIds.Tvdb || providerIds.tvdb;
 	const tmdbId = providerIds.Tmdb || providerIds.tmdb;
 
-	// 1. Tier 1: Sonarr Calendar
 	try {
 		await ensureSonarrCalendar();
 		let sonarrMatch = null;
@@ -177,12 +165,10 @@ export const fetchUpcomingEpisode = async ({item, settings, serverUrl, serverTok
 			return sonarrMatch;
 		}
 	} catch (err) {
-		console.warn('[UpcomingEpisode] Sonarr lookup failed:', err);
+		void err;
 	}
 
-	// 2. Tier 2: TMDB Fallback
 	if (tmdbId) {
-		// Option A: Direct TMDB API key if configured
 		if (settings?.tmdbApiKey) {
 			try {
 				const res = await fetchWithTimeout(
@@ -205,11 +191,10 @@ export const fetchUpcomingEpisode = async ({item, settings, serverUrl, serverTok
 					}
 				}
 			} catch (err) {
-				console.warn('[UpcomingEpisode] TMDB direct fetch failed:', err);
+				void err;
 			}
 		}
 
-		// Option B: Moonbase server proxy
 		if (settings?.useMoonfinPlugin && serverUrl && serverToken) {
 			try {
 				const proxyUrl = `${serverUrl}/Moonfin/Tmdb/NextEpisode?tmdbId=${encodeURIComponent(tmdbId)}`;
@@ -236,12 +221,12 @@ export const fetchUpcomingEpisode = async ({item, settings, serverUrl, serverTok
 					}
 				}
 			} catch (err) {
-				console.warn('[UpcomingEpisode] Moonbase proxy fetch failed:', err);
+				void err;
 			}
 		}
 	}
 
-	// Cache negative result to prevent duplicate network calls
+	// A miss is worth remembering too, so the same series is not looked up again.
 	seriesCache.set(seriesId, null);
 	return null;
 };
