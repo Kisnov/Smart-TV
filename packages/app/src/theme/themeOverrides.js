@@ -35,6 +35,9 @@ import spotlightCss from '../views/Details/spotlight/SpotlightDetailContent.modu
 import spotlightCardCss from '../views/Details/spotlight/SpotlightSummaryCard.module.less';
 import spotlightModalCss from '../views/Details/spotlight/SpotlightSectionModal.module.less';
 import spotlightGridCss from '../views/Details/spotlight/SpotlightGrids.module.less';
+import nouveauCardsCss from '../views/Details/nouveau/cards/NouveauCards.module.less';
+import nouveauFooterCss from '../views/Details/nouveau/footer/NouveauDetailsFooter.module.less';
+import nouveauSectionsCss from '../views/Details/nouveau/sections/NouveauSections.module.less';
 import trackListCss from '../components/DetailTrackList/DetailTrackList.module.less';
 import overviewCss from '../views/Details/ExpandableOverview.module.less';
 import tabBarCss from '../components/DetailsTabBar/DetailsTabBar.module.less';
@@ -299,6 +302,14 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${spotlightGridCss.personName}, .${spotlightGridCss.studioName}, .${spotlightGridCss.chapterName}`, `color: ${onBackground};`);
 	rule(`.${trackListCss.trackRow}:focus`, `background: ${buttonFocused}; border-color: ${focusColor};`);
 	rule(`.${trackListCss.trackTitle}, .${trackListCss.discHeading}`, `color: ${onBackground};`);
+
+	// Detail screens, nouveau layout
+	rule(`.${nouveauCardsCss.card}:focus, .${nouveauCardsCss.landscapeDetails}:focus, .${nouveauCardsCss.person}:focus .${nouveauCardsCss.avatar}`, `border-color: ${focusColor};`);
+	rule(`.${nouveauCardsCss.progressFill}, .${nouveauCardsCss.nextUp}`, `background: ${accent};`);
+	rule(`.${nouveauSectionsCss.sortButton}:focus`, `border-color: ${focusColor};`);
+	rule(`.${nouveauFooterCss.trackActive} .${nouveauFooterCss.trackDot}`, `background: ${accent};`);
+	rule(`.${nouveauFooterCss.capabilityRetry}`, `color: ${accent};`);
+	rule(`.${nouveauFooterCss.capabilityRetry}:focus`, `border-color: ${focusColor};`);
 	rule(`.${modernDetailCss.overflowPanel}`, `background: ${surfaceA(0.97)}; border-color: ${os(0.12)};`);
 	rule(`.${modernDetailCss.overflowTitle}`, `color: ${onBackground};`);
 	rule(`.${tabBarCss.tab}`, `color: ${os(0.75)};`);

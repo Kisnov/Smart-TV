@@ -22,6 +22,7 @@ import {
 } from '../Player/remoteSubtitleUtils';
 import useLongPress from '../../utils/longPress';
 import {formatPlaybackEndsAt} from '../../utils/playbackTimeLabels';
+import {formatFileSize} from '../../utils/formatFileSize';
 import {pickEpisodePlayTarget, shouldResumeTarget} from '../../utils/episodePlayTarget';
 import {collectionQueue, collectionPlayTarget} from '../../utils/collectionPlayback';
 
@@ -45,6 +46,7 @@ import {personDateLines, splitFilmography} from '../../utils/personCredits';
 import {mergeCollectionWithMissing} from './seerrMissingCollectionItems';
 import ClassicDetailScreen from './ClassicDetailScreen';
 import SpotlightDetailContent from './spotlight/SpotlightDetailContent';
+import NouveauDetailContent from './nouveau/NouveauDetailContent';
 import PersonScreen from './PersonScreen';
 import SeasonScreen from './SeasonScreen';
 import PlaylistScreen from './PlaylistScreen';
@@ -53,6 +55,10 @@ import ArtistScreen from './ArtistScreen';
 import AudioTrackScreen from './AudioTrackScreen';
 
 import css from './Details.module.less';
+
+// Every style past Classic takes the same contract, so the setting only decides which of them
+// draws the screen.
+const DETAIL_CONTENT = {v3: SpotlightDetailContent, v4: NouveauDetailContent};
 
 const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelectPerson, onSelectStudio, onItemDeleted, seerrNav, backHandlerRef}) => {
 	const {api, serverUrl, user} = useAuth();
@@ -128,7 +134,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	});
 	const {
 		setItem, isLoading: libraryLoading, isSeed, seasons, episodes, seriesEpisodes, similar, extras, cast, nextUp, nextEpisode,
-		collectionItems, missingCollectionItems, parentCollections, similarSource, loadMoreCollectionItems, albumTracks, artistAlbums,
+		collectionItems, missingCollectionItems, parentCollections, similarSource, similarLoaded, loadMoreCollectionItems, albumTracks, artistAlbums,
 		playlistItems, setPlaylistItems, episodeRatings, refreshItem,
 		selectedVersionIndex, setSelectedVersionIndex,
 		selectedAudioIndex, setSelectedAudioIndex,
@@ -588,6 +594,12 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		}
 	}, [episodes, onSelectItem]);
 
+	// Nouveau's episode cards play from the artwork and open from the block beneath it, so playing
+	// one needs its own way in rather than the Play button, which belongs to the item on screen.
+	const handleEpisodePlay = useCallback((episode) => {
+		if (episode) onPlay?.(episode, false);
+	}, [onPlay]);
+
 	const handleChapterSelect = useCallback((ev) => {
 		if (!item) return;
 		const startTicks = Number(ev.currentTarget.dataset.startTicks);
@@ -837,11 +849,9 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	// sum of its children.
 	const showTech = Boolean(settings.detailShowTechnicalDetails);
 	const techBadges = showTech ? getMediaBadges(item, selectedVersionIndex) : [];
-	let techSize = null;
-	if (showTech && mediaSource?.Size > 0 && item.Type !== 'Series' && item.Type !== 'Season') {
-		const mb = mediaSource.Size / (1024 * 1024);
-		techSize = mb > 999 ? `${(mb / 1024).toFixed(2)} GB` : `${Math.round(mb)} MB`;
-	}
+	const techSize = showTech && item.Type !== 'Series' && item.Type !== 'Season'
+		? formatFileSize(mediaSource?.Size)
+		: null;
 	const audioStreams = mediaSource?.MediaStreams?.filter(s => s.Type === 'Audio') || [];
 	const subtitleStreams = mediaSource?.MediaStreams?.filter(s => s.Type === 'Subtitle') || [];
 	const supportsMediaSourceSelection = item.MediaType === 'Video' &&
@@ -939,9 +949,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	);
 
 	if (settings.detailScreenStyle !== 'v1') {
-		// Spotlight takes the same contract as Modern, so the style only decides which of the
-		// two draws the screen.
-		const DetailContent = settings.detailScreenStyle === 'v3' ? SpotlightDetailContent : ModernDetailContent;
+		const DetailContent = DETAIL_CONTENT[settings.detailScreenStyle] || ModernDetailContent;
 		return (
 			<div className={css.page}>
 				<DetailContent
@@ -1005,6 +1013,8 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					birthPlace={birthPlace}
 					episodeRatings={episodeRatings}
 					mediaSource={mediaSource}
+					selectedAudioIndex={selectedAudioIndex}
+					selectedSubtitleIndex={selectedSubtitleIndex}
 					supportsMediaSourceSelection={supportsMediaSourceSelection}
 					hasMultipleVersions={hasMultipleVersions}
 					hasMultipleAudio={hasMultipleAudio}
@@ -1026,12 +1036,14 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					handleOpenIdentifyModal={canIdentify ? modals.handleOpenIdentifyModal : null}
 					handleOpenDeleteDialog={modals.handleOpenDeleteDialog}
 					handleChapterSelect={handleChapterSelect}
+					handleEpisodePlay={handleEpisodePlay}
 					handleExtraSelect={handleExtraSelect}
 					handleTrackPlay={handleTrackPlay}
 					onSelectItem={onSelectItem}
 					onSelectPerson={onSelectPerson}
 					onSelectStudio={onSelectStudio}
 					similarSource={similarSource}
+					similarLoaded={similarLoaded}
 					missingCollectionItems={missingCollectionItems}
 					parentCollections={parentCollections}
 					loadMoreCollectionItems={loadMoreCollectionItems}

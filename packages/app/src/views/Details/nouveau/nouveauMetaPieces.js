@@ -1,0 +1,34 @@
+import $L from '@enact/i18n/$L';
+
+// The facts line under the title in the Nouveau hero, in the order they are read.
+//
+// Genres, the series status and the ratings all have rows of their own on this hero, so none of
+// them take part here.
+export const nouveauMetaPieces = ({item, year, officialRating, runtime, endsAt, seasonCount, episodeCount}) => {
+	const pieces = [];
+	const add = (text) => {
+		if (text) pieces.push(text);
+	};
+
+	add(year ? String(year) : null);
+	add(officialRating);
+
+	if (item.Type === 'Series' && seasonCount) {
+		add($L('{count} Seasons').replace('{count}', seasonCount));
+	}
+	if (item.Type === 'Season' && episodeCount) {
+		add($L('{count} Episodes').replace('{count}', episodeCount));
+	}
+	if (item.Type === 'Episode' && item.ParentIndexNumber != null && item.IndexNumber != null) {
+		add(`S${item.ParentIndexNumber}:E${item.IndexNumber}`);
+	}
+
+	// A series runs for as long as it runs, so the runtime of one episode says nothing. A season
+	// is the one place worth saying when it would finish, since watching it through is a sitting.
+	if (runtime && item.Type !== 'Series') {
+		add(runtime);
+		if (item.Type === 'Season') add(endsAt);
+	}
+
+	return pieces;
+};

@@ -508,6 +508,11 @@ export const api = {
 	getStudioCompanies: (tmdbId, mediaType) =>
 		request(`/Moonfin/Tmdb/ProductionCompanies?tmdbId=${encodeURIComponent(tmdbId)}&type=${mediaType === 'tv' ? 'tv' : 'movie'}`),
 
+	// A collection has no order of its own on the server, so the plugin keeps one: a plain list of
+	// item ids. Absent plugin, absent order, and the caller falls back to release order.
+	getCollectionOrder: (collectionId) =>
+		request(`/Moonfin/Collections/${collectionId}/Order`),
+
 	getMusicGenres: (params = {}) => {
 		const merged = {UserId: currentUser, SortBy: 'SortName', SortOrder: 'Ascending', Recursive: 'true'};
 		Object.keys(params).forEach(function (k) { merged[k] = String(params[k]); });
@@ -1004,6 +1009,9 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 
 		getStudioCompanies: (tmdbId, mediaType) =>
 			serverRequest(`/Moonfin/Tmdb/ProductionCompanies?tmdbId=${encodeURIComponent(tmdbId)}&type=${mediaType === 'tv' ? 'tv' : 'movie'}`),
+
+		getCollectionOrder: (collectionId) =>
+			serverRequest(`/Moonfin/Collections/${collectionId}/Order`),
 
 		searchRemoteSubtitles: (itemId, language = 'eng', isPerfectMatch = null) => {
 			const query = isPerfectMatch === null ? '' : `?IsPerfectMatch=${isPerfectMatch}`;

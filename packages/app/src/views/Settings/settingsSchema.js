@@ -246,7 +246,7 @@ export const SETTINGS_SCHEMA = [
 				description: () => $L('Style, background blur, and tab behavior'),
 				rows: [
 					{kind: KIND.SECTION, id: 'detailsDisplay', label: () => $L('Display')},
-					{kind: KIND.OPTION, key: 'detailScreenStyle', label: () => $L('Details Screen Style'), desc: () => $L('Classic is the original centered moonfin layout. Modern is a responsive cinematic layout. Spotlight puts the artwork first, with summary cards that open what they name.'), options: getDetailScreenStyleOptions, fallback: () => $L('Modern'), icon: 'movie'},
+					{kind: KIND.OPTION, key: 'detailScreenStyle', label: () => $L('Details Screen Style'), desc: () => $L('Classic is the original centered moonfin layout. Modern is a responsive cinematic layout. Spotlight puts the artwork first, with summary cards that open what they name. Nouveau stacks every section down one scrolling page.'), options: getDetailScreenStyleOptions, fallback: () => $L('Modern'), icon: 'movie'},
 					{
 						kind: KIND.OPTION,
 						key: 'backdropBlurDetail',
@@ -266,7 +266,7 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.SECTION, id: 'mediaDetailsAndSpoilers', label: () => $L('Media Details and Spoilers')},
 					{kind: KIND.TOGGLE, key: 'detailShowTechnicalDetails', label: () => $L('Show Technical Details'), desc: () => $L('Show codec, resolution, and stream information in banner summary'), icon: 'info'},
 					{kind: KIND.TOGGLE, key: 'hideDetailsMediaDescription', label: () => $L('Hide Media Description on Details Page'), desc: () => $L('Hide the movie or episode descriptive text.'), icon: 'hide'},
-					{kind: KIND.TOGGLE, key: 'detailUseSeriesThumbnails', label: () => $L('Use Series Thumbnails on Details Page'), desc: () => $L('Replace all thumbnails on Classic details page with series thumbnail'), icon: 'aspectratio', when: (ctx) => ctx.settings.detailScreenStyle === 'v1'}
+					{kind: KIND.TOGGLE, key: 'detailUseSeriesThumbnails', label: () => $L('Use Series Thumbnails on Details Page'), desc: () => $L('Replace thumbnails on the details page with the series thumbnail'), icon: 'aspectratio', when: (ctx) => ctx.settings.detailScreenStyle === 'v1' || ctx.settings.detailScreenStyle === 'v4'}
 				]
 			},
 			{

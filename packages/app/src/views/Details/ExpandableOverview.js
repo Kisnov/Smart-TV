@@ -10,11 +10,15 @@ const SpottableDiv = Spottable('div');
 
 const SCROLL_STEP = 58;
 
+// Each screen sets the copy to suit the room it has. Anything not named here reads at the size
+// the box was built at.
+const TEXT_VARIANTS = {classic: css.textClassic, nouveau: css.textNouveau};
+
 // The overview with a Read More toggle, shared by both detail styles. Text short
 // enough for its four line clamp renders as plain copy. Longer text gets a
 // focusable box that expands in place, capped at a fixed height the d-pad
 // scrolls through.
-const ExpandableOverview = ({text, itemId, className, variant, backRef}) => {
+const ExpandableOverview = ({text, itemId, className, variant, backRef, spotlightId}) => {
 	const [canToggle, setCanToggle] = useState(false);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const textRef = useRef(null);
@@ -74,9 +78,10 @@ const ExpandableOverview = ({text, itemId, className, variant, backRef}) => {
 			className={`${css.container} ${canToggle ? css.spottable : ''} ${canToggle && isExpanded ? css.expanded : ''} ${className || ''}`}
 			onClick={canToggle ? handleToggle : null}
 			onKeyDown={handleKeyDown}
+			spotlightId={spotlightId}
 			spotlightDisabled={!canToggle}
 		>
-			<p ref={textRef} className={`${css.text} ${variant === 'classic' ? css.textClassic : ''} ${!isExpanded ? css.collapsed : ''}`}>
+			<p ref={textRef} className={`${css.text} ${TEXT_VARIANTS[variant] || ''} ${!isExpanded ? css.collapsed : ''}`}>
 				{text}
 			</p>
 			{canToggle && <div className={css.readMoreBtn}>{isExpanded ? $L('Read Less') : $L('Read More')}</div>}
