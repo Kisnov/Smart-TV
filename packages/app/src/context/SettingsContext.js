@@ -58,7 +58,9 @@ const SERVER_TO_LOCAL = {
 	defaultAudioLanguage: 'audioLanguage',
 	defaultSubtitleLanguage: 'subtitleLanguage',
 	unpauseRewindDuration: 'unpauseRewind',
-	confirmExit: 'exitConfirmation'
+	confirmExit: 'exitConfirmation',
+	DetailMetadataOrderTv: 'detailMetadataOrderTv',
+	HiddenDetailMetadataTv: 'hiddenDetailMetadataTv'
 };
 const LOCAL_TO_SERVER = Object.fromEntries(
 	Object.entries(SERVER_TO_LOCAL).map(([s, l]) => [l, s])
@@ -83,7 +85,9 @@ const normalizeHomeRowsStyle = (value) => {
 const normalizeDetailScreenStyle = (value) => {
 	if (value === 'classic') return 'v1';
 	if (value === 'modern') return 'v2';
-	return value === 'v1' || value === 'v2' ? value : 'v2';
+	if (value === 'spotlight') return 'v3';
+	if (value === 'nouveau') return 'v4';
+	return value === 'v1' || value === 'v2' || value === 'v3' || value === 'v4' ? value : 'v2';
 };
 
 const normalizeGuid = (id) => {
@@ -191,7 +195,8 @@ const VALUE_CONVERSIONS = {
 
 export const SYNCABLE_KEYS = [
 	'showShuffleButton', 'shuffleContentType', 'showGenresButton',
-	'showFavoritesButton', 'showLibrariesInToolbar', 'mergeContinueWatchingNextUp',
+	'showFavoritesButton', 'showLiveTvButton', 'showLibrariesInToolbar',
+	'mergeContinueWatchingNextUp',
 	'nextUpMaxDays',
 	'hiddenContinueWatchingItems', 'hiddenNextUpSeries',
 	'mdblistEnabled', 'mdblistRatingSources', 'tmdbEpisodeRatingsEnabled',
@@ -225,7 +230,7 @@ export const SYNCABLE_KEYS = [
 	'mediaBarOverlayColor', 'mediaBarOverlayOpacity',
 	'homeRows', 'homeRowsStyle', 'modernCardsOnMyMediaRow', 'detailScreenStyle', 'detailExpandedTabs', 'fullScreenRows', 'homeRowsPosterSize', 'useSeriesThumbnails',
 	'hideDetailsMediaDescription', 'detailUseSeriesThumbnails', 'hideHomeMediaDescription',
-	'personalRatingStyle', 'recentlyReleasedSeriesType', 'mergeRecentRowsByType', 'playlistsGroupByType',
+	'personalRatingStyle', 'recentlyReleasedSeriesType', 'mergeRecentRowsByType', 'playlistsGroupByType', 'groupItemsIntoCollections',
 	'useDetailedSubHeadings', 'showMediaDetailsOnLibraryPage', 'hideBackdropsInLibraries',
 	'syncplayEnabled', 'syncplayAutoOpen',
 	'showSyncPlayButton',
@@ -244,7 +249,8 @@ export const SYNCABLE_KEYS = [
 	'mergeRadarrSonarrCalendars',
 	'radarrCalendarShowCinema', 'radarrCalendarShowDigital', 'radarrCalendarShowPhysical',
 	'radarrCalendarShowDate', 'sonarrCalendarShowDate', 'sonarrCalendarShowEpisodeInfo',
-	'showSeerrButton', 'showServerMessagesButton',
+	'showSeerrButton', 'seerrShowMissingCollectionItems', 'showSeerrAvailabilityBadges',
+	'showServerMessagesButton',
 	'screensaverMode', 'screensaverClockMode',
 	'screensaverBackdrop', 'screensaverComponent', 'screensaverMovement',
 	'screensaverPosition', 'screensaverSize', 'screensaverContentType',
@@ -256,7 +262,9 @@ export const SYNCABLE_KEYS = [
 	'classicHomeRowsPadding', 'modernHomeRowsPadding',
 	'detailShowTechnicalDetails',
 	'recommendationSystemSource', 'recommendationsApplyParentalRatingCap',
+	'detailButtonsMaxVisible',
 	'detailButtonOrderTv', 'hiddenDetailButtonsTv', 'osdButtonOrderTv', 'hiddenOsdButtonsTv',
+	'detailMetadataOrderTv', 'hiddenDetailMetadataTv',
 	'focusBorderColor',
 	'navbarOpacity',
 	'navbarColor',

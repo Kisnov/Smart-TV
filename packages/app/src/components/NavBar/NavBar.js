@@ -7,8 +7,9 @@ import {useSyncPlay} from '../../context/SyncPlayContext';
 import {useServerMessages} from '../../context/ServerMessagesContext';
 import SeerrIcon from '../icons/SeerrIcon';
 import SyncPlayIcon from '../icons/SyncPlayIcon';
-import {FavoritesIcon, GenresIcon, HomeIcon, MessagesIcon, SearchIcon, SettingsIcon, ShuffleIcon} from '../icons/navIcons';
+import {FavoritesIcon, GenresIcon, HomeIcon, LiveTvIcon, MessagesIcon, SearchIcon, SettingsIcon, ShuffleIcon} from '../icons/navIcons';
 import useClock from '../../hooks/useClock';
+import {librariesForNav} from '../../utils/liveTvLibrary';
 import {shadowToCss, toCssColor, toCssColorWithAlpha} from '../../theme/themeSpec';
 import {resolveOverlayColor} from '../../theme/overlayColors';
 import {CONTENT_FOCUS_TARGETS, focusFirstContentTarget} from '../../utils/navFocusTargets';
@@ -29,11 +30,13 @@ const NavContainer = SpotlightContainerDecorator({
 const NavBar = ({
 	activeView = 'home',
 	libraries = [],
+	hasLiveTv = false,
 	onHome,
 	onSearch,
 	onShuffle,
 	onGenres,
 	onFavorites,
+	onLiveTv,
 	onDiscover,
 	onSettings,
 	onSelectLibrary,
@@ -52,9 +55,11 @@ const NavBar = ({
 	const showShuffle = settings.showShuffleButton !== false;
 	const showGenres = settings.showGenresButton !== false;
 	const showFavorites = settings.showFavoritesButton !== false;
+	const showLiveTv = settings.showLiveTvButton !== false && hasLiveTv;
 	const showSeerr = seerrEnabled && settings.showSeerrButton !== false;
 	const showSyncPlay = settings.syncplayEnabled !== false && settings.showSyncPlayButton !== false;
-	const showLibraries = settings.showLibrariesInToolbar !== false && libraries.length > 0;
+	const navLibraries = librariesForNav(libraries, showLiveTv);
+	const showLibraries = settings.showLibrariesInToolbar !== false && navLibraries.length > 0;
 	// Only with something to show, so the menu never has a button that does nothing.
 	const showMessages = settings.showServerMessagesButton === true && messages.length > 0;
 
@@ -81,11 +86,12 @@ const NavBar = ({
 	const librariesLeftTargetId = useMemo(() => {
 		if (showSeerr) return 'navbar-discover';
 		if (showSyncPlay) return 'navbar-syncplay';
+		if (showLiveTv) return 'navbar-livetv';
 		if (showFavorites) return 'navbar-favorites';
 		if (showGenres) return 'navbar-genres';
 		if (showShuffle) return 'navbar-shuffle';
 		return 'navbar-search';
-	}, [showSeerr, showSyncPlay, showFavorites, showGenres, showShuffle]);
+	}, [showSeerr, showSyncPlay, showLiveTv, showFavorites, showGenres, showShuffle]);
 
 	const handlePillFocus = useCallback((e) => {
 		if (pointerHover()) return;
@@ -134,6 +140,10 @@ const NavBar = ({
 						<NavPillButton Icon={FavoritesIcon} slot={nextSlot()} label={$L('Favorites')} onClick={onFavorites} spotlightId="navbar-favorites" />
 					)}
 
+					{showLiveTv && (
+						<NavPillButton Icon={LiveTvIcon} slot={nextSlot()} label={$L('Live TV')} onClick={onLiveTv} spotlightId="navbar-livetv" />
+					)}
+
 					{showSyncPlay && (
 						<NavPillButton Icon={SyncPlayIcon} slot={nextSlot()} label={$L('SyncPlay')} onClick={onSyncPlay} spotlightId="navbar-syncplay" active={isInGroup} />
 					)}
@@ -144,7 +154,7 @@ const NavBar = ({
 
 					{showLibraries && (
 						<NavLibraries
-							libraries={libraries}
+							libraries={navLibraries}
 							slot={nextSlot()}
 							activeView={activeView}
 							onSelectLibrary={onSelectLibrary}

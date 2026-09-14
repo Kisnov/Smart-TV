@@ -7,7 +7,7 @@ import {getServerUrl} from '../../services/jellyfinApi';
 import TrickplayPreview from '../../components/TrickplayPreview';
 import SubtitleOffsetOverlay from './SubtitleOffsetOverlay';
 import SubtitleSettingsOverlay from './SubtitleSettingsOverlay';
-import {isHdrVideoStream} from '../../utils/videoRange';
+import {formatBitrate, getAudioChannels, getAudioCodec, getHdrType, getVideoCodec} from '../../utils/mediaStreamFacts';
 import {getPlatform} from '../../platform';
 import {ModalContainer} from '../../utils/spotlightContainers';
 import {numberedTrackName, sortSubtitleStreams, subtitleTrackDetail, audioTrackDetail} from '../../utils/trackLabels';
@@ -104,63 +104,6 @@ export const usePlayerButtons = ({
 	}, [audioStreams.length, chapters.length, subtitleStreams.length, isAudioMode, isLiveTV, selectedQuality, selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey, sleepMinutes, osdOrder, osdHidden]);
 
 	return {topButtons, bottomButtons};
-};
-
-export const formatBitrate = (bitrate) => {
-	if (!bitrate) return $L('Unknown');
-	if (bitrate >= 1000000) return `${(bitrate / 1000000).toFixed(1)} Mbps`;
-	if (bitrate >= 1000) return `${(bitrate / 1000).toFixed(0)} Kbps`;
-	return `${bitrate} bps`;
-};
-
-export const getHdrType = (videoStream) => {
-	if (!isHdrVideoStream(videoStream)) return 'SDR';
-	const rangeType = videoStream.VideoRangeType || '';
-	if (rangeType.includes('DOVI') || rangeType.includes('DoVi')) return 'Dolby Vision';
-	if (rangeType.includes('HDR10Plus') || rangeType.includes('HDR10+')) return 'HDR10+';
-	if (rangeType.includes('HDR10') || rangeType.includes('HDR')) return 'HDR10';
-	if (rangeType.includes('HLG')) return 'HLG';
-	return 'HDR';
-};
-
-export const getVideoCodec = (videoStream) => {
-	if (!videoStream) return $L('Unknown');
-	let codec = (videoStream.Codec || '').toUpperCase();
-	if (codec === 'HEVC') codec = 'HEVC (H.265)';
-	else if (codec === 'H264' || codec === 'AVC') codec = 'AVC (H.264)';
-	else if (codec === 'AV1') codec = 'AV1';
-	else if (codec === 'VP9') codec = 'VP9';
-
-	if (videoStream.Profile) {
-		codec += ` ${videoStream.Profile}`;
-	}
-	if (videoStream.Level) {
-		codec += `@L${videoStream.Level}`;
-	}
-	return codec;
-};
-
-export const getAudioCodec = (audioStream) => {
-	if (!audioStream) return $L('Unknown');
-	let codec = (audioStream.Codec || '').toUpperCase();
-	if (codec === 'EAC3') codec = 'E-AC3 (Dolby Digital Plus)';
-	else if (codec === 'AC3') codec = 'AC3 (Dolby Digital)';
-	else if (codec === 'TRUEHD') codec = 'TrueHD';
-	else if (codec === 'DTS') codec = 'DTS';
-	else if (codec === 'AAC') codec = 'AAC';
-	else if (codec === 'FLAC') codec = 'FLAC';
-	return codec;
-};
-
-export const getAudioChannels = (audioStream) => {
-	if (!audioStream) return $L('Unknown');
-	const channels = audioStream.Channels;
-	if (!channels) return $L('Unknown');
-	if (channels === 8) return '7.1';
-	if (channels === 6) return '5.1';
-	if (channels === 2) return $L('Stereo');
-	if (channels === 1) return $L('Mono');
-	return `${channels} ${$L('channels')}`;
 };
 
 const PlayerControls = ({

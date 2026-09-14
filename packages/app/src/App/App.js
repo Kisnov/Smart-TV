@@ -15,6 +15,7 @@ import {libraryIdOf, seerrDetailStub} from '../utils/seerrTarget';
 import serverLogger from '../services/serverLogger';
 import {isBackKey, KEYS} from '../utils/keys';
 import {applyPerfTier} from '../utils/perfTier';
+import {isLiveTvLibrary} from '../utils/liveTvLibrary';
 import {OLED_TUNING} from '../utils/oledMode';
 import {isTizen} from '../platform';
 import {initVideo, cleanupVideoElement, setupVisibilityHandler, setupPlatformLifecycle} from '../services/video';
@@ -757,7 +758,7 @@ const AppContent = (props) => {
 	}, []);
 
 	const handleSelectLibrary = useCallback(async (library) => {
-		if (library.CollectionType === 'livetv') {
+		if (isLiveTvLibrary(library)) {
 			if (settings.liveTvSkipGuide) {
 				let channels = null;
 				try {
@@ -953,6 +954,10 @@ const AppContent = (props) => {
 
 	const handleOpenGenres = useCallback(() => {
 		navigateTo(PANELS.GENRES);
+	}, [navigateTo]);
+
+	const handleOpenLiveTv = useCallback(() => {
+		navigateTo(PANELS.LIVETV);
 	}, [navigateTo]);
 
 	const handleSelectGenre = useCallback((genre, library) => {
@@ -1254,6 +1259,8 @@ const AppContent = (props) => {
 		}
 	};
 
+	const hasLiveTv = libraries.some(isLiveTvLibrary);
+
 	const showNavBar = panelIndex !== PANELS.LOGIN &&
 		panelIndex !== PANELS.PLAYER &&
 		panelIndex !== PANELS.GAME_PLAYER &&
@@ -1273,11 +1280,13 @@ const AppContent = (props) => {
 			{showNavBar && settings.navbarPosition === 'left' ? (
 				<Sidebar
 					libraries={libraries}
+					hasLiveTv={hasLiveTv}
 					onHome={handleHome}
 					onSearch={handleOpenSearch}
 					onShuffle={handleShuffle}
 					onGenres={handleOpenGenres}
 					onFavorites={handleOpenFavorites}
+					onLiveTv={handleOpenLiveTv}
 					onDiscover={handleOpenSeerr}
 					onSyncPlay={settings.syncplayEnabled !== false ? openSyncPlay : undefined}
 					onSettings={handleOpenSettings}
@@ -1289,11 +1298,13 @@ const AppContent = (props) => {
 				<NavBar
 					activeView={getActiveView()}
 					libraries={libraries}
+					hasLiveTv={hasLiveTv}
 					onHome={handleHome}
 					onSearch={handleOpenSearch}
 					onShuffle={handleShuffle}
 					onGenres={handleOpenGenres}
 					onFavorites={handleOpenFavorites}
+					onLiveTv={handleOpenLiveTv}
 					onDiscover={handleOpenSeerr}
 					onSyncPlay={settings.syncplayEnabled !== false ? openSyncPlay : undefined}
 					onSettings={handleOpenSettings}

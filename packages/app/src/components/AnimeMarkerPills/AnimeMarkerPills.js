@@ -2,7 +2,6 @@ import $L from '@enact/i18n/$L';
 
 import css from './AnimeMarkerPills.module.less';
 
-// AnimeEpisodeKind.
 const KIND_PILLS = {
 	Filler: {label: 'Filler', tone: css.filler},
 	Mixed: {label: 'Mixed Canon/Filler', tone: css.mixed},
@@ -10,7 +9,6 @@ const KIND_PILLS = {
 	AnimeCanon: {label: 'Anime Canon', tone: css.animeCanon}
 };
 
-// AnimeAudioKind
 const AUDIO_PILLS = {
 	Subbed: {label: 'Subbed', tone: css.subbed},
 	Dubbed: {label: 'Dubbed', tone: css.dubbed},

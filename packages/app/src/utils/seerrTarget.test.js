@@ -1,4 +1,4 @@
-import {seerrTargetFor, seerrDetailStub, isSeerrOnlyItem, bestSearchMatch} from './seerrTarget';
+import {seerrTargetFor, seerrDetailStub, isSeerrOnlyItem, bestSearchMatch, personRouteFor} from './seerrTarget';
 
 const movie = (providerIds) => ({Type: 'Movie', ProviderIds: providerIds});
 
@@ -75,5 +75,27 @@ describe('bestSearchMatch', () => {
 	it('hands back nothing for an empty search', () => {
 		expect(bestSearchMatch([], 'movie')).toBe(null);
 		expect(bestSearchMatch(null, 'movie')).toBe(null);
+	});
+});
+
+describe('personRouteFor', () => {
+	it('opens a library cast member on the library side', () => {
+		expect(personRouteFor({Id: 'abc123', Name: 'Toni Collette'}, false))
+			.toEqual({seerr: false, id: 'abc123'});
+	});
+
+	it('opens a cast member from a Seerr only title on the Seerr side', () => {
+		expect(personRouteFor({Id: '1234', Name: 'Toni Collette'}, true))
+			.toEqual({seerr: true, id: 1234, name: 'Toni Collette'});
+	});
+
+	it('keeps a Seerr person whose id is not a number on the library side', () => {
+		expect(personRouteFor({Id: 'abc123', Name: 'Toni Collette'}, true))
+			.toEqual({seerr: false, id: 'abc123'});
+	});
+
+	it('has nowhere to send a person without an id', () => {
+		expect(personRouteFor({Name: 'Toni Collette'}, true)).toBeNull();
+		expect(personRouteFor(null, false)).toBeNull();
 	});
 });

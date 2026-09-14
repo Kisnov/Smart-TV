@@ -12,21 +12,16 @@ const pendingSeries = {};
 const itemAudio = {};
 const itemAsked = {};
 
-let placement = 'below';
+// Set when the server says the feature is off, so a library full of series doesnt pay
+// one request each to be told the same thing. Both expire, otherwise an admin turning
+// the feature on would never be noticed until the user signed out.
+let featureOffAt = 0;
 
-export const MARKER_PLACEMENT = {
-	below: 'below',
-	beside: 'beside',
-	thumbnail: 'thumbnail'
-};
+// The audio half can be off while filler markers stay on, so it latches on its own.
+let itemFeatureOffAt = 0;
 
-export const getMarkerPlacement = () => placement;
-
-const rememberPlacement = (value) => {
-	if (value === 'beside' || value === 'thumbnail' || value === 'below') {
-		placement = value;
-	}
-};
+const featureOff = () => featureOffAt > 0 && (Date.now() - featureOffAt) < CACHE_TTL_MS;
+const itemFeatureOff = () => featureOff() || (itemFeatureOffAt > 0 && (Date.now() - itemFeatureOffAt) < CACHE_TTL_MS);
 
 const normalizeId = (id) => String(id || '').replace(/-/g, '').toLowerCase();
 
@@ -50,7 +45,7 @@ const request = async (url, signal) => {
 // Markers for every episode of one series, key is the episode id.
 export const fetchSeriesMarkers = async (seriesId, options = {}) => {
 	const key = normalizeId(seriesId);
-	if (!key) return null;
+	if (!key || featureOff()) return null;
 
 	const cached = seriesCache[key];
 	if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
@@ -73,12 +68,11 @@ export const fetchSeriesMarkers = async (seriesId, options = {}) => {
 			}
 
 			const body = await response.json();
-			rememberPlacement(body?.placement);
 
+			// Off server-wide, so no other series will answer differently.
 			if (body?.enabled !== true) {
-				const empty = {episodes: {}, seasons: {}};
-				seriesCache[key] = {fetchedAt: Date.now(), data: empty};
-				return empty;
+				featureOffAt = Date.now();
+				return null;
 			}
 
 			if (body?.pending === true) {
@@ -125,11 +119,6 @@ export const markerForEpisode = (markers, episodeId) => {
 	return markers.episodes[normalizeId(episodeId)] || null;
 };
 
-export const audioForSeason = (markers, seasonId) => {
-	if (!markers?.seasons) return null;
-	return markers.seasons[normalizeId(seasonId)] || null;
-};
-
 // Ids waiting to go out, the callers waiting on them, and when a lookup last failed.
 const itemQueue = new Set();
 const itemWaiters = [];
@@ -144,21 +133,38 @@ const ITEM_BATCH_MS = 80;
 const ITEM_BATCH_MAX = 200;
 
 const flushItemBatch = async () => {
-	const ids = Array.from(itemQueue).slice(0, ITEM_BATCH_MAX);
+	const baseUrl = itemBaseUrl || getServerUrl();
+	const stopping = itemFeatureOff() || !baseUrl;
+
+	if (stopping) itemQueue.clear();
+
+	const ids = stopping ? [] : Array.from(itemQueue).slice(0, ITEM_BATCH_MAX);
 	ids.forEach(id => itemQueue.delete(id));
 
-	const waiters = itemWaiters.splice(0, itemWaiters.length);
-	const baseUrl = itemBaseUrl || getServerUrl();
+	// Only the callers whose ids actually went out are released, since the batch is
+	// capped. When we are stopping altogether nobody is coming, so everyone goes.
+	const sent = new Set(ids);
+	const waiters = [];
+	for (let i = itemWaiters.length - 1; i >= 0; i--) {
+		if (stopping || itemWaiters[i].ids.every(id => sent.has(id))) {
+			waiters.push(itemWaiters.splice(i, 1)[0]);
+		}
+	}
 
 	try {
-		if (ids.length === 0 || !baseUrl) return;
+		if (stopping || ids.length === 0) return;
 
 		const url = `${baseUrl}/Moonfin/AnimeMarkers/Items?ids=${encodeURIComponent(ids.join(','))}`;
 		const response = await request(url);
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
 		const body = await response.json();
-		rememberPlacement(body?.placement);
+
+		if (body?.enabled === false) {
+			itemFeatureOffAt = Date.now();
+			itemQueue.clear();
+			return;
+		}
 
 		const items = body?.items || {};
 		Object.keys(items).forEach(id => {
@@ -176,9 +182,9 @@ const flushItemBatch = async () => {
 			itemFailedAt[id] = now;
 		});
 	} finally {
-		waiters.forEach(resolve => resolve());
+		waiters.forEach(w => w.resolve());
 
-		if (itemQueue.size > 0 && !itemTimer) {
+		if (itemQueue.size > 0 && !itemTimer && !itemFeatureOff()) {
 			itemTimer = setTimeout(() => {
 				itemTimer = null;
 				flushItemBatch();
@@ -188,6 +194,8 @@ const flushItemBatch = async () => {
 };
 
 export const fetchItemMarkers = async (itemIds, options = {}) => {
+	if (itemFeatureOff()) return itemAudio;
+
 	const wanted = (itemIds || [])
 		.map(normalizeId)
 		.filter(id => id && !(id in itemAsked))
@@ -202,7 +210,7 @@ export const fetchItemMarkers = async (itemIds, options = {}) => {
 	itemBaseUrl = options.serverUrl || itemBaseUrl;
 
 	await new Promise(resolve => {
-		itemWaiters.push(resolve);
+		itemWaiters.push({ids: wanted, resolve});
 		if (!itemTimer) {
 			itemTimer = setTimeout(() => {
 				itemTimer = null;
@@ -216,11 +224,16 @@ export const fetchItemMarkers = async (itemIds, options = {}) => {
 
 export const audioForItem = (itemId) => itemAudio[normalizeId(itemId)] || null;
 
+// Keyed by bare item id, so this has to be emptied whenever the account or the server
+// behind those ids changes. The latches go too, since the next server may have it on.
 export const clearAnimeMarkerCache = () => {
 	Object.keys(seriesCache).forEach(k => delete seriesCache[k]);
 	Object.keys(negativeCache).forEach(k => delete negativeCache[k]);
 	Object.keys(itemAudio).forEach(k => delete itemAudio[k]);
 	Object.keys(itemAsked).forEach(k => delete itemAsked[k]);
 	Object.keys(itemFailedAt).forEach(k => delete itemFailedAt[k]);
-	placement = 'below';
+	itemQueue.clear();
+	itemBaseUrl = null;
+	featureOffAt = 0;
+	itemFeatureOffAt = 0;
 };

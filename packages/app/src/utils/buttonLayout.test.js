@@ -1,4 +1,4 @@
-import {ordered, arrange, hiddenSet, withUnknownIds, seerrOnlyRow, DETAIL_BUTTONS, OSD_BUTTONS} from './buttonLayout';
+import {ordered, arrange, hiddenSet, withUnknownIds, seerrOnlyRow, countSplit, applyButtonLimit, DETAIL_BUTTONS, OSD_BUTTONS} from './buttonLayout';
 
 const ids = (list) => list.map((item) => item.id);
 const declare = (...list) => list.map((id) => ({id}));
@@ -112,5 +112,65 @@ describe('seerrOnlyRow', () => {
 	it('keeps only the actions that ask Seerr for a title', () => {
 		const row = declare('seerrRequest', 'watched', 'seerrRequest4k', 'favorite', 'seerrManage');
 		expect(ids(seerrOnlyRow(row))).toEqual(['seerrRequest', 'seerrRequest4k', 'seerrManage']);
+	});
+});
+
+describe('countSplit', () => {
+	// Spotlight passes a cap of 5, which leaves four slots in front of the ellipsis:
+	// the play button and three others.
+	const spotlight = (totalButtons) => countSplit({totalButtons, maxVisible: 5, overflowAsMenu: true, countCapped: true});
+
+	it('folds a full row down to four slots and an ellipsis', () => {
+		expect(spotlight(8)).toEqual({visibleCount: 4, needsOverflow: true});
+	});
+
+	it('overflows at five even though the menu would hold one action', () => {
+		expect(spotlight(5).needsOverflow).toBe(true);
+	});
+
+	it('leaves a row of four inline', () => {
+		expect(spotlight(4).needsOverflow).toBe(false);
+	});
+
+	// Classic and Modern never pass the cap, so nothing about their rows changes.
+	it('leaves an uncapped row alone however long it is', () => {
+		expect(countSplit({totalButtons: 12, maxVisible: 5, overflowAsMenu: true, countCapped: false}).needsOverflow).toBe(false);
+	});
+
+	it('lets a row sit exactly on the cap when it is not folding into a menu', () => {
+		const row = {maxVisible: 5, overflowAsMenu: false, countCapped: true};
+		expect(countSplit({...row, totalButtons: 5}).needsOverflow).toBe(false);
+		expect(countSplit({...row, totalButtons: 6})).toEqual({visibleCount: 4, needsOverflow: true});
+	});
+});
+
+describe('applyButtonLimit', () => {
+	// What each style asks for on its own, before the viewer's setting gets a say.
+	const spotlight = {maxVisible: 5, overflowAsMenu: true, countCapped: true};
+	const modern = {maxVisible: 0, overflowAsMenu: false, countCapped: false};
+
+	it('leaves the style as it is on Auto', () => {
+		expect(applyButtonLimit(0, spotlight)).toEqual(spotlight);
+		expect(applyButtonLimit(0, modern)).toEqual(modern);
+	});
+
+	it('lifts the cap so every button stays in the row', () => {
+		expect(applyButtonLimit(-1, spotlight)).toEqual({maxVisible: 5, overflowAsMenu: true, countCapped: false});
+	});
+
+	it('leaves play on its own', () => {
+		const row = applyButtonLimit(1, modern);
+		expect(row).toEqual({maxVisible: 2, overflowAsMenu: true, countCapped: true});
+		expect(countSplit({...row, totalButtons: 4})).toEqual({visibleCount: 1, needsOverflow: true});
+	});
+
+	it('counts the play slot into the number the viewer picked', () => {
+		const row = applyButtonLimit(3, modern);
+		expect(countSplit({...row, totalButtons: 6}).visibleCount).toBe(3);
+		expect(countSplit({...row, totalButtons: 3}).needsOverflow).toBe(false);
+	});
+
+	it('tightens a row the style had already capped', () => {
+		expect(applyButtonLimit(2, spotlight)).toEqual({maxVisible: 3, overflowAsMenu: true, countCapped: true});
 	});
 });

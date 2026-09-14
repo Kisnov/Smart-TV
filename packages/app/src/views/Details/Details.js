@@ -22,10 +22,11 @@ import {
 } from '../Player/remoteSubtitleUtils';
 import useLongPress from '../../utils/longPress';
 import {formatPlaybackEndsAt} from '../../utils/playbackTimeLabels';
+import {formatFileSize} from '../../utils/formatFileSize';
 import {pickEpisodePlayTarget, shouldResumeTarget} from '../../utils/episodePlayTarget';
 import {collectionQueue, collectionPlayTarget} from '../../utils/collectionPlayback';
 
-import {isSeerrOnlyItem, libraryIdOf} from '../../utils/seerrTarget';
+import {isSeerrOnlyItem, libraryIdOf, personRouteFor} from '../../utils/seerrTarget';
 import {buildSeerrDetailItem} from '../../utils/seerrDetailItem';
 import {COLLECTION_ITEM_TYPES, IDENTIFIABLE_TYPES, getMediaBadges, seriesThumbUrl, shuffleArray, splitCastAndCrew} from './detailsMedia';
 import useDetailsItem from './useDetailsItem';
@@ -42,7 +43,10 @@ import TrailerOverlay from './TrailerOverlay';
 import PersonalRatingDialog from '../../components/PersonalRatingDialog';
 import {clampRating, clearedRatingPatch, isRatableItemType, normalizeRatingStyle, numericRatingPatch, thumbRatingPatch} from '../../utils/personalRating';
 import {personDateLines, splitFilmography} from '../../utils/personCredits';
+import {mergeCollectionWithMissing} from './seerrMissingCollectionItems';
 import ClassicDetailScreen from './ClassicDetailScreen';
+import SpotlightDetailContent from './spotlight/SpotlightDetailContent';
+import NouveauDetailContent from './nouveau/NouveauDetailContent';
 import PersonScreen from './PersonScreen';
 import SeasonScreen from './SeasonScreen';
 import PlaylistScreen from './PlaylistScreen';
@@ -52,10 +56,14 @@ import AudioTrackScreen from './AudioTrackScreen';
 
 import css from './Details.module.less';
 
+// Every style past Classic takes the same contract, so the setting only decides which of them
+// draws the screen.
+const DETAIL_CONTENT = {v3: SpotlightDetailContent, v4: NouveauDetailContent};
+
 const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelectPerson, onSelectStudio, onItemDeleted, seerrNav, backHandlerRef}) => {
 	const {api, serverUrl, user} = useAuth();
 	const {settings} = useSettings();
-	const {pluginInfo} = useSeerr();
+	const {pluginInfo, isEnabled: seerrEnabled} = useSeerr();
 	const recommendationsSupported = pluginInfo?.recommendationsSupported === true;
 	const {isInGroup: isSyncPlayInGroup} = useSyncPlay();
 
@@ -120,12 +128,13 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		effectiveServerUrl,
 		settings,
 		recommendationsSupported,
+		seerrEnabled,
 		tagWithServerInfo,
 		skip: seerrOnly
 	});
 	const {
-		setItem, isLoading: libraryLoading, isSeed, seasons, episodes, similar, extras, cast, nextUp, nextEpisode,
-		collectionItems, parentCollection, parentCollectionName, albumTracks, artistAlbums,
+		setItem, isLoading: libraryLoading, isSeed, seasons, episodes, seriesEpisodes, similar, extras, cast, nextUp, nextEpisode,
+		collectionItems, missingCollectionItems, parentCollections, similarSource, similarLoaded, loadMoreCollectionItems, albumTracks, artistAlbums,
 		playlistItems, setPlaylistItems, episodeRatings, refreshItem,
 		selectedVersionIndex, setSelectedVersionIndex,
 		selectedAudioIndex, setSelectedAudioIndex,
@@ -173,7 +182,8 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	// The expanded overview box collapses on BACK through the same chain the
 	// screen's overlays use.
 	const overviewBackRef = useRef(null);
-	const modals = useDetailsModals({backHandlerRef, onArtworkClosed: refreshItem, seerrBackRef, overviewBackRef});
+	const spotlightBackRef = useRef(null);
+	const modals = useDetailsModals({backHandlerRef, onArtworkClosed: refreshItem, seerrBackRef, overviewBackRef, spotlightBackRef});
 	const {activeModal, openModal, closeModal, advancedResumeRef} = modals;
 
 	const trailer = useDetailsTrailer({
@@ -584,6 +594,12 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		}
 	}, [episodes, onSelectItem]);
 
+	// Nouveau's episode cards play from the artwork and open from the block beneath it, so playing
+	// one needs its own way in rather than the Play button, which belongs to the item on screen.
+	const handleEpisodePlay = useCallback((episode) => {
+		if (episode) onPlay?.(episode, false);
+	}, [onPlay]);
+
 	const handleChapterSelect = useCallback((ev) => {
 		if (!item) return;
 		const startTicks = Number(ev.currentTarget.dataset.startTicks);
@@ -637,17 +653,18 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		if (card?._seerrRaw) seerrNav?.onSelectItem?.(card._seerrRaw);
 	}, [seerrNav]);
 
+	const openPerson = useCallback((person) => {
+		const route = personRouteFor(person, seerrOnly);
+		if (!route) return;
+		if (route.seerr) seerrNav?.onSelectPerson?.(route.id, route.name);
+		else onSelectPerson?.({Id: route.id});
+	}, [onSelectPerson, seerrOnly, seerrNav]);
+
 	const handleCastSelect = useCallback((ev) => {
 		const personId = ev.currentTarget.dataset.personId;
 		if (!personId) return;
-		// A Seerr cast member is a TMDB person, so they open on the Seerr side of the app.
-		if (seerrOnly) {
-			const person = item?.People?.find((p) => p.Id === personId);
-			seerrNav?.onSelectPerson?.(Number(personId), person?.Name);
-			return;
-		}
-		onSelectPerson?.({Id: personId});
-	}, [onSelectPerson, seerrOnly, seerrNav, item]);
+		openPerson(item?.People?.find((p) => p.Id === personId) || {Id: personId});
+	}, [openPerson, item]);
 
 	const handlePlaylistItemSelect = useCallback((ev) => {
 		const plItemId = ev.currentTarget.dataset.playlistItemId;
@@ -833,11 +850,9 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	// sum of its children.
 	const showTech = Boolean(settings.detailShowTechnicalDetails);
 	const techBadges = showTech ? getMediaBadges(item, selectedVersionIndex) : [];
-	let techSize = null;
-	if (showTech && mediaSource?.Size > 0 && item.Type !== 'Series' && item.Type !== 'Season') {
-		const mb = mediaSource.Size / (1024 * 1024);
-		techSize = mb > 999 ? `${(mb / 1024).toFixed(2)} GB` : `${Math.round(mb)} MB`;
-	}
+	const techSize = showTech && item.Type !== 'Series' && item.Type !== 'Season'
+		? formatFileSize(mediaSource?.Size)
+		: null;
 	const audioStreams = mediaSource?.MediaStreams?.filter(s => s.Type === 'Audio') || [];
 	const subtitleStreams = mediaSource?.MediaStreams?.filter(s => s.Type === 'Subtitle') || [];
 	const supportsMediaSourceSelection = item.MediaType === 'Video' &&
@@ -853,6 +868,17 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 
 	const hasPlaybackPosition = item.UserData?.PlaybackPositionTicks > 0;
 	const resumeTimeText = hasPlaybackPosition ? formatDuration(item.UserData.PlaybackPositionTicks) : '';
+
+	// Modern and Classic show one collection and merge the missing titles into its list, so
+	// the first of them is flattened back into the shape those two take.
+	const parentCollection = parentCollections[0]
+		? mergeCollectionWithMissing(parentCollections[0].items, parentCollections[0].missingItems)
+		: [];
+	const parentCollectionName = parentCollections[0]?.name || '';
+
+	// Reordering needs an entry id per track, which only a real playlist carries.
+	const canManagePlaylist = isPlaylist && playlistItems.length > 0 &&
+		playlistItems.every((track) => track.PlaylistItemId);
 
 	const filmography = isPerson ? splitFilmography(similar) : null;
 	const personMovies = filmography?.movies || [];
@@ -924,9 +950,10 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	);
 
 	if (settings.detailScreenStyle !== 'v1') {
+		const DetailContent = DETAIL_CONTENT[settings.detailScreenStyle] || ModernDetailContent;
 		return (
 			<div className={css.page}>
-				<ModernDetailContent
+				<DetailContent
 					inSyncPlayGroup={isSyncPlayInGroup}
 					onWatchWithGroup={handlePlay}
 					key={item.Id}
@@ -969,6 +996,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					resumeTimeText={resumeTimeText}
 					seasons={seasons}
 					episodes={episodes}
+					seriesEpisodes={seriesEpisodes}
 					similar={similar}
 					extras={extras}
 					cast={detailCast}
@@ -986,6 +1014,8 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					birthPlace={birthPlace}
 					episodeRatings={episodeRatings}
 					mediaSource={mediaSource}
+					selectedAudioIndex={selectedAudioIndex}
+					selectedSubtitleIndex={selectedSubtitleIndex}
 					supportsMediaSourceSelection={supportsMediaSourceSelection}
 					hasMultipleVersions={hasMultipleVersions}
 					hasMultipleAudio={hasMultipleAudio}
@@ -1007,11 +1037,22 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					handleOpenIdentifyModal={canIdentify ? modals.handleOpenIdentifyModal : null}
 					handleOpenDeleteDialog={modals.handleOpenDeleteDialog}
 					handleChapterSelect={handleChapterSelect}
+					handleEpisodePlay={handleEpisodePlay}
 					handleExtraSelect={handleExtraSelect}
 					handleTrackPlay={handleTrackPlay}
 					onSelectItem={onSelectItem}
-					onSelectPerson={onSelectPerson}
+					onSelectPerson={openPerson}
 					onSelectStudio={onSelectStudio}
+					similarSource={similarSource}
+					similarLoaded={similarLoaded}
+					missingCollectionItems={missingCollectionItems}
+					parentCollections={parentCollections}
+					loadMoreCollectionItems={loadMoreCollectionItems}
+					filmography={filmography}
+					canManagePlaylist={canManagePlaylist}
+					spotlightBackRef={spotlightBackRef}
+					onReorderPlaylistItem={handlePlaylistItemReorder}
+					onRemovePlaylistItem={handleRemoveFromPlaylist}
 				/>
 				{overlays}
 			</div>
@@ -1192,6 +1233,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 			<ClassicDetailScreen
 				item={item}
 				serverUrl={effectiveServerUrl}
+				serverToken={initialItem?._serverAccessToken || jellyfinApi.getApiKey()}
 				settings={settings}
 				isEpisode={isEpisode}
 				isSeries={isSeries}

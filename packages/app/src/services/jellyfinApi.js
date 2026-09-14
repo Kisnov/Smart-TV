@@ -106,7 +106,7 @@ const CHANNEL_IDS_URL_LIMIT = 1800;
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const PLAYBACK_TIMEOUT_MS = 120000;
-export const HOME_ROW_ITEM_FIELDS = 'DateCreated,PremiereDate,PrimaryImageAspectRatio,OfficialRating,Overview,Genres,GenreItems,ProductionYear,RunTimeTicks,CommunityRating,CriticRating,ProviderIds,ImageTags,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,ParentThumbItemId,ParentLogoItemId,ParentLogoImageTag,SeriesPrimaryImageTag,SeriesName,ParentIndexNumber,IndexNumber,UserData,AlbumArtist,AlbumId,AlbumPrimaryImageTag';
+export const HOME_ROW_ITEM_FIELDS = 'DateCreated,PremiereDate,PrimaryImageAspectRatio,OfficialRating,Overview,Genres,GenreItems,ProductionYear,RunTimeTicks,CommunityRating,CriticRating,ProviderIds,ImageTags,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,ParentThumbItemId,ParentLogoItemId,ParentLogoImageTag,SeriesPrimaryImageTag,ParentPrimaryImageTag,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,UserData,AlbumArtist,AlbumId,AlbumPrimaryImageTag';
 
 // The home Next Up row asks the server for a window instead of the whole watch
 // history, which is what keeps the query fast on a large library. A series page
@@ -507,6 +507,11 @@ export const api = {
 
 	getStudioCompanies: (tmdbId, mediaType) =>
 		request(`/Moonfin/Tmdb/ProductionCompanies?tmdbId=${encodeURIComponent(tmdbId)}&type=${mediaType === 'tv' ? 'tv' : 'movie'}`),
+
+	// A collection has no order of its own on the server, so the plugin keeps one: a plain list of
+	// item ids. Absent plugin, absent order, and the caller falls back to release order.
+	getCollectionOrder: (collectionId) =>
+		request(`/Moonfin/Collections/${collectionId}/Order`),
 
 	getMusicGenres: (params = {}) => {
 		const merged = {UserId: currentUser, SortBy: 'SortName', SortOrder: 'Ascending', Recursive: 'true'};
@@ -1004,6 +1009,9 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 
 		getStudioCompanies: (tmdbId, mediaType) =>
 			serverRequest(`/Moonfin/Tmdb/ProductionCompanies?tmdbId=${encodeURIComponent(tmdbId)}&type=${mediaType === 'tv' ? 'tv' : 'movie'}`),
+
+		getCollectionOrder: (collectionId) =>
+			serverRequest(`/Moonfin/Collections/${collectionId}/Order`),
 
 		searchRemoteSubtitles: (itemId, language = 'eng', isPerfectMatch = null) => {
 			const query = isPerfectMatch === null ? '' : `?IsPerfectMatch=${isPerfectMatch}`;

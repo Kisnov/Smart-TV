@@ -7,8 +7,9 @@ import {useSyncPlay} from '../../context/SyncPlayContext';
 import {useServerMessages} from '../../context/ServerMessagesContext';
 import SeerrIcon from '../icons/SeerrIcon';
 import SyncPlayIcon from '../icons/SyncPlayIcon';
-import {FavoritesIcon, GenresIcon, HomeIcon, MessagesIcon, SearchIcon, SettingsIcon, ShuffleIcon} from '../icons/navIcons';
+import {FavoritesIcon, GenresIcon, HomeIcon, LiveTvIcon, MessagesIcon, SearchIcon, SettingsIcon, ShuffleIcon} from '../icons/navIcons';
 import useClock from '../../hooks/useClock';
+import {librariesForNav} from '../../utils/liveTvLibrary';
 import {shadowToCss, toCssColor, toCssColorWithAlpha} from '../../theme/themeSpec';
 import {resolveOverlayColor} from '../../theme/overlayColors';
 import {SIDEBAR_CONTENT_FOCUS_TARGETS, focusFirstContentTarget} from '../../utils/navFocusTargets';
@@ -45,11 +46,13 @@ const trapVerticalEdges = (e) => {
 
 const Sidebar = ({
 	libraries = [],
+	hasLiveTv = false,
 	onHome,
 	onSearch,
 	onShuffle,
 	onGenres,
 	onFavorites,
+	onLiveTv,
 	onDiscover,
 	onSettings,
 	onSelectLibrary,
@@ -67,9 +70,11 @@ const Sidebar = ({
 	const showShuffle = settings.showShuffleButton !== false;
 	const showGenres = settings.showGenresButton !== false;
 	const showFavorites = settings.showFavoritesButton !== false;
+	const showLiveTv = settings.showLiveTvButton !== false && hasLiveTv;
 	const showSeerr = seerrEnabled && settings.showSeerrButton !== false;
 	const showSyncPlay = settings.syncplayEnabled !== false && settings.showSyncPlayButton !== false;
-	const showLibraries = settings.showLibrariesInToolbar !== false && libraries.length > 0;
+	const navLibraries = librariesForNav(libraries, showLiveTv);
+	const showLibraries = settings.showLibrariesInToolbar !== false && navLibraries.length > 0;
 	// Only with something to show, so the rail never has a row that does nothing.
 	const showMessages = settings.showServerMessagesButton === true && messages.length > 0;
 
@@ -142,6 +147,10 @@ const Sidebar = ({
 						<SidebarItem Icon={FavoritesIcon} slot={nextSlot()} label={$L('Favorites')} onClick={onFavorites} />
 					)}
 
+					{showLiveTv && (
+						<SidebarItem Icon={LiveTvIcon} slot={nextSlot()} label={$L('Live TV')} onClick={onLiveTv} />
+					)}
+
 					{showSeerr && (
 						<SidebarItem Icon={SeerrIcon} slot={nextSlot()} label={displayName} onClick={onDiscover} />
 					)}
@@ -152,7 +161,7 @@ const Sidebar = ({
 
 					{showLibraries && (
 						<SidebarLibraries
-							libraries={libraries}
+							libraries={navLibraries}
 							slot={nextSlot()}
 							expanded={librariesExpanded}
 							onToggle={toggleLibraries}

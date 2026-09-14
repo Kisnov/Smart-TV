@@ -10,6 +10,7 @@ import {
 	getClockDisplayOptions,
 	getContentTypeOptions,
 	getDetailScreenStyleOptions,
+	getDetailButtonsMaxVisibleOptions,
 	getDetailsOpacityOptions,
 	getEnabledRatingSourcesSummary,
 	getFeaturedBarStyleOptions,
@@ -246,7 +247,7 @@ export const SETTINGS_SCHEMA = [
 				description: () => $L('Style, background blur, and tab behavior'),
 				rows: [
 					{kind: KIND.SECTION, id: 'detailsDisplay', label: () => $L('Display')},
-					{kind: KIND.OPTION, key: 'detailScreenStyle', label: () => $L('Details Screen Style'), desc: () => $L('Classic is the original centered moonfin layout. Modern is a responsive cinematic layout.'), options: getDetailScreenStyleOptions, fallback: () => $L('Modern'), icon: 'movie'},
+					{kind: KIND.OPTION, key: 'detailScreenStyle', label: () => $L('Details Screen Style'), desc: () => $L('Classic is the original centered moonfin layout. Modern is a responsive cinematic layout. Spotlight puts the artwork first, with summary cards that open what they name. Nouveau stacks every section down one scrolling page.'), options: getDetailScreenStyleOptions, fallback: () => $L('Modern'), icon: 'movie'},
 					{
 						kind: KIND.OPTION,
 						key: 'backdropBlurDetail',
@@ -259,14 +260,24 @@ export const SETTINGS_SCHEMA = [
 							: getDetailsOpacityOptions()),
 						fallback: (ctx) => (ctx.settings.detailScreenStyle === 'v1' ? $L('Medium') : '80%')
 					},
-					{kind: KIND.TOGGLE, key: 'detailExpandedTabs', label: () => $L('Expanded Tabs'), desc: () => $L('Automatically show tab content while browsing tabs. Turn off to open and close each tab manually.'), icon: 'tab', when: (ctx) => ctx.settings.detailScreenStyle !== 'v1'},
+					{kind: KIND.TOGGLE, key: 'detailExpandedTabs', label: () => $L('Expanded Tabs'), desc: () => $L('Automatically show tab content while browsing tabs. Turn off to open and close each tab manually.'), icon: 'tab', when: (ctx) => ctx.settings.detailScreenStyle === 'v2'},
 					{kind: KIND.OPTION, key: 'personalRatingStyle', label: () => $L('Personal rating style'), desc: () => $L('How your own rating is shown and entered on a movie'), options: getPersonalRatingStyleOptions, fallback: () => $L('Like / dislike'), icon: 'rate_review'},
 					{kind: KIND.OPTION, key: 'recommendationSystemSource', label: () => $L('Recommendation Source'), desc: () => $L('Moonfin scores your own library, Jellyfin takes the picks from the server, TMDb uses Seerr, and Hybrid leads with the server then tops up locally'), options: getRecommendationSystemSourceOptions, fallback: () => $L('Moonfin Recommends'), icon: 'folder_code'},
 					{kind: KIND.NAV, id: 'detailButtons', label: () => $L('Action Buttons'), desc: () => $L('Choose which buttons the details screen shows'), icon: 'buttons_alt', action: (ctx) => ctx.actions.openDetailButtons()},
+					{
+						kind: KIND.OPTION,
+						key: 'detailButtonsMaxVisible',
+						label: () => $L('Action Buttons on Screen'),
+						desc: () => $L('Choose how many buttons stay on screen before the rest move into More Actions'),
+						options: getDetailButtonsMaxVisibleOptions,
+						fallback: () => $L('Auto (Theme Default)'),
+						icon: 'more_horiz'
+					},
 					{kind: KIND.SECTION, id: 'mediaDetailsAndSpoilers', label: () => $L('Media Details and Spoilers')},
+					{kind: KIND.NAV, id: 'detailMetadata', label: () => $L('Metadata Row'), desc: () => $L('Choose which metadata items the details screen shows and reorder them'), icon: 'reorder', action: (ctx) => ctx.actions.openDetailMetadata()},
 					{kind: KIND.TOGGLE, key: 'detailShowTechnicalDetails', label: () => $L('Show Technical Details'), desc: () => $L('Show codec, resolution, and stream information in banner summary'), icon: 'info'},
 					{kind: KIND.TOGGLE, key: 'hideDetailsMediaDescription', label: () => $L('Hide Media Description on Details Page'), desc: () => $L('Hide the movie or episode descriptive text.'), icon: 'hide'},
-					{kind: KIND.TOGGLE, key: 'detailUseSeriesThumbnails', label: () => $L('Use Series Thumbnails on Details Page'), desc: () => $L('Replace all thumbnails on Classic details page with series thumbnail'), icon: 'aspectratio', when: (ctx) => ctx.settings.detailScreenStyle === 'v1'}
+					{kind: KIND.TOGGLE, key: 'detailUseSeriesThumbnails', label: () => $L('Use Series Thumbnails on Details Page'), desc: () => $L('Replace thumbnails on the details page with the series thumbnail'), icon: 'aspectratio', when: (ctx) => ctx.settings.detailScreenStyle === 'v1' || ctx.settings.detailScreenStyle === 'v4'}
 				]
 			},
 			{
@@ -286,6 +297,7 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.OPTION, key: 'shuffleContentType', label: () => $L('Shuffle Content Type Filter'), options: getContentTypeOptions, fallback: () => $L('Movies & TV Shows'), icon: 'shuffle', when: (ctx) => ctx.settings.showShuffleButton},
 					{kind: KIND.TOGGLE, key: 'showGenresButton', label: () => $L('Show Genres Button'), desc: () => $L('Show the genres button in the navigation bar'), icon: 'category'},
 					{kind: KIND.TOGGLE, key: 'showFavoritesButton', label: () => $L('Show Favorites Button'), desc: () => $L('Show the favorites button in the navigation bar'), icon: 'heart'},
+					{kind: KIND.TOGGLE, key: 'showLiveTvButton', label: () => $L('Show Live TV Button'), desc: () => $L('Show the Live TV button in the navigation bar when the server has a Live TV library'), icon: 'live_tv'},
 					{kind: KIND.TOGGLE, key: 'showLibrariesInToolbar', label: () => $L('Show Libraries in Toolbar'), desc: () => $L('Show the libraries button in the navigation bar'), icon: 'video_library'},
 					{kind: KIND.OPTION, key: 'folderViewMode', label: () => $L('Enable Folder View'), options: getFolderViewModeOptions, fallback: () => $L('Per Library'), icon: 'folder'},
 					{kind: KIND.TOGGLE, key: 'showSeerrButton', label: (ctx) => $L('Show {seerrLabel} Button').replace('{seerrLabel}', ctx.seerrLabel), desc: () => $L('Show the Seerr button in the navigation bar'), when: whenSeerr, icon: 'seerr'},
@@ -438,6 +450,7 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.TOGGLE, key: 'unifiedLibraryMode', label: () => $L('Multi-Server Libraries'), desc: () => $L('Show libraries from all connected servers'), icon: 'dns'},
 					{kind: KIND.OPTION, key: 'recentlyReleasedSeriesType', label: () => $L('Recently Released Series Sort By'), desc: () => $L('Sort Recently Released Series home rows by series, latest season, or latest episode air date'), options: getRecentlyReleasedSeriesTypeOptions, fallback: () => $L('Series'), icon: 'tv'},
 					{kind: KIND.SECTION, id: 'libraryView', label: () => $L('Library View')},
+					{kind: KIND.TOGGLE, key: 'groupItemsIntoCollections', label: () => $L('Group into Collections'), desc: () => $L('Group movies and series into collections when browsing libraries and genres.'), icon: 'photo_library'},
 					{kind: KIND.TOGGLE, key: 'showMediaDetailsOnLibraryPage', label: () => $L('Show Media Details'), desc: () => $L('Show details of the selected item at the top of Library pages.'), icon: 'info'},
 					{kind: KIND.TOGGLE, key: 'hideBackdropsInLibraries', label: () => $L('Hide Backdrops while Browsing?'), desc: () => $L('Hide backdrops when browsing libraries'), icon: 'hide_image'}
 				]
@@ -796,7 +809,24 @@ export const SETTINGS_SCHEMA = [
 				// only thing worth surfacing. These make it findable by what it does.
 				keywords: () => [$L('Sign In'), $L('login'), $L('Password'), $L('Requests')],
 				rows: [
-					{kind: KIND.CUSTOM, render: 'seerrPanel'}
+					{kind: KIND.CUSTOM, render: 'seerrPanel'},
+					{kind: KIND.SECTION, id: 'seerrPreferences', label: () => $L('Preferences'), when: whenSeerr},
+					{
+						kind: KIND.TOGGLE,
+						key: 'seerrShowMissingCollectionItems',
+						label: () => $L('Show Missing Collection Items'),
+						desc: () => $L('Include missing items on Collection pages'),
+						icon: 'photo_library',
+						when: whenSeerr
+					},
+					{
+						kind: KIND.TOGGLE,
+						key: 'showSeerrAvailabilityBadges',
+						label: () => $L('Show Seerr Availability Badges'),
+						desc: () => $L('Show season availability badges on media details pages'),
+						icon: 'seerr',
+						when: whenSeerr
+					}
 				]
 			},
 			{

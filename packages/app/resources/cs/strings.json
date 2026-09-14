@@ -116,7 +116,7 @@
     "Combine both rows into a single home section": "Spojte oba řádky do jedné domovské sekce",
     "Community Rating": "Hodnocení komunity",
     "Confirm Clear All": "Potvrdit odstranění všeho",
-    "Confirm Exit": "Potvrďte Konec",
+    "Confirm Exit": "Potvrďte ukončení",
     "Connect": "Připojit",
     "Connect to Server": "Připojte se k serveru",
     "Connecting to server...": "Připojování k serveru...",
@@ -201,7 +201,7 @@
     "Episodes": "Epizody",
     "Episodes Only": "Pouze epizody",
     "Excluded Genres": "Vyloučené žánry",
-    "Exit": "Výstup",
+    "Exit": "Ukončit",
     "Exit Moonfin?": "Ukončit Moonfin?",
     "Expanded Home Rows": "Rozšířené domovské řádky",
     "Expanded Tabs": "Rozbalené karty",
@@ -550,7 +550,7 @@
     "Show Shuffle Button": "Zobrazit tlačítko Shuffle",
     "Show backdrop images behind content": "Zobrazit obrázky pozadí za obsahem",
     "Show codec, resolution, and stream information in banner summary": "Zobrazit v souhrnu banneru kodek, rozlišení a informace o streamu",
-    "Show confirmation before exiting": "Před ukončením ukažte potvrzení",
+    "Show confirmation before exiting": "Ukázat potvrzení před ukončením",
     "Show decorative badges behind ratings": "Zobrazit dekorativní odznaky za hodnocením",
     "Show labels next to rating icons": "Zobrazit štítky vedle ikon hodnocení",
     "Show libraries from all connected servers": "Zobrazit knihovny ze všech připojených serverů",
@@ -733,5 +733,8 @@
     "Text Fill Color": "Barva výplně textu",
     "Queue is empty": "Fronta je prázdná",
     "Perfect match": "Perfektní shoda",
-    "{count} downloads": "{count} stahování"
+    "{count} downloads": "{count} stahování",
+    "1080p": "1080p",
+    "1080p (10 Mbps)": "1080p (10 Mbps)",
+    "180 days": "180 Dní"
 }

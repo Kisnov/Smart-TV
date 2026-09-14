@@ -27,6 +27,24 @@ describe('profileToLocal', () => {
 		expect(local.hiddenOsdButtonsTv).toEqual(['audio']);
 	});
 
+	test('takes detailButtonsMaxVisible under its own name', () => {
+		const local = profileToLocal({
+			detailButtonsMaxVisible: 3
+		});
+
+		expect(local.detailButtonsMaxVisible).toBe(3);
+	});
+
+	test('takes the TV metadata fields under their own names or PascalCase', () => {
+		const local = profileToLocal({
+			detailMetadataOrderTv: ['upcomingEpisodeDate', 'year'],
+			HiddenDetailMetadataTv: ['status']
+		});
+
+		expect(local.detailMetadataOrderTv).toEqual(['upcomingEpisodeDate', 'year']);
+		expect(local.hiddenDetailMetadataTv).toEqual(['status']);
+	});
+
 	test('leaves the desktop and mobile button fields alone', () => {
 		const local = profileToLocal({
 			osdButtonOrderDesktop: ['desktop-order'],
@@ -148,5 +166,17 @@ describe('SYNCABLE_KEYS', () => {
 		const repeated = SYNCABLE_KEYS.filter((key, i) => SYNCABLE_KEYS.indexOf(key) !== i);
 
 		expect(repeated).toEqual([]);
+	});
+
+	test('includes seerrShowMissingCollectionItems', () => {
+		expect(SYNCABLE_KEYS).toContain('seerrShowMissingCollectionItems');
+	});
+
+	test('includes groupItemsIntoCollections', () => {
+		expect(SYNCABLE_KEYS).toContain('groupItemsIntoCollections');
+	});
+
+	test('includes detailButtonsMaxVisible', () => {
+		expect(SYNCABLE_KEYS).toContain('detailButtonsMaxVisible');
 	});
 });

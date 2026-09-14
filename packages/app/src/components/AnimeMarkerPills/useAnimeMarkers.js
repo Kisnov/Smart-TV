@@ -6,27 +6,32 @@ import {
 	fetchItemMarkers,
 	audioForItem,
 	markerForEpisode,
-	audioForSeason,
 	areAnimeMarkersEnabled
 } from '../../services/animeMarkersApi';
 
-// Every marker for one series, keyed by episode and season id.
+// Module level so they stay referentially stable and can sit in the effect's deps.
+const loadSeries = (seriesId, serverUrl) => fetchSeriesMarkers(seriesId, {serverUrl});
 
-export const useAnimeMarkers = (seriesId, {serverUrl, delayMs = 0} = {}) => {
+const loadItemAudio = (itemId, serverUrl) =>
+	fetchItemMarkers([itemId], {serverUrl}).then(() => audioForItem(itemId));
+
+// Both lookups have the same shape: stay quiet unless the feature is on, optionally wait
+// so a row of cards draws before the pills arrive, and drop the answer if the id changed.
+const useMarkerLookup = (id, serverUrl, delayMs, load) => {
 	const {settings} = useSettings();
 	const enabled = areAnimeMarkersEnabled(settings);
-	const [markers, setMarkers] = useState(null);
+	const [value, setValue] = useState(null);
 
 	useEffect(() => {
-		if (!enabled || !seriesId) {
-			setMarkers(null);
+		if (!enabled || !id) {
+			setValue(null);
 			return undefined;
 		}
 
 		let cancelled = false;
 		const ask = () => {
-			fetchSeriesMarkers(seriesId, {serverUrl}).then(result => {
-				if (!cancelled) setMarkers(result);
+			load(id, serverUrl).then(result => {
+				if (!cancelled) setValue(result);
 			});
 		};
 
@@ -40,50 +45,20 @@ export const useAnimeMarkers = (seriesId, {serverUrl, delayMs = 0} = {}) => {
 
 		ask();
 		return () => { cancelled = true; };
-	}, [enabled, seriesId, serverUrl, delayMs]);
+	}, [enabled, id, serverUrl, delayMs, load]);
 
-	return markers;
+	return value;
 };
 
+// Every marker for one series, keyed by episode and season id.
+const useAnimeMarkers = (seriesId, {serverUrl, delayMs = 0} = {}) =>
+	useMarkerLookup(seriesId, serverUrl, delayMs, loadSeries);
 
-export const useEpisodeMarker = (episode, {serverUrl, delayMs} = {}) => {
+export const useEpisodeMarker = (episode, {serverUrl, delayMs = 0} = {}) => {
 	const markers = useAnimeMarkers(episode?.SeriesId, {serverUrl, delayMs});
 	return markerForEpisode(markers, episode?.Id);
 };
 
 // The subbed/dubbed verdict for a standalone item, which in practice means a movie.
-export const useItemAudio = (item, {serverUrl, delayMs = 0} = {}) => {
-	const {settings} = useSettings();
-	const enabled = areAnimeMarkersEnabled(settings);
-	const itemId = item?.Id;
-	const [audio, setAudio] = useState(null);
-
-	useEffect(() => {
-		if (!enabled || !itemId) {
-			setAudio(null);
-			return undefined;
-		}
-
-		let cancelled = false;
-		const ask = () => {
-			fetchItemMarkers([itemId], {serverUrl}).then(() => {
-				if (!cancelled) setAudio(audioForItem(itemId));
-			});
-		};
-
-		if (delayMs > 0) {
-			const timer = setTimeout(ask, delayMs);
-			return () => {
-				cancelled = true;
-				clearTimeout(timer);
-			};
-		}
-
-		ask();
-		return () => { cancelled = true; };
-	}, [enabled, itemId, serverUrl, delayMs]);
-
-	return audio;
-};
-
-export {markerForEpisode, audioForSeason};
+export const useItemAudio = (item, {serverUrl, delayMs = 0} = {}) =>
+	useMarkerLookup(item?.Id, serverUrl, delayMs, loadItemAudio);

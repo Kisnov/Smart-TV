@@ -5,8 +5,10 @@ import * as playback from '../../services/playback';
 import {fetchTmdbSeasonRatings, resolveSeriesTmdbId, isRatingSourceAllowed} from '../../services/mdblistApi';
 import {getItemSubtitlePref, getSeriesSubtitlePref, getSeriesAudioPref} from '../../services/subtitlePrefs';
 import {fromServerStream, matchSeriesTrackIndex} from '../../utils/seriesTrackPrefs';
-import {findParentCollection} from './parentCollection';
+import {findParentCollections} from './parentCollection';
 import {getOnlineRecommendations, mergeRecommendations} from '../../services/homeRecommendations';
+import {fetchMissingCollectionItems} from './seerrMissingCollectionItems';
+import {buildCollectionIndex, fetchCollectionPage} from './collectionPlaylist';
 
 // Everything the screen shows about one item. The item itself is fetched first and rendered
 // on its own, then the rows that hang off it fill in behind, because waiting for all of them
@@ -21,7 +23,7 @@ const seedFrom = (candidate, id) => (candidate && candidate.Id === id ? candidat
 // it ends up with.
 const SIMILAR_LIMIT = 15;
 
-const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, settings, recommendationsSupported, tagWithServerInfo, skip}) => {
+const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, settings, recommendationsSupported, seerrEnabled, tagWithServerInfo, skip}) => {
 	const seedRef = useRef(initialItem);
 	seedRef.current = initialItem;
 	// Read where they are used rather than depended on, so a change to either one
@@ -30,6 +32,17 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 	settingsRef.current = settings;
 	const scoringRef = useRef(recommendationsSupported);
 	scoringRef.current = recommendationsSupported;
+	// A server with no Seerr behind it is never asked for missing titles, since that
+	// costs failed round trips on every collection opened and can answer nothing.
+	const seerrEnabledRef = useRef(seerrEnabled);
+
+	// Where the collection playlist has got to. Held in refs rather than state because paging
+	// reads them mid flight and a render in between would hand back a stale position.
+	const collectionIndexRef = useRef([]);
+	const collectionFetchedRef = useRef(0);
+	const collectionHasMoreRef = useRef(false);
+	const collectionLoadingRef = useRef(false);
+	seerrEnabledRef.current = seerrEnabled;
 
 	const [item, setItem] = useState(() => seedFrom(initialItem, itemId));
 	// Whether what is on screen is still the row it was opened from rather than the record
@@ -37,14 +50,17 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 	const [isSeed, setIsSeed] = useState(() => Boolean(seedFrom(initialItem, itemId)));
 	const [seasons, setSeasons] = useState([]);
 	const [episodes, setEpisodes] = useState([]);
+	const [seriesEpisodes, setSeriesEpisodes] = useState([]);
 	const [similar, setSimilar] = useState([]);
+	const [similarLoaded, setSimilarLoaded] = useState(false);
 	const [extras, setExtras] = useState([]);
 	const [cast, setCast] = useState([]);
 	const [nextUp, setNextUp] = useState([]);
 	const [nextEpisode, setNextEpisode] = useState(null);
 	const [collectionItems, setCollectionItems] = useState([]);
-	const [parentCollection, setParentCollection] = useState([]);
-	const [parentCollectionName, setParentCollectionName] = useState('');
+	const [missingCollectionItems, setMissingCollectionItems] = useState([]);
+	const [parentCollections, setParentCollections] = useState([]);
+	const [similarSource, setSimilarSource] = useState('jellyfin');
 	const [albumTracks, setAlbumTracks] = useState([]);
 	const [artistAlbums, setArtistAlbums] = useState([]);
 	const [playlistItems, setPlaylistItems] = useState([]);
@@ -55,19 +71,39 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 	const [selectedAudioIndex, setSelectedAudioIndex] = useState(0);
 	const [selectedSubtitleIndex, setSelectedSubtitleIndex] = useState(-1);
 
+	const loadMoreCollectionItems = useCallback(async () => {
+		if (collectionLoadingRef.current || !collectionHasMoreRef.current) return;
+		collectionLoadingRef.current = true;
+		try {
+			const page = await fetchCollectionPage(effectiveApi, collectionIndexRef.current, collectionFetchedRef.current);
+			collectionFetchedRef.current = page.fetchedCount;
+			collectionHasMoreRef.current = page.hasMore;
+			if (page.items.length) setPlaylistItems((prev) => [...prev, ...tagWithServerInfo(page.items)]);
+		} catch {
+			collectionHasMoreRef.current = false;
+		}
+		collectionLoadingRef.current = false;
+	}, [effectiveApi, tagWithServerInfo]);
+
 	useEffect(() => {
 		// Whatever the last item brought with it has to go before anything else, or its rows
 		// stay on screen under the next title.
 		setSeasons([]);
 		setEpisodes([]);
+		setSeriesEpisodes([]);
 		setEpisodeRatings({});
 		setSimilar([]);
+		setSimilarLoaded(false);
 		setExtras([]);
 		setCast([]);
 		setNextUp([]);
 		setCollectionItems([]);
-		setParentCollection([]);
-		setParentCollectionName('');
+		setMissingCollectionItems([]);
+		collectionIndexRef.current = [];
+		collectionFetchedRef.current = 0;
+		collectionHasMoreRef.current = false;
+		setParentCollections([]);
+		setSimilarSource('jellyfin');
 		setAlbumTracks([]);
 		setArtistAlbums([]);
 		setPlaylistItems([]);
@@ -78,6 +114,10 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 			setIsLoading(false);
 			return;
 		}
+
+		// The Seerr pass is the one thing here that settles after the load has moved
+		// on, so its answer is dropped when the screen already shows something else.
+		let cancelled = false;
 
 		const loadItem = async () => {
 			const seed = seedFrom(seedRef.current, itemId);
@@ -169,12 +209,18 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 
 			const bg = async () => {
 				if (data.Type === 'Series') {
-					const [seasonsData, nextUpData] = await Promise.all([
+					// Nouveau shows one season's episodes at a time behind a selector. Asking for the
+					// whole run once and splitting it here beats a fetch per season, since the
+					// viewer walks the selector and would otherwise wait at every step.
+					const wantsEpisodes = settingsRef.current?.detailScreenStyle === 'v4';
+					const [seasonsData, nextUpData, episodesData] = await Promise.all([
 						effectiveApi.getSeasons(itemId).catch(() => null),
-						effectiveApi.getNextUp(1, itemId).catch(() => null)
+						effectiveApi.getNextUp(1, itemId).catch(() => null),
+						wantsEpisodes ? effectiveApi.getEpisodes(itemId).catch(() => null) : null
 					]);
 					if (seasonsData) setSeasons(tagWithServerInfo(seasonsData.Items || []));
 					if (nextUpData?.Items?.length > 0) setNextUp(tagWithServerInfo(nextUpData.Items));
+					if (episodesData) setSeriesEpisodes(tagWithServerInfo(episodesData.Items || []));
 				}
 
 				if (data.Type === 'Season') {
@@ -184,10 +230,18 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 
 				if (data.Type === 'Episode') {
 					const seasonId = data.SeasonId || data.ParentId;
-					if (data.SeriesId && seasonId) {
-						const episodesData = await effectiveApi.getEpisodes(data.SeriesId, seasonId).catch(() => null);
-						if (episodesData) setEpisodes(tagWithServerInfo(episodesData.Items || []));
-					}
+					// Spotlight offers the whole run grouped by season, which this episode's own
+					// season cant fill. No other style shows it, so no other style pays for it.
+					const wantsWholeSeries = Boolean(data.SeriesId) &&
+						settingsRef.current?.detailScreenStyle === 'v3';
+					const [seasonData, seriesData] = await Promise.all([
+						data.SeriesId && seasonId
+							? effectiveApi.getEpisodes(data.SeriesId, seasonId).catch(() => null)
+							: null,
+						wantsWholeSeries ? effectiveApi.getEpisodes(data.SeriesId).catch(() => null) : null
+					]);
+					if (seasonData) setEpisodes(tagWithServerInfo(seasonData.Items || []));
+					if (seriesData) setSeriesEpisodes(tagWithServerInfo(seriesData.Items || []));
 				}
 
 				if (data.Type === 'BoxSet') {
@@ -195,9 +249,22 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 						ParentId: data.Id,
 						SortBy: 'ProductionYear,SortName',
 						SortOrder: 'Ascending',
-						Fields: 'PrimaryImageAspectRatio,ProductionYear'
+						Fields: 'PrimaryImageAspectRatio,ProductionYear,ProviderIds'
 					}).catch(() => null);
-					if (collectionData) setCollectionItems(tagWithServerInfo(collectionData.Items || []));
+					if (collectionData) {
+						const tagged = tagWithServerInfo(collectionData.Items || []);
+						setCollectionItems(tagged);
+						if (tagged.length > 0 && seerrEnabledRef.current) {
+							fetchMissingCollectionItems({
+								boxSet: data,
+								members: tagged,
+								settings: settingsRef.current
+							}).then((missing) => {
+								if (cancelled || missing.length === 0) return;
+								setMissingCollectionItems(missing);
+							}).catch(() => {});
+						}
+					}
 				}
 
 				if (data.Type === 'MusicAlbum') {
@@ -230,6 +297,9 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 
 				// Moonfin is only asked where the server said it can score, since
 				// otherwise every open pays a failed request before the stock row.
+				// Reports which source actually filled the list as well as the list itself. Every
+				// branch falls back to the server's own similar items when the chosen source
+				// has nothing, so the preference alone would name the wrong one.
 				const fetchSimilar = async () => {
 					if (!needsSimilar || !effectiveApi?.getSimilar) return null;
 					const currentSettings = settingsRef.current;
@@ -238,48 +308,88 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 					const stock = () => effectiveApi.getSimilar(itemId, SIMILAR_LIMIT, 'moonfin').catch(() => null);
 					const scored = () => effectiveApi.getMoonfinSimilar(itemId, SIMILAR_LIMIT).catch(() => null);
 
-					if (source === 'server') return stock();
+					if (source === 'server') return {data: await stock(), source: 'jellyfin'};
 
 					if (source === 'online') {
 						const onlineCards = await getOnlineRecommendations(currentSettings, data).catch(() => []);
-						if (onlineCards.length) return {Items: onlineCards};
+						if (onlineCards.length) return {data: {Items: onlineCards}, source: 'tmdb'};
 					}
 
 					if (source === 'hybrid') {
 						const [stockData, scoredData] = await Promise.all([stock(), canScore ? scored() : null]);
 						const merged = mergeRecommendations(stockData?.Items, scoredData?.Items, SIMILAR_LIMIT);
-						if (merged.length) return {Items: merged};
+						if (merged.length) return {data: {Items: merged}, source: 'moonfin'};
 					}
 
 					if (source === 'local' && canScore) {
 						const scoredData = await scored();
-						if (scoredData?.Items?.length) return scoredData;
+						if (scoredData?.Items?.length) return {data: scoredData, source: 'moonfin'};
 					}
 
-					return effectiveApi.getSimilar(itemId, SIMILAR_LIMIT).catch(() => null);
+					return {data: await effectiveApi.getSimilar(itemId, SIMILAR_LIMIT).catch(() => null), source: 'jellyfin'};
 				};
 
-				const [similarData, extrasData, boxSet] = await Promise.all([
+				const [similarResult, extrasData, collections] = await Promise.all([
 					fetchSimilar(),
 					needsExtras ? effectiveApi.getSpecialFeatures(itemId).catch(() => null) : Promise.resolve(null),
-					needsBoxSet ? findParentCollection(effectiveApi, data).catch(() => null) : Promise.resolve(null)
+					needsBoxSet ? findParentCollections(effectiveApi, data).catch(() => []) : Promise.resolve([])
 				]);
 
-				if (similarData) setSimilar(tagWithServerInfo(similarData.Items || []));
+				if (similarResult?.data) {
+					setSimilar(tagWithServerInfo(similarResult.data.Items || []));
+					setSimilarSource(similarResult.source);
+				}
+				// Recorded whether or not anything came back, so a section that holds its place
+				// while the answer is out knows when to stop holding it.
+				setSimilarLoaded(true);
 				if (extrasData) setExtras(tagWithServerInfo(extrasData.filter(e => e.Id !== itemId)));
-				if (boxSet) {
+				for (const boxSet of collections) {
 					const colData = await effectiveApi.getItems({
 						ParentId: boxSet.Id,
 						SortBy: 'PremiereDate,SortName',
 						SortOrder: 'Ascending',
-						Fields: 'PrimaryImageAspectRatio,ProductionYear'
+						Fields: 'PrimaryImageAspectRatio,ProductionYear,ProviderIds'
 					}).catch(() => null);
 					// A collection holding nothing but the title being looked at says nothing.
 					const members = colData?.Items || [];
-					if (members.length > 1) {
-						setParentCollectionName(boxSet.Name || $L('Collection'));
-						setParentCollection(tagWithServerInfo(members));
+					if (members.length <= 1) continue;
+
+					const tagged = tagWithServerInfo(members);
+					if (cancelled) return;
+					setParentCollections((prev) => [...prev, {
+						id: boxSet.Id,
+						name: boxSet.Name || $L('Collection'),
+						boxSetItem: boxSet,
+						items: tagged,
+						missingItems: []
+					}]);
+
+					if (seerrEnabledRef.current) {
+						fetchMissingCollectionItems({
+							boxSet,
+							members: tagged,
+							settings: settingsRef.current
+						}).then((missing) => {
+							if (cancelled || missing.length === 0) return;
+							setParentCollections((prev) => prev.map((entry) => (
+								entry.id === boxSet.Id ? {...entry, missingItems: missing} : entry
+							)));
+						}).catch(() => {});
 					}
+				}
+
+				// A collection plays in order, which means every movie in it plus every episode
+				// of every series in it. Only the first page is read here, the rest follows as
+				// the viewer scrolls.
+				if (data.Type === 'BoxSet') {
+					const index = await buildCollectionIndex(effectiveApi, itemId);
+					if (cancelled) return;
+					collectionIndexRef.current = index;
+					const page = await fetchCollectionPage(effectiveApi, index, 0);
+					if (cancelled) return;
+					collectionFetchedRef.current = page.fetchedCount;
+					collectionHasMoreRef.current = page.hasMore;
+					setPlaylistItems(tagWithServerInfo(page.items));
 				}
 
 				if (data.Type === 'Person') {
@@ -291,6 +401,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 			bg().catch(() => {});
 		};
 		loadItem();
+		return () => { cancelled = true; };
 	}, [effectiveApi, itemId, tagWithServerInfo, skip]);
 
 	useEffect(() => {
@@ -351,14 +462,18 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		isLoading,
 		seasons,
 		episodes,
+		seriesEpisodes,
 		similar,
 		extras,
 		cast,
 		nextUp,
 		nextEpisode,
 		collectionItems,
-		parentCollection,
-		parentCollectionName,
+		missingCollectionItems,
+		parentCollections,
+		similarSource,
+		similarLoaded,
+		loadMoreCollectionItems,
 		albumTracks,
 		artistAlbums,
 		playlistItems,

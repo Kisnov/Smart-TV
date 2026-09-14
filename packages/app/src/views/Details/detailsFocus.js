@@ -72,6 +72,27 @@ export const handleSectionKeyDown = (ev) => {
 };
 
 export const handleButtonRowKeyDown = (ev) => {
+	if (ev.keyCode === KEYS.LEFT || ev.keyCode === KEYS.RIGHT) {
+		const container = ev.currentTarget;
+		if (container && container.classList.contains(css.actionButtonsScroll)) {
+			// Horizontal scroll mode steps one button at a time so the ones off screen can be
+			// reached and scrolled into view. Either end of the row is left alone so the press
+			// carries on out of it the way it always has, which is how a navbar docked to the
+			// left stays reachable.
+			const buttons = Array.from(container.querySelectorAll('.spottable'));
+			const currentSpottable = ev.target.closest('.spottable');
+			const currentIdx = buttons.indexOf(currentSpottable);
+			if (currentIdx !== -1) {
+				const targetIdx = ev.keyCode === KEYS.LEFT ? currentIdx - 1 : currentIdx + 1;
+				if (targetIdx >= 0 && targetIdx < buttons.length) {
+					ev.preventDefault();
+					ev.stopPropagation();
+					Spotlight.focus(buttons[targetIdx]);
+				}
+			}
+		}
+		return;
+	}
 	if (ev.keyCode !== KEYS.DOWN) return;
 	ev.preventDefault();
 	ev.stopPropagation();

@@ -3,7 +3,7 @@ import {useEpisodeMarker, useItemAudio} from './useAnimeMarkers';
 
 import css from './AnimeMarkerPills.module.less';
 
-// How long a card waits before asking. So that the cards load in first bevor the pills come.
+// How long a card waits before asking, so the artwork draws before the pills arrive.
 const CARD_DELAY_MS = 700;
 
 // The pills for one episode, fetching what it needs itself.

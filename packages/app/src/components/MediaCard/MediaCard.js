@@ -3,6 +3,7 @@ import Spottable from '@enact/spotlight/Spottable';
 import {getImageUrl} from '../../utils/helpers';
 import {useSettings} from '../../context/SettingsContext';
 import {SeerrSeasonDot} from '../seerr/SeerrStatusBadge';
+import SeerrIcon from '../icons/SeerrIcon';
 import {AnimeCardPill} from '../AnimeMarkerPills';
 
 import css from './MediaCard.module.less';
@@ -207,7 +208,7 @@ const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'post
 	const showUnplayedCount = showIndicators && watchedBehavior !== 'hideCount' && !item.UserData?.Played && unplayedCount > 0;
 
 	const displayTitle = useMemo(() => {
-		if (item.Type === 'Episode') {
+		if (item.Type === 'Episode' || item.Type === 'Season') {
 			return item.SeriesName || item.Name;
 		}
 		return item.Name;
@@ -217,8 +218,11 @@ const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'post
 		if (item.Type === 'Episode' && item.ParentIndexNumber !== undefined) {
 			return `S${item.ParentIndexNumber}:E${item.IndexNumber} - ${item.Name}`;
 		}
+		if (item.Type === 'Season' && item.SeriesName) {
+			return item.Name;
+		}
 		return null;
-	}, [item.Type, item.ParentIndexNumber, item.IndexNumber, item.Name]);
+	}, [item.Type, item.ParentIndexNumber, item.IndexNumber, item.Name, item.SeriesName]);
 
 	const musicInfo = useMemo(() => {
 		if (item.Type === 'MusicAlbum') {
@@ -290,11 +294,15 @@ const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'post
 					<div className={css.serverBadge}>{item._serverName}</div>
 				)}
 
-				{item._seerr && [2, 3, 4, 5].includes(item.mediaInfo?.status) && (
+				{item._seerr && item._seerrMissing ? (
+					<div className={`${css.seerrBadge} ${css.seerrMissing}`}>
+						<SeerrIcon />
+					</div>
+				) : item._seerr && [2, 3, 4, 5].includes(item.mediaInfo?.status) ? (
 					<div className={`${css.seerrBadge} ${css[`seerr${item.mediaInfo.status}`]}`} />
-				)}
+				) : null}
 
-				<SeerrSeasonDot status={seerrSeasonStatus} />
+				<SeerrSeasonDot status={settings?.showSeerrAvailabilityBadges !== false ? seerrSeasonStatus : null} />
 
 				{showIndicators && item.UserData?.Played && (
 					<div className={css.watchedBadge}>

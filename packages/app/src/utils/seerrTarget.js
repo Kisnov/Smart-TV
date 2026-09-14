@@ -32,6 +32,22 @@ export const bestSearchMatch = (results, mediaType) => {
 	return results[0];
 };
 
+// Where a cast member opens. A Seerr only title carries TMDB people, who the library has no record
+// of, so those open on the Seerr side instead.
+export const personRouteFor = (person, seerrOnly) => {
+	const id = person?.Id;
+	if (!id) return null;
+
+	if (seerrOnly) {
+		const tmdbId = Number(id);
+		if (Number.isFinite(tmdbId) && tmdbId > 0) {
+			return {seerr: true, id: tmdbId, name: person.Name || null};
+		}
+	}
+
+	return {seerr: false, id};
+};
+
 // Seerr hands back the media server's own id for a title it knows is already in
 // the library. Opening that instead of the stand-in is what gives the screen its
 // playback, ratings and everything else a synthetic item has none of.
