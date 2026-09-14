@@ -20,6 +20,7 @@ import NextUpCard from './NextUpCard';
 import {DETAIL_METADATA, arrange} from '../../utils/detailMetadataLayout';
 import {fetchUpcomingEpisode, formatUpcomingEpisode} from '../../utils/upcomingEpisode';
 import {DETAIL_ICON_PATHS} from './detailIcons';
+import {AnimeEpisodePills, AnimeItemPills} from '../../components/AnimeMarkerPills';
 
 import css from './Details.module.less';
 
@@ -206,6 +207,7 @@ const ClassicDetailScreen = ({
 							</div>
 						)}
 					</div>
+					<AnimeItemPills item={item} serverUrl={serverUrl} className={css.detailMarkers} />
 
 				<RatingsRow item={item} serverUrl={serverUrl} pluginEnabled={isMdblistEnabled(settings)} />
 
@@ -350,6 +352,7 @@ const ClassicDetailScreen = ({
 												{episodeRatings[ep.IndexNumber].toFixed(1)}
 											</span>
 										)}
+										<AnimeEpisodePills episode={ep} serverUrl={serverUrl} compact className={css.episodeMarkers} />
 									</div>
 								</SpottableDiv>
 							);

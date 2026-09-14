@@ -4,6 +4,7 @@ import * as jellyfinApi from '../services/jellyfinApi';
 import {initStorage, getFromStorage, saveToStorage, removeFromStorage} from '../services/storage';
 import * as multiServerManager from '../services/multiServerManager';
 import {clearImageCache} from '../services/imageProxy';
+import {clearAnimeMarkerCache} from '../services/animeMarkersApi';
 
 import {clearProxiedImageCache} from '../hooks/useProxiedImage';
 import {parseUrl} from '../utils/urlCompat';
@@ -30,6 +31,9 @@ const probeServer = async () => {
 const clearAllCaches = () => {
 	clearImageCache();
 	clearProxiedImageCache();
+	// Verdicts are keyed by bare item id, so they would otherwise follow the user onto
+	// the next server and label its items from the previous one.
+	clearAnimeMarkerCache();
 	console.log('[AuthContext] All caches cleared');
 };
 
