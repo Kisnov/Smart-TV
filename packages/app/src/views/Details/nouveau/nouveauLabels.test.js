@@ -1,4 +1,4 @@
-import {chapterDisplayName, extraSubtitle} from './nouveauLabels';
+import {chapterDisplayName, collectionSubtitle, extraSubtitle} from './nouveauLabels';
 
 const MINUTE = 60 * 10000000;
 
@@ -51,5 +51,22 @@ describe('extraSubtitle', () => {
 	it('goes without when the server said neither', () => {
 		expect(extraSubtitle({})).toBeNull();
 		expect(extraSubtitle(null)).toBeNull();
+	});
+});
+
+describe('collectionSubtitle', () => {
+	it('names the type beside the year, so a show isn\'t mistaken for a film', () => {
+		expect(collectionSubtitle({Type: 'Movie', ProductionYear: 2021})).toBe('Movie · 2021');
+		expect(collectionSubtitle({Type: 'Series', ProductionYear: 2019})).toBe('TV Show · 2019');
+	});
+
+	it('gives whichever half it has', () => {
+		expect(collectionSubtitle({Type: 'Movie'})).toBe('Movie');
+		expect(collectionSubtitle({Type: 'Audio', ProductionYear: 2004})).toBe('2004');
+	});
+
+	it('goes without for an item the server said nothing about', () => {
+		expect(collectionSubtitle({Type: 'Audio'})).toBeNull();
+		expect(collectionSubtitle(null)).toBeNull();
 	});
 });

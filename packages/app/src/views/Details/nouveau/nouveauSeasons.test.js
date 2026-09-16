@@ -46,6 +46,15 @@ describe('seasonOptions', () => {
 			{id: '2', number: 2, label: 'Season 2'}
 		]);
 	});
+
+	it('takes the name the server gave a season over the numbered one', () => {
+		const groups = groupEpisodesBySeason([episode(1, 1), episode(2, 1)]);
+		const options = seasonOptions(groups, [
+			{IndexNumber: 1, Name: 'Book One'},
+			{IndexNumber: 2, Name: '   '}
+		]);
+		expect(options.map((o) => o.label)).toEqual(['Book One', 'Season 2']);
+	});
 });
 
 describe('effectiveSeason', () => {
@@ -59,5 +68,17 @@ describe('effectiveSeason', () => {
 		expect(effectiveSeason([1, 2], 5)).toBe(1);
 		expect(effectiveSeason([1, 2], undefined)).toBe(1);
 		expect(effectiveSeason([], 1)).toBeUndefined();
+	});
+
+	it('opens on the season holding the episode the viewer is up to', () => {
+		expect(effectiveSeason([1, 2, 3], undefined, 3)).toBe(3);
+	});
+
+	it('still prefers the picked season over the one up next', () => {
+		expect(effectiveSeason([1, 2, 3], 1, 3)).toBe(1);
+	});
+
+	it('ignores an up next season the run doesn\'t have', () => {
+		expect(effectiveSeason([1, 2], undefined, 9)).toBe(1);
 	});
 });

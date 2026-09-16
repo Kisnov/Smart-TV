@@ -110,10 +110,18 @@
 
 .studio {
 	background: rgba(255, 255, 255, 0.08);
+	border: 2px solid transparent;
 	border-radius: 999px;
 	color: rgba(255, 255, 255, 0.8);
 	font-size: 15px;
+	outline: none;
 	padding: 6px 14px;
+}
+
+.studio:focus {
+	background: rgba(255, 255, 255, 0.16);
+	border-color: var(--theme-focus-border-color, #ffffff);
+	color: #fff;
 }
 
 .capabilityRow {

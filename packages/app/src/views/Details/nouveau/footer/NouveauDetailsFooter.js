@@ -1,5 +1,8 @@
+import {useCallback} from 'react';
 import $L from '@enact/i18n/$L';
 
+import {SpottableDiv} from '../../detailsSpottables';
+import {SeerrChips, SeerrFacts} from '../../../../components/seerr/SeerrSections';
 import NouveauDirectPlay from './NouveauDirectPlay';
 import {fileName, fileSizeLine, trackRows, videoLines} from '../nouveauFooterFields';
 
@@ -28,7 +31,10 @@ const Tracks = ({rows}) => (
 
 // What the page closes on: who made the title, and what the file behind it actually is. Every group
 // is left out rather than shown empty, since a server is silent about different things per file.
-const NouveauDetailsFooter = ({item, mediaSource, effectiveApi, selectedAudioIndex, selectedSubtitleIndex}) => {
+const NouveauDetailsFooter = ({
+	item, mediaSource, effectiveApi, selectedAudioIndex, selectedSubtitleIndex,
+	seerr, seerrNav, onSelectStudio
+}) => {
 	const streams = mediaSource?.MediaStreams || [];
 	const video = streams.find((stream) => stream.Type === 'Video');
 	const audio = streams.filter((stream) => stream.Type === 'Audio');
@@ -44,6 +50,11 @@ const NouveauDetailsFooter = ({item, mediaSource, effectiveApi, selectedAudioInd
 	const sizeLine = fileSizeLine(mediaSource);
 	const videoDetails = videoLines(video);
 
+	const openStudio = useCallback((ev) => {
+		const studio = ev.currentTarget.dataset.studioName;
+		if (studio) onSelectStudio?.(studio);
+	}, [onSelectStudio]);
+
 	return (
 		<div className={css.footer}>
 			<h2 className={css.title}>{$L('Details')}</h2>
@@ -52,11 +63,23 @@ const NouveauDetailsFooter = ({item, mediaSource, effectiveApi, selectedAudioInd
 					<Group title={$L('Studios')}>
 						<div className={css.studios}>
 							{studios.map((studio) => (
-								<span key={studio} className={css.studio}>{studio}</span>
+								<SpottableDiv
+									key={studio}
+									className={css.studio}
+									data-studio-name={studio}
+									onClick={openStudio}
+								>
+									{studio}
+								</SpottableDiv>
 							))}
 						</div>
 					</Group>
 				)}
+				{/* Both carry their own label and drop out on their own when Seerr knows nothing,
+				    so neither is wrapped in a titled group or gated here. A library item can have
+				    this as readily as a Seerr only one. */}
+				<SeerrChips details={seerr?.details} mediaType={seerr?.mediaType} seerrNav={seerrNav} />
+				<SeerrFacts details={seerr?.details} mediaType={seerr?.mediaType} />
 				{mediaSource && (
 					<Group title={$L('File Information')}>
 						{name && <div className={css.fileName}>{name}</div>}

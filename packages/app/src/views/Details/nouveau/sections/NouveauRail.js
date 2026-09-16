@@ -14,6 +14,10 @@ const FOCUS_CLEARANCE = 20;
 // How much of a card is kept clear of the edge once focus reaches it.
 const SCROLL_CLEARANCE = 50;
 
+// How near the end of a paged rail focus gets before the next page is asked for, far enough out
+// that the cards have landed by the time they are reached.
+const NEAR_END_CARDS = 8;
+
 // One rail: a heading and a row of whatever the caller draws. The heading sits inside the rail so
 // that bringing the rail's top into view necessarily brings its heading with it.
 //
@@ -22,10 +26,15 @@ const SCROLL_CLEARANCE = 50;
 // caller because it is not the same on every rail.
 const NouveauRail = ({
 	title, items = [], spotlightId, renderItem, gap = 32,
-	navbarPosition, onNavigateUp, onNavigateDown
+	navbarPosition, onNavigateUp, onNavigateDown, onNearEnd
 }) => {
 	const trackRef = useRef(null);
 	const rectRef = useRef(null);
+
+	// Held in a ref so asking for the next page doesn't rebuild the focus handler, which would throw
+	// away the measurement it keeps.
+	const nearEndRef = useRef(onNearEnd);
+	nearEndRef.current = onNearEnd;
 
 	// The rail opens with about a screen of cards and grows as focus nears the end of what is
 	// mounted, so a long one is only built in full for somebody who walks through it. The usual ways
@@ -59,7 +68,9 @@ const NouveauRail = ({
 
 		const indexed = ev.target.closest('[data-card-index]');
 		if (indexed) {
-			setVisibleCount((current) => expandedCardCount(current, Number(indexed.dataset.cardIndex), items.length));
+			const index = Number(indexed.dataset.cardIndex);
+			setVisibleCount((current) => expandedCardCount(current, index, items.length));
+			if (items.length - index <= NEAR_END_CARDS) nearEndRef.current?.();
 		}
 
 		window.requestAnimationFrame(() => {

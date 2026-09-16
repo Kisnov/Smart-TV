@@ -1,10 +1,11 @@
-import {Fragment} from 'react';
+import {Fragment, useEffect, useMemo, useState} from 'react';
 import $L from '@enact/i18n/$L';
 
 import RatingsRow from '../../../../components/RatingsRow';
 import {SeerrStatusBadge} from '../../../../components/seerr/SeerrStatusBadge';
 import {isMdblistEnabled} from '../../../../services/mdblistApi';
 import {formatPlaybackEndsAt} from '../../../../utils/playbackTimeLabels';
+import {fetchUpcomingEpisode, formatUpcomingEpisode} from '../../../../utils/upcomingEpisode';
 import {hidesMediaDescription} from '../../detailsMedia';
 import ExpandableOverview from '../../ExpandableOverview';
 import {nouveauMetaPieces} from '../nouveauMetaPieces';
@@ -29,19 +30,41 @@ const NouveauHero = (props) => {
 	const {
 		item, settings, seerr, genres = [], year, officialRating, runtime, seasonCount,
 		episodes = [], techBadges = [], techSize, logoUrl, onLogoError,
-		effectiveServerUrl, overviewBackRef, isPerson
+		effectiveServerUrl, serverToken, overviewBackRef, isPerson
 	} = props;
 
 	const isSeason = item.Type === 'Season';
+	const isSeries = item.Type === 'Series';
 	const genreLine = genres.slice(0, 3).join(' · ');
 	// An episode and a season carry no genres of their own, so the row is held open rather than
 	// letting the title jump up the screen when moving between one and its series.
 	const reserveGenres = !genreLine && (item.Type === 'Episode' || isSeason);
 
-	const status = item.Type === 'Series' && (item.Status === 'Ended' || item.Status === 'Continuing')
+	const status = isSeries && (item.Status === 'Ended' || item.Status === 'Continuing')
 		? item.Status
 		: null;
-	const hasBadges = Boolean(status) || seerr?.statusPills?.length > 0;
+
+	const [upcomingEpisode, setUpcomingEpisode] = useState(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		if (!isSeries && !isSeason) {
+			setUpcomingEpisode(null);
+			return undefined;
+		}
+		fetchUpcomingEpisode({item, settings, serverUrl: effectiveServerUrl, serverToken})
+			.then((res) => {
+				if (!cancelled) setUpcomingEpisode(res);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [item, isSeries, isSeason, settings, effectiveServerUrl, serverToken]);
+
+	const upcomingText = useMemo(() => formatUpcomingEpisode(upcomingEpisode), [upcomingEpisode]);
+
+	const hasBadges = Boolean(status) || Boolean(upcomingText) || seerr?.statusPills?.length > 0;
 
 	const pieces = nouveauMetaPieces({
 		item, year, officialRating, runtime, seasonCount,
@@ -82,6 +105,9 @@ const NouveauHero = (props) => {
 						<span className={`${css.statusBadge} ${status === 'Ended' ? css.statusEnded : css.statusContinuing}`}>
 							{status === 'Ended' ? $L('Ended') : $L('Continuing')}
 						</span>
+					)}
+					{upcomingText && (
+						<span className={`${css.statusBadge} ${css.statusUpcoming}`}>{upcomingText}</span>
 					)}
 					<SeerrStatusBadge seerr={seerr} />
 				</div>

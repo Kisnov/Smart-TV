@@ -5,7 +5,8 @@ import Spotlight from '@enact/spotlight';
 import {getImageUrl} from '../../../utils/helpers';
 import {castPhotoUrl, seriesThumbUrl} from '../detailsMedia';
 import {RowContainer, SpottableDiv} from '../detailsSpottables';
-import {spotlightItemImageUrl, spotlightLandscapeImageUrl} from '../spotlight/spotlightImages';
+import {spotlightItemImageUrl} from '../spotlight/spotlightImages';
+import {nouveauCardImageUrl} from './nouveauCardImage';
 import NouveauHero from './hero/NouveauHero';
 import NouveauRail from './sections/NouveauRail';
 import NouveauRailCard from './cards/NouveauRailCard';
@@ -23,7 +24,7 @@ import {effectiveSeason, groupEpisodesBySeason, seasonOptions} from './nouveauSe
 import {
 	DEFAULT_SORT, SORT_CUSTOM, applyCollectionSort, collectionSortOptions, sortLabel
 } from './nouveauCollectionSort';
-import {chapterDisplayName, extraSubtitle} from './nouveauLabels';
+import {chapterDisplayName, collectionSubtitle, extraSubtitle} from './nouveauLabels';
 import {
 	RAIL_GAP, SECTION_INSET, TV_RAIL_GAP, discoveryCardWidth, discoveryPosterHeight,
 	collectionCardHeight, collectionCardWidth, episodeCardWidth, episodeImageHeight,
@@ -53,10 +54,10 @@ const NouveauDetailContent = (props) => {
 		backdropUrl, similar = [], extras = [], cast = [], crew = [],
 		similarLoaded = false, handleChapterSelect, handleExtraSelect, onSelectPerson,
 		onSelectItem, onSelectSeerrCard, handleEpisodePlay, isSeries,
-		episodes = [], seriesEpisodes = [], nextUp = [],
+		episodes = [], seriesEpisodes = [], nextUp = [], seasons = [],
 		collectionItems = [], playlistItems = [], effectiveApi,
 		mediaSource, selectedAudioIndex, selectedSubtitleIndex,
-		spotlightBackRef, overviewBackRef
+		spotlightBackRef, overviewBackRef, seerrNav, onSelectStudio, loadMoreCollectionItems
 	} = props;
 
 	const [windowWidth, setWindowWidth] = useState(
@@ -122,7 +123,9 @@ const NouveauDetailContent = (props) => {
 		[isSeries, seriesEpisodes, episodes]
 	);
 	const seasonNumbers = useMemo(() => [...seasonGroups.keys()], [seasonGroups]);
-	const activeSeason = effectiveSeason(seasonNumbers, pickedSeason);
+	const nextUpSeason = nextUp[0]?.ParentIndexNumber;
+	const activeSeason = effectiveSeason(seasonNumbers, pickedSeason, nextUpSeason);
+	const seasonTabs = useMemo(() => seasonOptions(seasonGroups, seasons), [seasonGroups, seasons]);
 	// Held steady across renders, or the handlers below would be rebuilt every time and the rail
 	// would be left holding a stale one.
 	const seasonEpisodes = useMemo(
@@ -294,7 +297,7 @@ const NouveauDetailContent = (props) => {
 
 	const chain = useMemo(() => buildNouveauChain({
 		hasOverview: Boolean(item.Overview),
-		hasSeasonSelector: isSeries && seasonNumbers.length > 0,
+		hasSeasonSelector: isSeries && seasonNumbers.length > 1,
 		rails: railNodes,
 		footerRows: sections.includes(SECTION_DETAILS) ? 1 : 0
 	}), [item.Overview, isSeries, seasonNumbers.length, railNodes, sections]);
@@ -420,6 +423,9 @@ const NouveauDetailContent = (props) => {
 						effectiveApi={effectiveApi}
 						selectedAudioIndex={selectedAudioIndex}
 						selectedSubtitleIndex={selectedSubtitleIndex}
+						seerr={seerr}
+						seerrNav={seerrNav}
+						onSelectStudio={onSelectStudio}
 					/>
 				</RowContainer>
 			);
@@ -455,6 +461,7 @@ const NouveauDetailContent = (props) => {
 								navbarPosition={settings.navbarPosition}
 								onNavigateUp={handleNavigateUp}
 								onNavigateDown={handleNavigateDown}
+								onNearEnd={loadMoreCollectionItems}
 								renderItem={renderPlaylistCard}
 							/>
 						</>
@@ -468,9 +475,9 @@ const NouveauDetailContent = (props) => {
 			// selector would swap the rail out from under every press.
 			return (
 				<>
-					{isSeries && seasonNumbers.length > 0 && (
+					{isSeries && seasonNumbers.length > 1 && (
 						<DetailsTabBar
-							tabs={seasonOptions(seasonGroups)}
+							tabs={seasonTabs}
 							activeId={String(activeSeason)}
 							expanded={false}
 							onActivate={onSeasonActivate}
@@ -547,7 +554,7 @@ const NouveauDetailContent = (props) => {
 			<NouveauPosterCard
 				imageUrl={spotlightItemImageUrl(effectiveServerUrl, entry)}
 				title={entry.Name}
-				subtitle={entry.ProductionYear ? String(entry.ProductionYear) : null}
+				subtitle={collectionSubtitle(entry)}
 				width={collectionWidth}
 				height={collectionHeight}
 				selectKey={entry.Id}
@@ -560,7 +567,7 @@ const NouveauDetailContent = (props) => {
 		const played = entry.UserData?.PlayedPercentage;
 		return (
 			<NouveauLandscapeCard
-				imageUrl={spotlightLandscapeImageUrl(effectiveServerUrl, entry, {fallbackUrl: backdropUrl})}
+				imageUrl={nouveauCardImageUrl(effectiveServerUrl, entry, {fallbackUrl: backdropUrl})}
 				title={entry.Name}
 				overview={entry.Overview}
 				width={episodeWidth}
@@ -577,7 +584,7 @@ const NouveauDetailContent = (props) => {
 		const played = episode.UserData?.PlayedPercentage;
 		return (
 			<NouveauLandscapeCard
-				imageUrl={spotlightLandscapeImageUrl(effectiveServerUrl, episode, {fallbackUrl: backdropUrl})}
+				imageUrl={nouveauCardImageUrl(effectiveServerUrl, episode, {fallbackUrl: backdropUrl})}
 				title={episode.Name}
 				overview={episode.Overview}
 				width={episodeWidth}
@@ -638,7 +645,7 @@ const NouveauDetailContent = (props) => {
 	function renderExtra (extra) {
 		return (
 			<NouveauRailCard
-				imageUrl={spotlightLandscapeImageUrl(effectiveServerUrl, extra, {fallbackUrl: backdropUrl})}
+				imageUrl={nouveauCardImageUrl(effectiveServerUrl, extra, {fallbackUrl: backdropUrl})}
 				title={extra.Name}
 				subtitle={extraSubtitle(extra)}
 				placeholderLabel={extra.Name}

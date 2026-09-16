@@ -25,14 +25,25 @@ export const groupEpisodesBySeason = (episodes = []) => {
 	return groups;
 };
 
-export const seasonOptions = (groups) => [...groups.keys()].map((number) => ({
-	id: String(number),
-	number,
-	label: seasonLabel(number)
-}));
+// A season the server has a name for keeps it, since a show can call its seasons anything it likes
+// and "Book One" says more than "Season 1". The numbered label stands in where there is no name.
+export const seasonOptions = (groups, seasons = []) => {
+	const named = new Map(seasons
+		.filter((season) => season?.IndexNumber != null && String(season.Name || '').trim())
+		.map((season) => [season.IndexNumber, season.Name.trim()]));
 
-// Whichever season the viewer last picked, unless the run no longer has it, which happens when the
-// episodes arrive after the first paint or the title is swapped underneath.
-export const effectiveSeason = (numbers = [], selected) => (
-	numbers.includes(selected) ? selected : numbers[0]
-);
+	return [...groups.keys()].map((number) => ({
+		id: String(number),
+		number,
+		label: named.get(number) || seasonLabel(number)
+	}));
+};
+
+// Whichever season the viewer picked, else the one holding the episode they are up to, so a
+// part-watched show opens where they left off. A picked season can also stop existing, which
+// happens when the episodes arrive after the first paint or the title is swapped underneath.
+export const effectiveSeason = (numbers = [], selected, nextUpSeason) => {
+	if (numbers.includes(selected)) return selected;
+	if (numbers.includes(nextUpSeason)) return nextUpSeason;
+	return numbers[0];
+};

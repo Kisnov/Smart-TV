@@ -1,4 +1,15 @@
+import $L from '@enact/i18n/$L';
+
 import {videoResolutionLabel} from '../../../utils/helpers';
+
+const collectionTypeLabel = (type) => {
+	switch (type) {
+		case 'Movie': return $L('Movie');
+		case 'Series': return $L('TV Show');
+		case 'BoxSet': return $L('Collection');
+		default: return null;
+	}
+};
 
 // Where a chapter starts, written as a clock reading. The app's own duration formatter is the wrong
 // one here: it answers how long something runs, so it says "5m" where this wants "5:00" and says
@@ -57,6 +68,16 @@ export const chapterDisplayName = (rawName, startPositionTicks) => {
 	}
 
 	return unique.length ? `${unique.join(' - ')} - ${time}` : time;
+};
+
+// The second line under a card in a collection. A box set can hold films and shows together, and
+// the year alone leaves no way to tell one from the other.
+export const collectionSubtitle = (item) => {
+	const year = item?.ProductionYear || null;
+	const type = collectionTypeLabel(item?.Type);
+
+	if (type && year) return `${type} · ${year}`;
+	return type || (year ? String(year) : null);
 };
 
 // The second line under an extra. Nothing is invented for one the server said little about, so a
