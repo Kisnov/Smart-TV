@@ -20,29 +20,32 @@ export const spotlightMetaPieces = ({
 				return year ? [{kind: 'text', text: String(year)}] : [];
 			case 'parentalRating':
 				return officialRating ? [{kind: 'text', text: officialRating}] : [];
+			// An episode shows its runtime as well as its season and episode number, not instead
+			// of it. Only a series has no runtime of its own worth showing.
 			case 'runtimeAndSeasons': {
+				const pieces = [];
 				if (item.Type === 'Series' && seasonCount) {
-					return [{kind: 'text', text: $L('{count} Seasons').replace('{count}', seasonCount)}];
+					pieces.push({kind: 'text', text: $L('{count} Seasons').replace('{count}', seasonCount)});
 				}
 				if (item.Type === 'Season' && episodeCount) {
-					return [{kind: 'text', text: $L('{count} Episodes').replace('{count}', episodeCount)}];
+					pieces.push({kind: 'text', text: $L('{count} Episodes').replace('{count}', episodeCount)});
 				}
 				if (item.Type === 'Episode' && item.ParentIndexNumber != null && item.IndexNumber != null) {
-					return [{kind: 'text', text: `S${item.ParentIndexNumber}:E${item.IndexNumber}`}];
+					pieces.push({kind: 'text', text: `S${item.ParentIndexNumber}:E${item.IndexNumber}`});
 				}
 				if (item.RunTimeTicks && item.Type !== 'Series') {
-					return [{kind: 'runtime', text: spotlightRuntimeLabel(item.RunTimeTicks)}];
+					pieces.push({kind: 'runtime', text: spotlightRuntimeLabel(item.RunTimeTicks)});
 				}
-				return [];
+				return pieces;
 			}
+			// Whatever the server calls it. Only ended is worth colouring as a warning, and any
+			// other wording still belongs on screen rather than being dropped for not being one
+			// of the two this has its own words for.
 			case 'status': {
-				if (item.Type === 'Series' && item.Status) {
-					const ended = item.Status === 'Ended';
-					if (ended || item.Status === 'Continuing') {
-						return [{kind: 'status', text: ended ? $L('Ended') : $L('Continuing'), ended}];
-					}
-				}
-				return [];
+				if (item.Type !== 'Series' || !item.Status) return [];
+				if (item.Status.toLowerCase() === 'ended') return [{kind: 'status', text: $L('Ended'), ended: true}];
+				const text = item.Status === 'Continuing' ? $L('Continuing') : item.Status;
+				return [{kind: 'status', text, ended: false}];
 			}
 			case 'upcomingEpisodeDate':
 				return upcomingEpisodeText ? [{kind: 'upcoming', text: upcomingEpisodeText}] : [];

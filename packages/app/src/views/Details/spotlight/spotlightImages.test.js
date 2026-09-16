@@ -2,7 +2,8 @@ import {
 	spotlightItemImageUrl,
 	spotlightLandscapeImageUrl,
 	firstLandscapeImageUrl,
-	firstChapterImageUrl
+	firstChapterImageUrl,
+	spotlightCardFallbackUrl
 } from './spotlightImages';
 
 const SERVER = 'https://tv.example';
@@ -55,6 +56,27 @@ describe('firstLandscapeImageUrl', () => {
 		const items = [{Id: 'a', Type: 'Movie'}, {Id: 'b', Type: 'Movie', BackdropImageTags: ['bt']}];
 		expect(firstLandscapeImageUrl(SERVER, items)).toContain('/Items/b/Images/Backdrop');
 		expect(firstLandscapeImageUrl(SERVER, [])).toBeNull();
+	});
+});
+
+describe('spotlightCardFallbackUrl', () => {
+	const hero = `${SERVER}/Items/m1/Images/Backdrop?maxWidth=1920&quality=90`;
+
+	it('moves on to the second backdrop, so a card doesn\'t repeat the hero still', () => {
+		const item = {Id: 'm1', BackdropImageTags: ['b0', 'b1', 'b2']};
+		expect(spotlightCardFallbackUrl(SERVER, item, hero))
+			.toBe(`${SERVER}/Items/m1/Images/Backdrop/1?maxWidth=960&quality=90&tag=b1`);
+	});
+
+	it('keeps the hero url when the item has only the one backdrop to give', () => {
+		expect(spotlightCardFallbackUrl(SERVER, {Id: 'm1', BackdropImageTags: ['b0']}, hero)).toBe(hero);
+	});
+
+	// An episode borrows its backdrop from the series, so it carries none of its own.
+	it('keeps the hero url when the item carries no backdrops at all', () => {
+		expect(spotlightCardFallbackUrl(SERVER, {Id: 'e1'}, hero)).toBe(hero);
+		expect(spotlightCardFallbackUrl(SERVER, null, hero)).toBe(hero);
+		expect(spotlightCardFallbackUrl(SERVER, {Id: 'e1'}, null)).toBeNull();
 	});
 });
 

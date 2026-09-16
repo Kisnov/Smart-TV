@@ -348,7 +348,9 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 						ParentId: boxSet.Id,
 						SortBy: 'PremiereDate,SortName',
 						SortOrder: 'Ascending',
-						Fields: 'PrimaryImageAspectRatio,ProductionYear,ProviderIds'
+						// A box set has no people of its own, so its Cast card pools them from
+						// everything inside it.
+						Fields: 'PrimaryImageAspectRatio,ProductionYear,ProviderIds,People'
 					}).catch(() => null);
 					// A collection holding nothing but the title being looked at says nothing.
 					const members = colData?.Items || [];

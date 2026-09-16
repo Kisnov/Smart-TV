@@ -19,6 +19,14 @@ describe('spotlightMetaPieces', () => {
 		expect(texts(spotlightMetaPieces({item: {Type: 'Episode', ParentIndexNumber: 2, IndexNumber: 5}}))).toEqual(['S2:E5']);
 	});
 
+	it('gives an episode its runtime alongside its number, not instead of it', () => {
+		const pieces = spotlightMetaPieces({item: {Type: 'Episode', ParentIndexNumber: 2, IndexNumber: 5, RunTimeTicks: mins(48)}});
+		expect(pieces).toEqual([
+			{kind: 'text', text: 'S2:E5'},
+			{kind: 'runtime', text: '48m'}
+		]);
+	});
+
 	it('marks a series as running or finished', () => {
 		const running = spotlightMetaPieces({item: {Type: 'Series', Status: 'Continuing'}});
 		expect(running[0]).toEqual({kind: 'status', text: 'Continuing', ended: false});
@@ -26,8 +34,17 @@ describe('spotlightMetaPieces', () => {
 		expect(done[0]).toEqual({kind: 'status', text: 'Ended', ended: true});
 	});
 
-	it('ignores a status it has no pill for', () => {
-		expect(spotlightMetaPieces({item: {Type: 'Series', Status: 'Unreleased'}})).toEqual([]);
+	it('shows a status it has no wording of its own for, rather than dropping it', () => {
+		expect(spotlightMetaPieces({item: {Type: 'Series', Status: 'Unreleased'}}))
+			.toEqual([{kind: 'status', text: 'Unreleased', ended: false}]);
+	});
+
+	it('colours any spelling of ended as finished', () => {
+		expect(spotlightMetaPieces({item: {Type: 'Series', Status: 'ended'}})[0].ended).toBe(true);
+	});
+
+	it('ignores a status on anything that isn\'t a series', () => {
+		expect(spotlightMetaPieces({item: {Type: 'Movie', Status: 'Ended'}})).toEqual([]);
 	});
 
 	it('gives a runtime to everything but a series', () => {

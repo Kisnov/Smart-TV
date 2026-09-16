@@ -18,6 +18,7 @@ import {spotlightCardsFor, spotlightCardFor} from './spotlightCards';
 import {studioCardsFor, studioLogoIndex} from '../studioLogos';
 import {loadSeerrPersonCredits} from '../seerrPersonCredits';
 import {spotlightMetaPieces} from './spotlightMeta';
+import {spotlightCardFallbackUrl} from './spotlightImages';
 import {fetchUpcomingEpisode, formatUpcomingEpisode} from '../../../utils/upcomingEpisode';
 import {summaryCardHeight, summaryCardWidth, heroWidth} from './summaryCardLayout';
 import SpotlightSummaryCard from './SpotlightSummaryCard';
@@ -116,6 +117,11 @@ const SpotlightDetailContent = (props) => {
 	// below watches rather than the object holding it.
 	const otherCredits = filmography?.guestAppearances || EMPTY_LIST;
 
+	const cardFallbackImageUrl = useMemo(
+		() => spotlightCardFallbackUrl(effectiveServerUrl, item, backdropUrl),
+		[effectiveServerUrl, item, backdropUrl]
+	);
+
 	const cardState = useMemo(() => ({
 		item, serverUrl: effectiveServerUrl, settings, seerrOnly,
 		seasons, episodes, seriesEpisodes, similar, similarSource, extras, cast, crew, nextUp,
@@ -131,12 +137,12 @@ const SpotlightDetailContent = (props) => {
 			hasFacts: hasMediaFacts(seerr.details, seerr.mediaType),
 			seasonMarkers: settings.showSeerrAvailabilityBadges !== false ? seerr.seasonMarkers : null
 		},
-		fallbackImageUrl: backdropUrl
+		fallbackImageUrl: cardFallbackImageUrl
 	}), [
 		item, effectiveServerUrl, settings, seerrOnly, seasons, episodes, seriesEpisodes, similar, similarSource,
 		extras, cast, crew, nextUp, collectionItems, missingCollectionItems, parentCollections,
 		albumTracks, artistAlbums, playlistItems, personMovies, personSeries, otherCredits,
-		seerrCredits, studioCards, canManagePlaylist, backdropUrl,
+		seerrCredits, studioCards, canManagePlaylist, cardFallbackImageUrl,
 		seerr.recommendationCards, seerr.similarCards, seerr.details, seerr.mediaType, seerr.seasonMarkers
 	]);
 
@@ -192,7 +198,8 @@ const SpotlightDetailContent = (props) => {
 			year,
 			officialRating,
 			seasonCount,
-			episodeCount: episodes.length,
+			// ChildCount stands in until the episode fetch lands, and stays if it never does.
+			episodeCount: episodes.length || item.ChildCount || 0,
 			genres,
 			upcomingEpisodeText,
 			hasSeerrPills: seerr.statusPills?.length > 0,
@@ -359,7 +366,9 @@ const SpotlightDetailContent = (props) => {
 				serverUrl={effectiveServerUrl}
 				actions={cardActions}
 				seerr={{details: seerr.details, mediaType: seerr.mediaType, nav: seerrNav}}
-				onNearEnd={openCardId === 'boxset_items' ? cardActions.loadMoreCollectionItems : null}
+				// Paging appends to the playlist list, which is the one that arrives a page at a
+				// time. The Movies and Shows grid is fetched whole, so it has nothing to ask for.
+				onNearEnd={openCardId === 'playlist_order' ? cardActions.loadMoreCollectionItems : null}
 			/>
 		</>
 	);

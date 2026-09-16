@@ -20,6 +20,7 @@ export const CARD_ICONS = {
 	collections: DETAIL_ICON_PATHS.collection,
 	episodes: DETAIL_ICON_PATHS.series,
 	tracks: MATERIAL_ICON_PATHS.queue_music,
+	albums: MATERIAL_ICON_PATHS.album,
 	playlist: MATERIAL_ICON_PATHS.playlist_play,
 	playlistOrder: MATERIAL_ICON_PATHS.format_list_numbered,
 	filmography: MATERIAL_ICON_PATHS.movie
@@ -398,7 +399,7 @@ class CardBuilder {
 			title: $L('Albums'),
 			subtitle: countLabel(artistAlbums.length, $L('1 album'), $L('{count} albums')),
 			imageUrl: spotlightItemImageUrl(serverUrl, artistAlbums[0]) || fallbackImageUrl,
-			icon: CARD_ICONS.tracks,
+			icon: CARD_ICONS.albums,
 			sections: [mediaSection($L('Albums'), artistAlbums, 'square')]
 		};
 	}

@@ -1,8 +1,9 @@
-import {useState, useEffect, useCallback, useRef} from 'react';
+import {useState, useEffect, useCallback, useMemo, useRef} from 'react';
 import $L from '@enact/i18n/$L';
 import Spottable from '@enact/spotlight/Spottable';
 
 import {KEYS} from '../../utils/keys';
+import {cleanOverview} from '../../utils/overviewText';
 
 import css from './ExpandableOverview.module.less';
 
@@ -30,12 +31,14 @@ const ExpandableOverview = ({text, itemId, className, variant, backRef, spotligh
 		setCanToggle(false);
 	}, [itemId]);
 
+	const prose = useMemo(() => cleanOverview(text), [text]);
+
 	useEffect(() => {
 		const el = textRef.current;
 		if (el && !isExpanded) {
 			setCanToggle(el.scrollHeight > el.clientHeight);
 		}
-	}, [text, isExpanded]);
+	}, [prose, isExpanded]);
 
 	// Back closes the box in place rather than leaving the screen. The global
 	// back handling runs in a capture listener, so this answers through the
@@ -71,7 +74,7 @@ const ExpandableOverview = ({text, itemId, className, variant, backRef, spotligh
 		ev.stopPropagation();
 	}, [isExpanded]);
 
-	if (!text) return null;
+	if (!prose) return null;
 
 	return (
 		<SpottableDiv
@@ -82,7 +85,7 @@ const ExpandableOverview = ({text, itemId, className, variant, backRef, spotligh
 			spotlightDisabled={!canToggle}
 		>
 			<p ref={textRef} className={`${css.text} ${TEXT_VARIANTS[variant] || ''} ${!isExpanded ? css.collapsed : ''}`}>
-				{text}
+				{prose}
 			</p>
 			{canToggle && <div className={css.readMoreBtn}>{isExpanded ? $L('Read Less') : $L('Read More')}</div>}
 		</SpottableDiv>
