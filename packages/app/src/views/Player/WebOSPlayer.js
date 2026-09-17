@@ -89,6 +89,39 @@ const getWebOSFullscreenRect = () => {
 // request puts the whole group through a round of buffering.
 const GROUP_SEEK_DEBOUNCE_MS = 600;
 
+// Both of these go to PlayerControls as props, so they sit out here and keep one
+// identity instead of being rebuilt on every render.
+const renderInfoPlaybackRows = ({css: c, mediaSource, playMethod}) => {
+	const getTranscodeReason = () => {
+		if (playMethod !== 'Transcode') return null;
+		const url = mediaSource?.TranscodingUrl || '';
+		if (url.includes('TranscodeReasons=')) {
+			const match = url.match(/TranscodeReasons=([^&]+)/);
+			if (match) {
+				return decodeURIComponent(match[1]).split(',')
+					.map(r => r.replace(/([A-Z])/g, ' $1').trim())
+					.join(', ');
+			}
+		}
+		return $L('Unknown');
+	};
+	return playMethod === 'Transcode' ? (
+		<div className={`${c.infoRow} ${c.infoWarning}`}>
+			<span className={c.infoLabel}>{$L('Transcode Reason')}</span>
+			<span className={c.infoValue}>{getTranscodeReason()}</span>
+		</div>
+	) : null;
+};
+
+const renderInfoVideoExtra = ({css: c, videoStream}) => (
+	videoStream?.BitDepth ? (
+		<div className={c.infoRow}>
+			<span className={c.infoLabel}>{$L('Bit Depth')}</span>
+			<span className={c.infoValue}>{videoStream.BitDepth}-bit</span>
+		</div>
+	) : null
+);
+
 const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialSubtitleIndex, initialStartPositionTicks, initialQuality, forceTranscode, onEnded, onBack, onGuide, onPlayNext, onSelectPerson, audioPlaylist, videoQueue, onPausedChange}) => {
 	const {settings, updateSetting} = useSettings();
 	const {isInGroup, lastCommand} = useSyncPlay();
@@ -125,6 +158,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Mirrors isPaused for the hide timer, which fires outside the render cycle.
 	const isPausedRef = useRef(false);
 	isPausedRef.current = isPaused;
+	// The key handler is rebuilt every render, so the listener reaches it through this
+	// rather than being torn down and re-added every time playback state moves.
+	const keyDownRef = useRef(null);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [duration, setDuration] = useState(0);
 	const [audioStreams, setAudioStreams] = useState([]);
@@ -2735,9 +2771,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		};
 
-		window.addEventListener('keydown', handleKeyDown, true);
-		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleForward, handleRewind, currentTime, settings.seekStep, seekByOffset, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, isInGroup]);
+		keyDownRef.current = handleKeyDown;
+	});
+
+	useEffect(() => {
+		const onKeyDown = (e) => keyDownRef.current?.(e);
+		window.addEventListener('keydown', onKeyDown, true);
+		return () => window.removeEventListener('keydown', onKeyDown, true);
+	}, []);
 
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;
 	const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
@@ -2938,37 +2979,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				handleSubtitleOffsetChange={handleSubtitleOffsetChange}
 				closeModal={closeModal}
 				stopPropagation={stopPropagation}
-				// eslint-disable-next-line react/jsx-no-bind
-				renderInfoPlaybackRows={({css: c, mediaSource, playMethod: pm}) => {
-					const getTranscodeReason = () => {
-						if (pm !== 'Transcode') return null;
-						const url = mediaSource?.TranscodingUrl || '';
-						if (url.includes('TranscodeReasons=')) {
-							const match = url.match(/TranscodeReasons=([^&]+)/);
-							if (match) {
-								return decodeURIComponent(match[1]).split(',')
-									.map(r => r.replace(/([A-Z])/g, ' $1').trim())
-									.join(', ');
-							}
-						}
-						return $L('Unknown');
-					};
-					return pm === 'Transcode' ? (
-						<div className={`${c.infoRow} ${c.infoWarning}`}>
-							<span className={c.infoLabel}>{$L('Transcode Reason')}</span>
-							<span className={c.infoValue}>{getTranscodeReason()}</span>
-						</div>
-					) : null;
-				}}
-				// eslint-disable-next-line react/jsx-no-bind
-				renderInfoVideoExtra={({css: c, videoStream}) => (
-					videoStream?.BitDepth ? (
-						<div className={c.infoRow}>
-							<span className={c.infoLabel}>{$L('Bit Depth')}</span>
-							<span className={c.infoValue}>{videoStream.BitDepth}-bit</span>
-						</div>
-					) : null
-				)}
+				renderInfoPlaybackRows={renderInfoPlaybackRows}
+				renderInfoVideoExtra={renderInfoVideoExtra}
 			/>}
 		</div>
 	);
