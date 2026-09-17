@@ -65,4 +65,41 @@ describe('buildSeerrDetailItem', () => {
 	it('has nothing to build without a payload', () => {
 		expect(buildSeerrDetailItem(null, 'movie')).toBeNull();
 	});
+
+	describe('trailers', () => {
+		const withVideos = (relatedVideos) => buildSeerrDetailItem({...movie, relatedVideos}, 'movie').RemoteTrailers;
+
+		it('offers nothing when Seerr sent no videos', () => {
+			expect(buildSeerrDetailItem(movie, 'movie').RemoteTrailers).toEqual([]);
+			expect(withVideos([])).toEqual([]);
+		});
+
+		it('prefers a trailer on YouTube over everything else', () => {
+			expect(withVideos([
+				{name: 'Clip', site: 'YouTube', type: 'Clip', key: 'clip1'},
+				{name: 'Teaser', site: 'Vimeo', type: 'Trailer', url: 'https://vimeo.com/1'},
+				{name: 'Official Trailer', site: 'YouTube', type: 'Trailer', key: 'abc123'}
+			])).toEqual([{Name: 'Official Trailer', Url: 'https://www.youtube.com/watch?v=abc123'}]);
+		});
+
+		it('falls back to a trailer elsewhere, then to anything on YouTube', () => {
+			expect(withVideos([
+				{name: 'Featurette', site: 'YouTube', type: 'Featurette', key: 'feat1'},
+				{name: 'Vimeo Trailer', site: 'Vimeo', type: 'Trailer', url: 'https://vimeo.com/7'}
+			])).toEqual([{Name: 'Vimeo Trailer', Url: 'https://vimeo.com/7'}]);
+
+			expect(withVideos([
+				{name: 'Behind the Scenes', site: 'YouTube', type: 'Behind the Scenes', key: 'bts1'}
+			])).toEqual([{Name: 'Behind the Scenes', Url: 'https://www.youtube.com/watch?v=bts1'}]);
+		});
+
+		it('builds the watch url from the key when Seerr sent no url', () => {
+			expect(withVideos([{site: 'YouTube', type: 'Trailer', key: 'xyz789'}]))
+				.toEqual([{Name: '', Url: 'https://www.youtube.com/watch?v=xyz789'}]);
+		});
+
+		it('drops a video it can reach by neither url nor key', () => {
+			expect(withVideos([{name: 'Broken', site: 'YouTube', type: 'Trailer'}])).toEqual([]);
+		});
+	});
 });

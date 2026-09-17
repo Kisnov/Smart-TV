@@ -124,9 +124,10 @@ export const withUnknownIds = (catalogue, saved, stored) => {
 	return {order, hidden: [...saved.hidden, ...offElsewhere]};
 };
 
-// With nothing in the library to play, mark or add anywhere, the only actions left worth
-// offering are the ones that ask Seerr for the title.
-export const seerrOnlyRow = (buttons) => buttons.filter((item) => item.id.startsWith('seerr'));
+// With nothing in the library to play, mark or add anywhere, the actions left worth offering are
+// the ones that ask Seerr for the title, and the trailer, which Seerr supplies along with them.
+export const seerrOnlyRow = (buttons) =>
+	buttons.filter((item) => item.id.startsWith('seerr') || item.id === 'trailer');
 
 // How a capped row splits into the buttons that stay inline and the ones that fold behind an
 // ellipsis. `totalButtons` counts the whole row, the leading play slot included, because that

@@ -20,6 +20,31 @@ const ratingOf = (details) => {
 	return Number.isFinite(vote) && vote > 0 ? vote : null;
 };
 
+// Seerr sends every clip TMDB holds, teasers and featurettes included, so the one a viewer means
+// by a trailer has to be picked out of the pile.
+const bestTrailerOf = (details) => {
+	const videos = Array.isArray(details.relatedVideos) ? details.relatedVideos : [];
+	let anyTrailer = null;
+	let anyYoutube = null;
+	for (const video of videos) {
+		const isYoutube = String(video?.site || '').toLowerCase() === 'youtube';
+		const isTrailer = String(video?.type || '').toLowerCase() === 'trailer';
+		if (isYoutube && isTrailer) return video;
+		if (isTrailer) anyTrailer = anyTrailer || video;
+		else if (isYoutube) anyYoutube = anyYoutube || video;
+	}
+	return anyTrailer || anyYoutube || videos[0] || null;
+};
+
+// Shaped like the library's own remote trailers, so the screen and the overlay that plays them
+// need to know nothing about where this one came from.
+const trailersOf = (details) => {
+	const video = bestTrailerOf(details);
+	if (!video) return [];
+	const url = video.url || (video.key ? `https://www.youtube.com/watch?v=${video.key}` : '');
+	return url ? [{Name: video.name || '', Url: url}] : [];
+};
+
 const castOf = (details) => (details.credits?.cast || []).slice(0, 20).map((person) => ({
 	Id: String(person.id),
 	Name: person.name,
@@ -43,6 +68,7 @@ export const buildSeerrDetailItem = (details, mediaType) => {
 		RunTimeTicks: runtime > 0 ? runtime * TICKS_PER_MINUTE : null,
 		Genres: (details.genres || []).map((g) => g.name),
 		Taglines: details.tagline ? [details.tagline] : [],
+		RemoteTrailers: trailersOf(details),
 		People: castOf(details),
 		ChildCount: isTv ? details.numberOfSeasons || 0 : 0,
 		// The screen reads this for the Continuing badge, which only a series shows. TMDB calls

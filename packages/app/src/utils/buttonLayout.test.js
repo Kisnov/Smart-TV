@@ -113,6 +113,11 @@ describe('seerrOnlyRow', () => {
 		const row = declare('seerrRequest', 'watched', 'seerrRequest4k', 'favorite', 'seerrManage');
 		expect(ids(seerrOnlyRow(row))).toEqual(['seerrRequest', 'seerrRequest4k', 'seerrManage']);
 	});
+
+	it('keeps the trailer, which Seerr hands over with the rest', () => {
+		const row = declare('seerrRequest', 'trailer', 'watched', 'playlist');
+		expect(ids(seerrOnlyRow(row))).toEqual(['seerrRequest', 'trailer']);
+	});
 });
 
 describe('countSplit', () => {

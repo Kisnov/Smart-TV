@@ -79,7 +79,6 @@ const ModernDetailContent = (props) => {
 
 	const hasUpNext = Boolean(nextUp?.[0]);
 	const hasTech = Boolean(techSize) || techBadges.length > 0;
-	const hasTrailer = item.LocalTrailerCount > 0 || (item.RemoteTrailers?.length > 0) || isSeries;
 	const played = item.UserData?.Played;
 	const isFavorite = item.UserData?.IsFavorite;
 	const hideMediaDescription = hidesMediaDescription(item, settings);
@@ -703,7 +702,6 @@ const ModernDetailContent = (props) => {
 								<ModernActionButtons
 									{...props}
 									hasTech={hasTech}
-									hasTrailer={hasTrailer}
 									played={played}
 									isFavorite={isFavorite}
 									onFocusRow={handleActionsFocus}

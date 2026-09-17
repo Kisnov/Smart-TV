@@ -190,7 +190,8 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		item,
 		effectiveApi,
 		onPlay,
-		trailerMuted: settings.featuredTrailerMuted
+		trailerMuted: settings.featuredTrailerMuted,
+		seerrOnly
 	});
 
 	const canChangeArtwork = useMemo(() => {
@@ -813,6 +814,12 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	const isRatable = isRatableItemType(item.Type);
 	const ratingStyle = normalizeRatingStyle(settings.personalRatingStyle);
 
+	// A series keeps the button with nothing counted against it, since a trailer sitting in a
+	// season folder belongs to that season rather than the series it came from.
+	const hasTrailer = seerrOnly
+		? item.RemoteTrailers?.length > 0
+		: (item.LocalTrailerCount > 0 || item.RemoteTrailers?.length > 0 || isSeries);
+
 	// Collections only hold video content, so the action is hidden on people,
 	// music and playlists rather than offering a call the server would reject.
 	const canAddToCollection = COLLECTION_ITEM_TYPES.includes(item.Type);
@@ -1022,6 +1029,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					handlePlay={handlePlay}
 					handleResume={handleResume}
 					handleShuffle={handleShuffle}
+					hasTrailer={hasTrailer}
 					handleTrailer={trailer.handleTrailer}
 					handleToggleWatched={handleToggleWatched}
 					handleToggleFavorite={handleToggleFavorite}

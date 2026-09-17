@@ -7,7 +7,7 @@ import {isBackKey} from '../../utils/keys';
 
 // Plays a title's trailer. A local one goes to the real player, and a YouTube link plays in
 // an overlay here, since the player has no way to open a stream that isn't on the server.
-const useDetailsTrailer = ({item, effectiveApi, onPlay, trailerMuted}) => {
+const useDetailsTrailer = ({item, effectiveApi, onPlay, trailerMuted, seerrOnly}) => {
 	const [trailerOverlay, setTrailerOverlay] = useState(null);
 	const [trailerStreamUrl, setTrailerStreamUrl] = useState(null);
 
@@ -21,7 +21,9 @@ const useDetailsTrailer = ({item, effectiveApi, onPlay, trailerMuted}) => {
 			await stopPlaybackForTrailer(trailerVideoRef.current);
 
 			try {
-				if (effectiveApi?.getLocalTrailers) {
+				// A Seerr title has no id the library would recognise, so asking it for a local
+				// trailer only spends a failed request before the Seerr one plays.
+				if (!seerrOnly && effectiveApi?.getLocalTrailers) {
 					const localResult = await effectiveApi.getLocalTrailers(item.Id);
 					const localItems = Array.isArray(localResult?.Items)
 						? localResult.Items
@@ -63,7 +65,7 @@ const useDetailsTrailer = ({item, effectiveApi, onPlay, trailerMuted}) => {
 		};
 
 		openTrailer();
-	}, [effectiveApi, item, onPlay]);
+	}, [effectiveApi, item, onPlay, seerrOnly]);
 
 	const clearSponsorSkip = useCallback(() => {
 		if (sponsorSkipIntervalRef.current) {
