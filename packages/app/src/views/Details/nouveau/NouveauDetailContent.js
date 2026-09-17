@@ -17,6 +17,10 @@ import DetailsTabBar from '../../../components/DetailsTabBar';
 import NouveauSortDialog from './sections/NouveauSortDialog';
 import NouveauDetailsFooter from './footer/NouveauDetailsFooter';
 import {buildDiscoveryRails} from './nouveauDiscovery';
+import {buildPersonRails} from './nouveauPersonRails';
+import {splitFilmography} from '../../../utils/personCredits';
+import {loadSeerrPersonCredits} from '../seerrPersonCredits';
+import {useSeerr} from '../../../context/SeerrContext';
 import {
 	HERO, buildNouveauChain, clampNouveauNode, nextNouveauNode, spotlightIdForNouveauNode
 } from './nouveauFocusChain';
@@ -48,6 +52,9 @@ const SIDEBAR_OFFSET = 120;
 // Looking an item up in the list a card came from, which every rail's select handler needs.
 const findIn = (list, key) => list.find((candidate) => String(candidate.Id) === key);
 
+// One value to reset to, so an item with no Seerr credits leaves the rails memo alone.
+const NO_PERSON_CREDITS = {appearances: [], crewCredits: []};
+
 const NouveauDetailContent = (props) => {
 	const {
 		item, settings, seerr, seerrOnly, isPerson, effectiveServerUrl,
@@ -59,6 +66,32 @@ const NouveauDetailContent = (props) => {
 		mediaSource, selectedAudioIndex, selectedSubtitleIndex,
 		spotlightBackRef, overviewBackRef, seerrNav, onSelectStudio, loadMoreCollectionItems
 	} = props;
+
+	const {isEnabled: seerrEnabled} = useSeerr();
+	const [personCredits, setPersonCredits] = useState(NO_PERSON_CREDITS);
+
+	// Seerr is an extra on a person page, so a failure leaves the rails the library can fill.
+	useEffect(() => {
+		let cancelled = false;
+		const tmdbId = item.ProviderIds?.Tmdb;
+		setPersonCredits(NO_PERSON_CREDITS);
+		if (!isPerson || !tmdbId || !seerrEnabled) return undefined;
+		loadSeerrPersonCredits(tmdbId)
+			.then((credits) => {
+				if (!cancelled) setPersonCredits(credits);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [item.Id, item.ProviderIds, isPerson, seerrEnabled]);
+
+	// Keyed off the list itself rather than a filmography split upstream, which is rebuilt every
+	// render and would take the sections and the focus chain with it.
+	const personRails = useMemo(
+		() => (isPerson ? buildPersonRails({filmography: splitFilmography(similar), ...personCredits}) : []),
+		[isPerson, similar, personCredits]
+	);
 
 	const [windowWidth, setWindowWidth] = useState(
 		() => (typeof window === 'undefined' ? 1920 : window.innerWidth)
@@ -85,7 +118,7 @@ const NouveauDetailContent = (props) => {
 	};
 
 	const sections = useMemo(() => {
-		if (isPerson) return [SECTION_DETAILS];
+		if (isPerson) return [...personRails.map((rail) => rail.id), SECTION_DETAILS];
 
 		const seerrState = seerr || {};
 		return nouveauSectionOrder({
@@ -110,7 +143,7 @@ const NouveauDetailContent = (props) => {
 			seerrRecommendationCount: (seerrState.recommendationCards || []).length
 		});
 	}, [
-		item.Type, item.Chapters, item.ProviderIds, isPerson, extras.length, cast.length,
+		item.Type, item.Chapters, item.ProviderIds, isPerson, personRails, extras.length, cast.length,
 		crew.length, similarLoaded, similar.length, seerrOnly, seerr
 	]);
 
@@ -196,15 +229,17 @@ const NouveauDetailContent = (props) => {
 		hasSeerr: Boolean(seerr?.isActive)
 	}), [item, similar, seerr]);
 
-	// One handler for both rails, since a card says for itself which side it came from.
-	const onDiscoveryCard = useCallback((ev) => {
+	// One handler for every poster rail, since a card says for itself which side it came from. A
+	// person page carries filmography and no discovery, and an item page the other way round, so
+	// the two sets never hold the same card.
+	const onPosterCard = useCallback((ev) => {
 		const key = ev.currentTarget.dataset.selectKey;
-		const found = [...discovery.related, ...discovery.recommendations]
-			.find((candidate) => String(candidate.Id) === key);
+		const pools = [discovery.related, discovery.recommendations, ...personRails.map((rail) => rail.items)];
+		const found = pools.reduce((hit, pool) => hit || findIn(pool, key), null);
 		if (!found) return;
 		if (found._seerr) onSelectSeerrCard?.(found);
 		else onSelectItem?.(found);
-	}, [discovery, onSelectItem, onSelectSeerrCard]);
+	}, [discovery, personRails, onSelectItem, onSelectSeerrCard]);
 
 	const people = useMemo(() => [...cast, ...crew], [cast, crew]);
 
@@ -512,7 +547,7 @@ const NouveauDetailContent = (props) => {
 						navbarPosition={settings.navbarPosition}
 						onNavigateUp={handleNavigateUp}
 						onNavigateDown={handleNavigateDown}
-						renderItem={renderDiscoveryCard}
+						renderItem={renderPosterCard}
 					/>
 					<NouveauRail
 						title={$L('Recommendations')}
@@ -522,7 +557,7 @@ const NouveauDetailContent = (props) => {
 						navbarPosition={settings.navbarPosition}
 						onNavigateUp={handleNavigateUp}
 						onNavigateDown={handleNavigateDown}
-						renderItem={renderDiscoveryCard}
+						renderItem={renderPosterCard}
 					/>
 				</>
 			);
@@ -542,6 +577,22 @@ const NouveauDetailContent = (props) => {
 					onNavigateUp={handleNavigateUp}
 					onNavigateDown={handleNavigateDown}
 					renderItem={renderPerson}
+				/>
+			);
+		}
+
+		const personRail = personRails.find((rail) => rail.id === id);
+		if (personRail) {
+			return (
+				<NouveauRail
+					title={personRail.title}
+					items={personRail.items}
+					gap={RAIL_GAP}
+					spotlightId={`nouveau-rail-${id}`}
+					navbarPosition={settings.navbarPosition}
+					onNavigateUp={handleNavigateUp}
+					onNavigateDown={handleNavigateDown}
+					renderItem={renderPosterCard}
 				/>
 			);
 		}
@@ -598,7 +649,7 @@ const NouveauDetailContent = (props) => {
 		);
 	}
 
-	function renderDiscoveryCard (entry) {
+	function renderPosterCard (entry) {
 		return (
 			<NouveauPosterCard
 				imageUrl={spotlightItemImageUrl(effectiveServerUrl, entry)}
@@ -607,7 +658,7 @@ const NouveauDetailContent = (props) => {
 				width={posterWidth}
 				height={posterHeight}
 				selectKey={entry.Id}
-				onSelect={onDiscoveryCard}
+				onSelect={onPosterCard}
 			/>
 		);
 	}

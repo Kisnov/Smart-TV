@@ -37,7 +37,7 @@ export const ActionButton = ({path, label, detail, onClick, active, group, prima
 export const detailActionCatalogue = (props) => {
 	const {
 		item, seerr,
-		isSeries, isSeason, isBoxSet, isEpisode, isBook,
+		isSeries, isSeason, isBoxSet, isEpisode, isBook, isPerson,
 		hasTrailer, played, isFavorite, inSyncPlayGroup, onWatchWithGroup,
 		supportsMediaSourceSelection, hasMultipleVersions, hasMultipleAudio,
 		handleShuffle, handleTrailer, handleToggleWatched, handleToggleFavorite, handleGoToSeries,
@@ -95,11 +95,11 @@ export const detailActionCatalogue = (props) => {
 		// Offered while in a SyncPlay group and lit in the accent so it reads
 		// as the group's, next to a Play that stays as it is.
 		{id: 'watchWithGroup', when: inSyncPlayGroup && !isBook, render: () => <ActionButton path={DETAIL_ICON_PATHS.group} label={$L('Watch with group')} group onClick={onWatchWithGroup} spotlightId="details-watch-with-group-btn" />},
-		{id: 'watched', when: true, render: () => <ActionButton path={DETAIL_ICON_PATHS.watched} label={played ? $L('Watched') : $L('Mark as Watched')} active={played} onClick={handleToggleWatched} spotlightId="details-watched-btn" />},
+		{id: 'watched', when: !isPerson, render: () => <ActionButton path={DETAIL_ICON_PATHS.watched} label={played ? $L('Watched') : $L('Mark as Watched')} active={played} onClick={handleToggleWatched} spotlightId="details-watched-btn" />},
 		{id: 'favorite', when: true, render: () => <ActionButton path={DETAIL_ICON_PATHS.favorite} label={isFavorite ? $L('Favorited') : $L('Favorite')} active={isFavorite} onClick={handleToggleFavorite} spotlightId="details-favorite-btn" />},
 		{id: 'personalRating', when: showsPersonalRating, render: () => <ActionButton path={personalRatingIconPath(personalRatingStyle, item.UserData)} label={personalRatingLabel(personalRatingStyle, item.UserData)} onClick={handleOpenRatingDialog} spotlightId="details-rating-btn" />},
 		{id: 'goToSeries', when: isEpisode && item.SeriesId, render: () => <ActionButton path={DETAIL_ICON_PATHS.series} label={$L('Series')} onClick={handleGoToSeries} />},
-		{id: 'playlist', when: true, render: () => <ActionButton path={DETAIL_ICON_PATHS.playlist} label={$L('Add to Playlist')} onClick={handleOpenPlaylistModal} />},
+		{id: 'playlist', when: !isPerson, render: () => <ActionButton path={DETAIL_ICON_PATHS.playlist} label={$L('Add to Playlist')} onClick={handleOpenPlaylistModal} />},
 		{id: 'collection', when: Boolean(handleOpenCollectionModal), render: () => <ActionButton path={DETAIL_ICON_PATHS.collection} label={$L('Add to Collection')} onClick={handleOpenCollectionModal} />},
 		{id: 'deleteFiles', when: item.CanDelete, render: () => <ActionButton path={DETAIL_ICON_PATHS.delete} label={$L('Delete')} onClick={handleOpenDeleteDialog} />},
 		{id: 'artwork', when: canChangeArtwork, render: () => <ActionButton path={DETAIL_ICON_PATHS.artwork} label={$L('Change Artwork')} onClick={handleOpenArtworkModal} spotlightId="details-artwork-btn" />},

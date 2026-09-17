@@ -17,6 +17,20 @@ describe('nouveauMetaPieces', () => {
 			.toContain('S2:E7');
 	});
 
+	it('gives a person their dates and where they are from instead', () => {
+		const pieces = nouveauMetaPieces({
+			item: {
+				Type: 'Person',
+				PremiereDate: '1955-02-24T00:00:00.0000000Z',
+				ProductionLocations: ['San Francisco, California']
+			},
+			year: 1955,
+			runtime: '2h'
+		});
+		expect(pieces[pieces.length - 1]).toBe('San Francisco, California');
+		expect(pieces).not.toContain('2h');
+	});
+
 	// A series has no runtime of its own, so the number belonging to one episode would be
 	// misleading sat next to the season count.
 	it('leaves the runtime off a series', () => {

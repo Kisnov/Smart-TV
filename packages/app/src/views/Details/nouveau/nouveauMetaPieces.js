@@ -1,5 +1,7 @@
 import $L from '@enact/i18n/$L';
 
+import {personDateLines} from '../../../utils/personCredits';
+
 // The facts line under the title in the Nouveau hero, in the order they are read.
 //
 // Genres, the series status and the ratings all have rows of their own on this hero, so none of
@@ -9,6 +11,14 @@ export const nouveauMetaPieces = ({item, year, officialRating, runtime, endsAt, 
 	const add = (text) => {
 		if (text) pieces.push(text);
 	};
+
+	// A person has no year, rating or runtime, so their line is when they lived and where they
+	// were born.
+	if (item.Type === 'Person') {
+		personDateLines(item.PremiereDate, item.EndDate).forEach(add);
+		add(item.ProductionLocations?.[0]);
+		return pieces;
+	}
 
 	add(year ? String(year) : null);
 	add(officialRating);

@@ -27,7 +27,7 @@ const MenuContainer = SpotlightContainerDecorator({
 // and a long row of buttons would push the first of those off the screen.
 const NouveauActionRow = (props) => {
 	const {
-		settings, seerrOnly, isBook, isReadableBook,
+		settings, seerrOnly, isPerson, isBook, isReadableBook,
 		hasPlaybackPosition, resumeTimeText,
 		handlePlay, handleResume,
 		menuBackRef, onNavigateUp, onNavigateDown, onFocusRow
@@ -102,8 +102,9 @@ const NouveauActionRow = (props) => {
 		{order: settings[DETAIL_ORDER_KEY], hidden: settings[DETAIL_HIDDEN_KEY]}
 	);
 
-	const showsResume = !seerrOnly && hasPlaybackPosition && !isBook;
-	const showsPlay = !seerrOnly && (isBook ? isReadableBook : true);
+	// A person has nothing to play, so their row is circles alone.
+	const showsResume = !seerrOnly && !isPerson && hasPlaybackPosition && !isBook;
+	const showsPlay = !seerrOnly && !isPerson && (isBook ? isReadableBook : true);
 
 	// Only one button leads the row here. Where there is somewhere to resume from that is what it
 	// does, and starting over joins the circles rather than taking a second word for itself.
