@@ -5,11 +5,11 @@ import {isMdblistEnabled} from '../../../services/mdblistApi';
 
 import RatingsRow from '../../../components/RatingsRow';
 import {SeerrStatusBadge, SeerrDownloadBars} from '../../../components/seerr/SeerrStatusBadge';
-import {SeerrChips, SeerrFacts, SeerrCollectionBanner, hasSeerrChips} from '../../../components/seerr/SeerrSections';
+import {seerrChipCount} from '../../../components/seerr/SeerrSections';
 import {DETAIL_ICON_PATHS} from '../detailIcons';
 import {iconViewBox} from '../../../components/icons/iconViewBox';
 import {hidesMediaDescription} from '../detailsMedia';
-import {hasMediaFacts} from '../../../utils/seerrMediaFacts';
+import {buildMediaFacts} from '../../../utils/seerrMediaFacts';
 import {useSeerr} from '../../../context/SeerrContext';
 import ExpandableOverview from '../ExpandableOverview';
 import ModernActionButtons from '../ModernActionButtons';
@@ -133,8 +133,9 @@ const SpotlightDetailContent = (props) => {
 		seerr: {
 			recommendations: seerr.recommendationCards || [],
 			similar: seerr.similarCards || [],
-			hasChips: hasSeerrChips(seerr.details),
-			hasFacts: hasMediaFacts(seerr.details, seerr.mediaType),
+			chipCount: seerrChipCount(seerr.details),
+			factCount: buildMediaFacts(seerr.details, seerr.mediaType).length,
+			collection: seerr.collection,
 			seasonMarkers: settings.showSeerrAvailabilityBadges !== false ? seerr.seasonMarkers : null
 		},
 		fallbackImageUrl: cardFallbackImageUrl
@@ -143,7 +144,7 @@ const SpotlightDetailContent = (props) => {
 		extras, cast, crew, nextUp, collectionItems, missingCollectionItems, parentCollections,
 		albumTracks, artistAlbums, playlistItems, personMovies, personSeries, otherCredits,
 		seerrCredits, studioCards, canManagePlaylist, cardFallbackImageUrl,
-		seerr.recommendationCards, seerr.similarCards, seerr.details, seerr.mediaType, seerr.seasonMarkers
+		seerr.recommendationCards, seerr.similarCards, seerr.details, seerr.mediaType, seerr.collection, seerr.seasonMarkers
 	]);
 
 	const cardActions = useMemo(() => ({
@@ -327,9 +328,6 @@ const SpotlightDetailContent = (props) => {
 						</div>
 					)}
 					{!isPerson && <RatingsRow item={item} serverUrl={effectiveServerUrl} pluginEnabled={isMdblistEnabled(settings)} />}
-					{/* A Seerr only title has a sparse page otherwise, so its Seerr facts render inline. */}
-					{seerrOnly && <SeerrChips details={seerr.details} mediaType={seerr.mediaType} seerrNav={seerrNav} />}
-					{seerrOnly && <SeerrFacts details={seerr.details} mediaType={seerr.mediaType} />}
 					{!hideMediaDescription && item.Overview && (
 						<ExpandableOverview text={item.Overview} itemId={item.Id} className={css.descriptionSlot} backRef={overviewBackRef} />
 					)}
@@ -344,7 +342,6 @@ const SpotlightDetailContent = (props) => {
 						/>
 					)}
 					<SeerrDownloadBars seerr={seerr} />
-					{seerr.collection && <SeerrCollectionBanner collection={seerr.collection} onOpen={seerrNav?.onSelectItem} />}
 				</div>
 				{cards.length > 0 && (
 					<BandContainer className={css.cardBand} style={{width: `${bandWidth}px`}} onKeyDown={handleBandKeyDown}>
@@ -365,7 +362,7 @@ const SpotlightDetailContent = (props) => {
 				card={openCard}
 				serverUrl={effectiveServerUrl}
 				actions={cardActions}
-				seerr={{details: seerr.details, mediaType: seerr.mediaType, nav: seerrNav}}
+				seerr={{details: seerr.details, mediaType: seerr.mediaType, collection: seerr.collection, nav: seerrNav}}
 				// Paging appends to the playlist list, which is the one that arrives a page at a
 				// time. The Movies and Shows grid is fetched whole, so it has nothing to ask for.
 				onNearEnd={openCardId === 'playlist_order' ? cardActions.loadMoreCollectionItems : null}

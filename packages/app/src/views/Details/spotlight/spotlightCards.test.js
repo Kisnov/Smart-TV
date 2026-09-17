@@ -163,9 +163,33 @@ describe('spotlightCardsFor', () => {
 	it('leads the recommendations card with what seerr knows about the title', () => {
 		const card = spotlightCardsFor(state({
 			similar: [child('s1')],
-			seerr: {hasChips: true, hasFacts: true}
+			seerr: {chipCount: 2, factCount: 1}
 		})).find((c) => c.id === 'similar');
 		expect(card.sections.map((s) => s.kind)).toEqual(['seerrChips', 'seerrFacts', 'media']);
+	});
+
+	it('gives a seerr only title a details card ahead of the rest', () => {
+		const cards = spotlightCardsFor(state({
+			seerrOnly: true,
+			cast: [child('p1')],
+			seerr: {chipCount: 4, factCount: 2, collection: {id: 9, name: 'Franchise'}}
+		}));
+		expect(ids(cards)).toEqual(['seerr_details', 'people']);
+		expect(cards[0].subtitle).toBe('2 facts · 4 tags');
+		expect(cards[0].sections.map((s) => s.kind)).toEqual(['seerrChips', 'seerrFacts', 'seerrCollection']);
+	});
+
+	it('leaves the details card out when seerr has nothing to say', () => {
+		const cards = spotlightCardsFor(state({seerrOnly: true, cast: [child('p1')], seerr: {}}));
+		expect(ids(cards)).toEqual(['people']);
+	});
+
+	it('stops a seerr only title repeating its tags and facts on the recommendations card', () => {
+		const card = spotlightCardsFor(state({
+			seerrOnly: true,
+			seerr: {chipCount: 2, factCount: 1, similar: [child('x1')]}
+		})).find((c) => c.id === 'similar');
+		expect(card.sections.map((s) => s.kind)).toEqual(['seerr']);
 	});
 
 	it('names the library list for the source that actually produced it', () => {

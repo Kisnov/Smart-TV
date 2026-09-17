@@ -3,7 +3,7 @@ import $L from '@enact/i18n/$L';
 
 import MediaCard from '../../../components/MediaCard';
 import DetailTrackList from '../../../components/DetailTrackList';
-import {SeerrChips, SeerrFacts} from '../../../components/seerr/SeerrSections';
+import {SeerrChips, SeerrFacts, SeerrCollectionBanner} from '../../../components/seerr/SeerrSections';
 import {getImageUrl, formatDuration} from '../../../utils/helpers';
 import {castPhotoUrl} from '../detailsMedia';
 import {SpottableDiv, RowContainer} from '../detailsSpottables';
@@ -184,6 +184,12 @@ const SpotlightSection = ({section, serverUrl, actions, seerr, firstSpotlightId}
 			return (
 				<div className={css.factsRow}>
 					<SeerrFacts details={seerr?.details} mediaType={seerr?.mediaType} />
+				</div>
+			);
+		case 'seerrCollection':
+			return (
+				<div className={css.factsRow}>
+					<SeerrCollectionBanner collection={seerr?.collection} onOpen={seerr?.nav?.onSelectItem} />
 				</div>
 			);
 		default:

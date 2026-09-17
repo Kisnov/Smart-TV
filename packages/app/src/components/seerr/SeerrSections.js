@@ -21,9 +21,11 @@ const Chip = memo(({entry, onSelect}) => {
 	return <SpottableDiv className={css.chip} onClick={handleClick}>{entry.name}</SpottableDiv>;
 });
 
-export const hasSeerrChips = (details) => Boolean(
-	details?.genres?.length || details?.networks?.length || details?.keywords?.length
+export const seerrChipCount = (details) => (
+	(details?.genres?.length || 0) + (details?.networks?.length || 0) + (details?.keywords?.length || 0)
 );
+
+export const hasSeerrChips = (details) => seerrChipCount(details) > 0;
 
 const TagsSection = memo(({title, entries, onSelect, prefix}) => {
 	if (!entries?.length) return null;

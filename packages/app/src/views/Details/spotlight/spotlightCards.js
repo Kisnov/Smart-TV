@@ -23,7 +23,8 @@ export const CARD_ICONS = {
 	albums: MATERIAL_ICON_PATHS.album,
 	playlist: MATERIAL_ICON_PATHS.playlist_play,
 	playlistOrder: MATERIAL_ICON_PATHS.format_list_numbered,
-	filmography: MATERIAL_ICON_PATHS.movie
+	filmography: MATERIAL_ICON_PATHS.movie,
+	seerrDetails: MATERIAL_ICON_PATHS.info
 };
 
 // A runtime for a card subtitle or the hero's metadata row: "1h 32m", "2h", or "48m". The
@@ -88,7 +89,11 @@ class CardBuilder {
 	factories() {
 		const {item, seerrOnly} = this.s;
 		if (seerrOnly) {
-			return {people: () => this.peopleCard(), similar: () => this.similarCard()};
+			return {
+				seerr_details: () => this.seerrDetailsCard(),
+				people: () => this.peopleCard(),
+				similar: () => this.similarCard()
+			};
 		}
 		switch (item?.Type) {
 			case 'Series': return {
@@ -199,8 +204,36 @@ class CardBuilder {
 		};
 	}
 
+	// Seerr's tags, facts and collection get a card rather than a place on the hero, where
+	// nothing above the action row has a d-pad path into them.
+	seerrDetailsCard() {
+		const {seerr, fallbackImageUrl} = this.s;
+		const chipCount = seerr?.chipCount || 0;
+		const factCount = seerr?.factCount || 0;
+		const collection = seerr?.collection;
+		if (!chipCount && !factCount && !collection) return null;
+
+		return {
+			id: 'seerr_details',
+			title: $L('Details'),
+			subtitle: [
+				factCount > 0 ? countLabel(factCount, $L('1 fact'), $L('{count} facts')) : null,
+				chipCount > 0 ? countLabel(chipCount, $L('1 tag'), $L('{count} tags')) : null
+			].filter(Boolean).join(' · '),
+			imageUrl: fallbackImageUrl,
+			icon: CARD_ICONS.seerrDetails,
+			sections: [
+				// The modal hands its opening focus to the first section and only the chips can
+				// take it, so they lead.
+				...(chipCount > 0 ? [{kind: 'seerrChips', title: $L('Genres and Tags'), count: chipCount}] : []),
+				...(factCount > 0 ? [{kind: 'seerrFacts'}] : []),
+				...(collection ? [{kind: 'seerrCollection'}] : [])
+			]
+		};
+	}
+
 	similarCard() {
-		const {similar = [], similarSource, seerr, serverUrl, fallbackImageUrl} = this.s;
+		const {similar = [], similarSource, seerr, seerrOnly, serverUrl, fallbackImageUrl} = this.s;
 		const recommendations = seerr?.recommendations || [];
 		const seerrSimilar = seerr?.similar || [];
 		if (!similar.length && !recommendations.length && !seerrSimilar.length) return null;
@@ -223,9 +256,10 @@ class CardBuilder {
 				: firstLandscapeImageUrl(serverUrl, recommendations.length ? recommendations : seerrSimilar)) || fallbackImageUrl,
 			icon: CARD_ICONS.similar,
 			sections: [
-				// What Seerr knows about the title itself, ahead of the lists.
-				...(seerr?.hasChips ? [{kind: 'seerrChips'}] : []),
-				...(seerr?.hasFacts ? [{kind: 'seerrFacts'}] : []),
+				// What Seerr knows about the title itself, ahead of the lists. A Seerr only title
+				// keeps these on its own Details card, so repeating them would show them twice.
+				...(!seerrOnly && seerr?.chipCount > 0 ? [{kind: 'seerrChips'}] : []),
+				...(!seerrOnly && seerr?.factCount > 0 ? [{kind: 'seerrFacts'}] : []),
 				...(similar.length ? [mediaSection(librarySectionTitle, similar)] : []),
 				...(recommendations.length ? [seerrSection($L('Recommendations (Seerr)'), recommendations)] : []),
 				...(seerrSimilar.length ? [seerrSection(similar.length ? $L('Similar (Seerr)') : $L('Similar'), seerrSimilar)] : [])
