@@ -39,20 +39,23 @@ export const CategoriesView = ({
 	searchResults,
 	onOpenResult,
 	onResultKeyDown,
-	onOpenCategory
+	onOpenCategory,
+	hideSearch
 }) => (
 	<SettingsView spotlightId='categories-view'>
 		<SectionTitle>{$L('Settings')}</SectionTitle>
-		<SpottableInput
-			className={css.searchInput}
-			type='text'
-			value={searchQuery}
-			onChange={onSearchChange}
-			onKeyDown={onSearchKeyDown}
-			placeholder={$L('Search settings')}
-			spotlightId='settings-search-input'
-			autoComplete='off'
-		/>
+		{!hideSearch && (
+			<SpottableInput
+				className={css.searchInput}
+				type='text'
+				value={searchQuery}
+				onChange={onSearchChange}
+				onKeyDown={onSearchKeyDown}
+				placeholder={$L('Search settings')}
+				spotlightId='settings-search-input'
+				autoComplete='off'
+			/>
+		)}
 		{showSearchResults
 			? (searchResults.length > 0
 				? searchResults.map((entry, index) => (

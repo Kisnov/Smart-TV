@@ -10,6 +10,7 @@ import SyncPlayIcon from '../icons/SyncPlayIcon';
 import {FavoritesIcon, GenresIcon, HomeIcon, LiveTvIcon, MessagesIcon, SearchIcon, SettingsIcon, ShuffleIcon} from '../icons/navIcons';
 import useClock from '../../hooks/useClock';
 import {librariesForNav} from '../../utils/liveTvLibrary';
+import {isKidsMode} from '../../utils/kidsMode';
 import {shadowToCss, toCssColor, toCssColorWithAlpha} from '../../theme/themeSpec';
 import {resolveOverlayColor} from '../../theme/overlayColors';
 import {CONTENT_FOCUS_TARGETS, focusFirstContentTarget} from '../../utils/navFocusTargets';
@@ -55,11 +56,14 @@ const NavBar = ({
 	const showShuffle = settings.showShuffleButton !== false;
 	const showGenres = settings.showGenresButton !== false;
 	const showFavorites = settings.showFavoritesButton !== false;
-	const showLiveTv = settings.showLiveTvButton !== false && hasLiveTv;
-	const showSeerr = seerrEnabled && settings.showSeerrButton !== false;
-	const showSyncPlay = settings.syncplayEnabled !== false && settings.showSyncPlayButton !== false;
-	const navLibraries = librariesForNav(libraries, showLiveTv);
-	const showLibraries = settings.showLibrariesInToolbar !== false && navLibraries.length > 0;
+	// Checked alongside the show* preferences and never written into them, since those sync and
+	// would follow the account to the parent's other devices.
+	const kidsMode = isKidsMode(settings);
+	const showLiveTv = !kidsMode && settings.showLiveTvButton !== false && hasLiveTv;
+	const showSeerr = !kidsMode && seerrEnabled && settings.showSeerrButton !== false;
+	const showSyncPlay = !kidsMode && settings.syncplayEnabled !== false && settings.showSyncPlayButton !== false;
+	const navLibraries = librariesForNav(libraries, showLiveTv, {hideLiveTv: kidsMode});
+	const showLibraries = !kidsMode && settings.showLibrariesInToolbar !== false && navLibraries.length > 0;
 	// Only with something to show, so the menu never has a button that does nothing.
 	const showMessages = settings.showServerMessagesButton === true && messages.length > 0;
 

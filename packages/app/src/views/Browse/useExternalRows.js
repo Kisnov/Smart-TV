@@ -7,7 +7,7 @@ import {resolveItemsByProviderIds} from '../../services/jellyfinApi';
 // Home rows built from TMDB and IMDb charts, lists the viewer pasted a URL for, and the
 // Radarr and Sonarr calendars. Items arrive as provider ids, so every row is resolved against
 // the local library first: what the server owns becomes playable, the rest falls back to Seerr.
-const useExternalRows = ({settings}) => {
+const useExternalRows = ({settings, homeRows, kidsMode}) => {
 	const [externalRows, setExternalRows] = useState([]);
 
 	useEffect(() => {
@@ -15,10 +15,13 @@ const useExternalRows = ({settings}) => {
 			setExternalRows([]);
 			return undefined;
 		}
-		const enabledPresets = (settings.homeRows || []).filter((r) => r.enabled && (r.id.startsWith('tmdb_') || r.id.startsWith('imdb-'))).map((r) => r.id);
-		const customRows = (settings.customHomeRows || []).filter((r) => r.enabled);
-		const radarrEnabled = (settings.homeRows || []).some((r) => r.enabled && r.id === 'radarr_calendar');
-		const sonarrEnabled = (settings.homeRows || []).some((r) => r.enabled && r.id === 'sonarr_calendar');
+		// The rows arrive already filtered, and the pasted list rows go the way the plugin rows do,
+		// since nothing here can vouch for what an outside catalogue returns.
+		const rows = homeRows || settings.homeRows || [];
+		const enabledPresets = rows.filter((r) => r.enabled && (r.id.startsWith('tmdb_') || r.id.startsWith('imdb-'))).map((r) => r.id);
+		const customRows = kidsMode ? [] : (settings.customHomeRows || []).filter((r) => r.enabled);
+		const radarrEnabled = rows.some((r) => r.enabled && r.id === 'radarr_calendar');
+		const sonarrEnabled = rows.some((r) => r.enabled && r.id === 'sonarr_calendar');
 		const calendarsEnabled = radarrEnabled || sonarrEnabled;
 		if (enabledPresets.length === 0 && customRows.length === 0 && !calendarsEnabled) {
 			setExternalRows([]);
@@ -108,7 +111,7 @@ const useExternalRows = ({settings}) => {
 		return () => {
 			cancelled = true;
 		};
-	}, [settings.useMoonfinPlugin, settings.homeRows, settings.customHomeRows,
+	}, [settings.useMoonfinPlugin, homeRows, kidsMode, settings.homeRows, settings.customHomeRows,
 		settings.mergeRadarrSonarrCalendars,
 		settings.radarrCalendarShowCinema, settings.radarrCalendarShowDigital, settings.radarrCalendarShowPhysical,
 		settings.radarrCalendarShowDate, settings.sonarrCalendarShowDate, settings.sonarrCalendarShowEpisodeInfo]);

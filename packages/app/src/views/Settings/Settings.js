@@ -1,4 +1,8 @@
 import {useCallback, useState, useEffect, useMemo, useRef} from 'react';
+import {
+	hashPin, pinMatches, lockoutRemaining, registerFailedAttempt, clearedLockout, tooManyAttempts,
+	SIGN_IN_PIN, KIDS_PIN
+} from '../../utils/pinLockout';
 import $L from '@enact/i18n/$L';
 import Spottable from '@enact/spotlight/Spottable';
 import Spotlight from '@enact/spotlight';
@@ -40,9 +44,11 @@ import {CategoriesView, CategoryView, SubcategoryView, OptionsView} from './Brow
 import {ThemesView, ThemeStoreView} from './ThemeViews';
 import AchievementsScreens, {ACHIEVEMENT_VIEWS} from './achievements/AchievementsScreens';
 import {isConfirmSpendOpen} from './achievements/ConfirmSpendDialog';
+import {kidsModeNeedsPin} from '../../utils/kidsMode';
 import {SeerrHomeRowsView, ImdbListsView} from './HomeRowToggleViews';
 import {ExternalTmdbListsView, ExternalCalendarsView, ExternalCustomRowsView} from './ExternalRowViews';
 import {RatingSourcesView, ExcludedGenresView, PinCodeView, BlockedRatingsView, RowImageTypesView} from './PickerViews';
+import {KidsModeSetView, KidsModeExitView} from './KidsModeViews';
 import HomeRowsView from './HomeRowsView';
 import ButtonLayoutView from './ButtonLayoutView';
 import DiagnosticsView from './DiagnosticsView';
@@ -82,13 +88,16 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 	}, [settings.uiLanguage]);
 	const seerrLabel = isSeerr ? seerr.displayName || $L('Seerr') : $L('Seerr');
 	// Category labels do not depend on anything but the locale, so they resolve without
-	// the settings context, which is not built until further down.
-	const categories = SETTINGS_SCHEMA.map((category) => ({
-		id: category.id,
-		label: resolve(category.label),
-		description: resolve(category.description),
-		icon: category.icon
-	}));
+	// the settings context, which is not built until further down. The gate only reads the
+	// settings, which are in hand, and the search index already honours it the same way.
+	const categories = SETTINGS_SCHEMA
+		.filter((category) => !category.when || category.when({settings}))
+		.map((category) => ({
+			id: category.id,
+			label: resolve(category.label),
+			description: resolve(category.description),
+			icon: category.icon
+		}));
 
 	const [searchQuery, setSearchQuery] = useState('');
 	const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -150,6 +159,8 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 	const [customRowShowUserRatings, setCustomRowShowUserRatings] = useState(true);
 	const [editingCustomRowId, setEditingCustomRowId] = useState(null);
 	const [tempPinCode, setTempPinCode] = useState('0000');
+	const [tempKidsPin, setTempKidsPin] = useState('');
+	const [kidsPinError, setKidsPinError] = useState('');
 	const [pinCodeError, setPinCodeError] = useState('');
 
 	const focusViewDefault = useCallback((cv) => {
@@ -587,23 +598,77 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 	}, [tempExcludedGenresText, updateSetting, popView]);
 
 	const openPinCode = useCallback(() => {
-		const currentPin = typeof settings.pinCode === 'string' && /^\d{4}$/.test(settings.pinCode)
-			? settings.pinCode
-			: '0000';
-		setTempPinCode(currentPin);
+		setTempPinCode('');
 		setPinCodeError('');
 		pushView({view: 'pinCode', returnFocusTo: 'setting-pinCode'});
-	}, [settings.pinCode, pushView]);
+	}, [pushView]);
 
 	const savePinCode = useCallback(() => {
 		if (!/^\d{4}$/.test(tempPinCode)) {
 			setPinCodeError($L('PIN must be exactly 4 digits.'));
 			return;
 		}
-		updateSetting('pinCode', tempPinCode);
+		// Stored as a hash, and the plain one it replaces is cleared out. Choosing a PIN forgets the
+		// guesses that came before it.
+		updateSettings({
+			pinCodeHash: hashPin(tempPinCode),
+			pinCode: '',
+			...clearedLockout(SIGN_IN_PIN)
+		});
 		setPinCodeError('');
 		popView();
-	}, [tempPinCode, updateSetting, popView]);
+	}, [tempPinCode, updateSettings, popView]);
+
+	const openKidsMode = useCallback(() => {
+		setTempKidsPin('');
+		setKidsPinError('');
+		pushView({view: 'kidsModeSet', returnFocusTo: 'setting-kidsMode'});
+	}, [pushView]);
+
+	const saveKidsModePin = useCallback(() => {
+		if (!/^\d{4}$/.test(tempKidsPin)) {
+			setKidsPinError($L('PIN must be exactly 4 digits.'));
+			return;
+		}
+		updateSettings({
+			kidsPinHash: hashPin(tempKidsPin),
+			kidsModeEnabled: true,
+			...clearedLockout(KIDS_PIN)
+		});
+		setTempKidsPin('');
+		setKidsPinError('');
+		// Settings are sitting on a screen the mode has just taken away, so drop back to the root,
+		// where the only entry left is the way out.
+		setNavStack([{view: 'categories'}]);
+	}, [tempKidsPin, updateSettings]);
+
+	const exitKidsMode = useCallback(() => {
+		const waiting = kidsModeNeedsPin(settings) ? lockoutRemaining(settings, KIDS_PIN) : 0;
+		if (waiting > 0) {
+			setTempKidsPin('');
+			setKidsPinError(tooManyAttempts(waiting));
+			return;
+		}
+
+		if (kidsModeNeedsPin(settings) && !pinMatches(tempKidsPin, {hash: settings.kidsPinHash})) {
+			const {wait, changes} = registerFailedAttempt(settings, KIDS_PIN);
+			updateSettings(changes);
+			setTempKidsPin('');
+			setKidsPinError(wait > 0 ? tooManyAttempts(wait) : $L('Incorrect PIN'));
+			return;
+		}
+
+		// The PIN belonged to this stretch of the mode. Clearing it means the next time Kids Mode
+		// goes on, someone picks a code for it rather than a forgotten one still being the way out.
+		updateSettings({
+			kidsModeEnabled: false,
+			kidsPinHash: '',
+			...clearedLockout(KIDS_PIN)
+		});
+		setTempKidsPin('');
+		setKidsPinError('');
+		setNavStack([{view: 'categories'}]);
+	}, [tempKidsPin, settings, updateSettings]);
 
 	const openSeerrHomeRows = useCallback(() => {
 		pushView({view: 'seerrHomeRows', returnFocusTo: 'setting-seerrHomeRows'});
@@ -937,6 +1002,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			openDetailMetadata,
 			openDiagnostics,
 			openPinCode,
+			openKidsMode,
 			openLibraries,
 			openParentalControls,
 			openQrLink,
@@ -962,7 +1028,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		settings, capabilities, seerr, achievements, seerrLabel, isSeerr, serverUrl, ratingsResetArmed, resetRatingsSettings,
 		serverVersion, availableThemes, activeThemeId, openThemes, openThemeStore, openHomeRows,
 		openDetailButtons, openOsdButtons, openDetailMetadata, openDiagnostics,
-		openPinCode, openLibraries, openParentalControls, openQrLink, openRatingSources, openRowImageTypes, openExcludedGenres, openMediaBarLibraries,
+		openPinCode, openKidsMode, openLibraries, openParentalControls, openQrLink, openRatingSources, openRowImageTypes, openExcludedGenres, openMediaBarLibraries,
 		openMediaBarCollections, openScreensaverLibraries, openScreensaverCollections, openScreensaverGenres,
 		openImdbLists, openExternalTmdbLists, openExternalCalendars,
 		openExternalCustomRows, openSeerrHomeRows, openScreen, handleMoonfinToggle, onRunSetupWizard
@@ -975,13 +1041,21 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		const visible = (category?.subcategories || [])
 			.filter((sub) => sub.menu !== false && (!sub.when || sub.when(settingsCtx)));
 		if (visible.length === 1) {
-			pushView({
-				view: 'subcategory',
-				categoryId: id,
-				subcategoryId: visible[0].id,
-				label: resolve(visible[0].label, settingsCtx),
-				returnFocusTo: `cat-${id}`
-			});
+			// A subcategory that is really a screen of its own opens that screen, the same way it
+			// would if it had been reached through the subcategory list.
+			pushView(visible[0].opensView
+				? {
+					view: visible[0].opensView,
+					label: resolve(visible[0].label, settingsCtx),
+					returnFocusTo: `cat-${id}`
+				}
+				: {
+					view: 'subcategory',
+					categoryId: id,
+					subcategoryId: visible[0].id,
+					label: resolve(visible[0].label, settingsCtx),
+					returnFocusTo: `cat-${id}`
+				});
 			return;
 		}
 		pushView({view: 'category', id, returnFocusTo: `cat-${id}`});
@@ -1070,7 +1144,9 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 
 	// Only the debounced query drives the swap, so the categories do not blink out
 	// between the second keystroke and the debounce landing.
+	// Kids Mode leaves one entry standing, and a search box would list the rest straight back.
 	const showSearchResults = currentView.view === 'categories' &&
+		!settings.kidsModeEnabled &&
 		debouncedQuery.trim().length >= MIN_QUERY_LENGTH;
 
 	const searchResults = useMemo(() => {
@@ -1171,6 +1247,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 					onSearchChange={handleSearchChange}
 					onSearchKeyDown={handleSearchKeyDown}
 					showSearchResults={showSearchResults}
+					hideSearch={settings.kidsModeEnabled}
 					searchResults={searchResults}
 					onOpenResult={openSearchResult}
 					onResultKeyDown={handleResultKeyDown}
@@ -1355,6 +1432,24 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 					onTextChange={setTempExcludedGenresText}
 					onCancel={popView}
 					onSave={saveExcludedGenres}
+				/>
+			)}
+			{viewName === 'kidsModeSet' && (
+				<KidsModeSetView
+					pin={tempKidsPin}
+					error={kidsPinError}
+					onPinChange={setTempKidsPin}
+					onCancel={popView}
+					onSave={saveKidsModePin}
+				/>
+			)}
+			{viewName === 'kidsModeExit' && (
+				<KidsModeExitView
+					pin={tempKidsPin}
+					error={kidsPinError}
+					onPinChange={setTempKidsPin}
+					onCancel={popView}
+					onSubmit={exitKidsMode}
 				/>
 			)}
 			{viewName === 'pinCode' && (

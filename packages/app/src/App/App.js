@@ -1,4 +1,9 @@
 import {useState, useCallback, useEffect, useMemo, lazy, Suspense, useRef} from 'react';
+import {isKidsMode, blockedPanels, allowedPanel} from '../utils/kidsMode';
+import {
+	hashPin, pinMatches, lockoutRemaining, registerFailedAttempt, clearedLockout, tooManyAttempts,
+	SIGN_IN_PIN
+} from '../utils/pinLockout';
 import ThemeDecorator from '@enact/sandstone/ThemeDecorator';
 import {Panels, Panel} from '@enact/sandstone/Panels';
 import Spottable from '@enact/spotlight/Spottable';
@@ -204,9 +209,14 @@ const AppContent = (props) => {
 	const {updateInfo, formattedNotes, dismiss: dismissUpdate} = useVersionCheck(
 		isAuthenticated && settings.updateNotificationsEnabled !== false ? 3000 : null
 	);
-	const configuredPin = typeof settings.pinCode === 'string' && /^\d{4}$/.test(settings.pinCode)
-		? settings.pinCode
-		: '0000';
+	// A PIN saved before this client started hashing is still stored as itself, so both are
+	// offered and the plain one is written back as a hash the first time it is entered.
+	const storedPin = useMemo(() => ({
+		hash: settings.pinCodeHash,
+		plain: typeof settings.pinCode === 'string' && /^\d{4}$/.test(settings.pinCode)
+			? settings.pinCode
+			: '0000'
+	}), [settings.pinCodeHash, settings.pinCode]);
 	const isPinGateActive = isAuthenticated && settings.pinCodeProtection === true && !isPinUnlocked;
 	const screensaverTimeout = Number(settings.screensaverTimeout || 90);
 	const screensaverEnabled = Boolean(
@@ -569,6 +579,14 @@ const AppContent = (props) => {
 		}
 	}, [isLoading, isAuthenticated, authChecked]);
 
+	const kidsBlockedPanels = useMemo(() => blockedPanels(PANELS), []);
+
+	const showPanel = useCallback((panel) => {
+		setPanelIndex(isKidsMode(settings)
+			? allowedPanel(panel, kidsBlockedPanels, PANELS.BROWSE)
+			: panel);
+	}, [settings, kidsBlockedPanels]);
+
 	const navigateTo = useCallback((panel, addToHistory = true) => {
 		if (addToHistory && panelIndex !== PANELS.LOGIN) {
 			setPanelHistory(prev => {
@@ -579,8 +597,8 @@ const AppContent = (props) => {
 				return newHistory;
 			});
 		}
-		setPanelIndex(panel);
-	}, [panelIndex]);
+		showPanel(panel);
+	}, [panelIndex, showPanel]);
 
 	const handleBack = useCallback(() => {
 		detailsItemStackRef.current = [];
@@ -898,8 +916,8 @@ const AppContent = (props) => {
 		setPlaybackOptions(null);
 		setIsResume(false);
 		setPanelHistory(prev => (prev[prev.length - 1] === PANELS.LIVETV ? prev.slice(0, -1) : prev));
-		setPanelIndex(PANELS.LIVETV);
-	}, []);
+		showPanel(PANELS.LIVETV);
+	}, [showPanel]);
 
 	const handleOpenSearch = useCallback(() => {
 		navigateTo(PANELS.SEARCH);
@@ -1183,16 +1201,38 @@ const AppContent = (props) => {
 	}, [pinCodeError]);
 
 	const handlePinSubmit = useCallback(() => {
-		if (pinCodeInput === configuredPin) {
+		const refocus = () => Spotlight.focus('[data-spotlight-id="app-pin-input"]');
+
+		// Asked before the guess is looked at, so waiting is the only way through and reopening
+		// the gate hands back no fresh guesses.
+		const waiting = lockoutRemaining(settings, SIGN_IN_PIN);
+		if (waiting > 0) {
+			setPinCodeInput('');
+			setPinCodeError(tooManyAttempts(waiting));
+			refocus();
+			return;
+		}
+
+		if (pinMatches(pinCodeInput, storedPin)) {
 			setIsPinUnlocked(true);
 			setPinCodeInput('');
 			setPinCodeError('');
+			// Store it as a hash from here on, and let a correct PIN clear the count. There is no
+			// way to reset a forgotten one on a television, so a lockout that outlived the right
+			// PIN would be a trap.
+			updateSettings({
+				pinCodeHash: settings.pinCodeHash || hashPin(pinCodeInput),
+				...clearedLockout(SIGN_IN_PIN)
+			});
 			return;
 		}
+
+		const {wait, changes} = registerFailedAttempt(settings, SIGN_IN_PIN);
+		updateSettings(changes);
 		setPinCodeInput('');
-		setPinCodeError($L('Incorrect PIN'));
-		Spotlight.focus('[data-spotlight-id="app-pin-input"]');
-	}, [pinCodeInput, configuredPin]);
+		setPinCodeError(wait > 0 ? tooManyAttempts(wait) : $L('Incorrect PIN'));
+		refocus();
+	}, [pinCodeInput, storedPin, settings, updateSettings]);
 
 	const handlePinInputKeyDown = useCallback((e) => {
 		const code = e.keyCode || e.which;

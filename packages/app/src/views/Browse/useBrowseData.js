@@ -1,4 +1,7 @@
 import {useCallback, useEffect, useMemo, useReducer, useRef} from 'react';
+import {retainPermitted} from '../../services/libraryScope';
+import {isKidsMode} from '../../utils/kidsMode';
+import {isLiveTvLibrary, librariesForNav} from '../../utils/liveTvLibrary';
 import $L from '@enact/i18n/$L';
 
 import {getLogoUrl} from '../../utils/helpers';
@@ -42,7 +45,9 @@ const useBrowseData = ({
 	const fetchFreshFeaturedItems = useCallback(async (fallbackItems = null) => {
 		const s = settingsRef.current;
 		const sourceType = s.mediaBarSourceType || 'library';
-		const libraryIds = s.mediaBarLibraryIds || [];
+		// The saved picks can name a library access has since been revoked for, so what the policy
+		// no longer allows is dropped before they are trusted.
+		const libraryIds = await retainPermitted(api, s.mediaBarLibraryIds || []);
 		const collectionIds = s.mediaBarCollectionIds || [];
 		const hasSourceFilter = (sourceType === 'collection' && collectionIds.length > 0) || libraryIds.length > 0;
 
@@ -332,7 +337,8 @@ const useBrowseData = ({
 				}
 
 				if (libs.length > 0) {
-					const libraryItems = libs.map(lib => ({
+					// Kids Mode sends the guide back home, so leaving its tile here would be a dead end.
+					const libraryItems = librariesForNav(libs, false, {hideLiveTv: isKidsMode(settings)}).map(lib => ({
 						...lib,
 						Type: 'CollectionFolder',
 						isLibraryTile: true
@@ -393,6 +399,10 @@ const useBrowseData = ({
 
 				const eligibleLibraries = libs.filter(lib => {
 					if (EXCLUDED_COLLECTION_TYPES.includes(lib.CollectionType?.toLowerCase())) {
+						return false;
+					}
+					// Its row is dropped when the rows are built, so there is nothing to ask it for.
+					if (isKidsMode(settings) && isLiveTvLibrary(lib)) {
 						return false;
 					}
 					if (latestItemsExcludes.includes(lib.Id)) {

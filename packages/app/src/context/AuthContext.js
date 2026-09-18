@@ -5,6 +5,7 @@ import {initStorage, getFromStorage, saveToStorage, removeFromStorage} from '../
 import * as multiServerManager from '../services/multiServerManager';
 import {clearImageCache} from '../services/imageProxy';
 import {clearAnimeMarkerCache} from '../services/animeMarkersApi';
+import {resetLibraryScope} from '../services/libraryScope';
 
 import {clearProxiedImageCache} from '../hooks/useProxiedImage';
 import {parseUrl} from '../utils/urlCompat';
@@ -34,6 +35,8 @@ const clearAllCaches = () => {
 	// Verdicts are keyed by bare item id, so they would otherwise follow the user onto
 	// the next server and label its items from the previous one.
 	clearAnimeMarkerCache();
+	// The policy and the hidden library list belong to the account that just left.
+	resetLibraryScope();
 	console.log('[AuthContext] All caches cleared');
 };
 

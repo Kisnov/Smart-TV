@@ -1,4 +1,5 @@
 import {Fragment, useState, useCallback, useEffect} from 'react';
+import {isKidsMode, kidsModeButtons} from '../../utils/kidsMode';
 import $L from '@enact/i18n/$L';
 
 import {arrange, seerrOnlyRow, countSplit, applyButtonLimit, DETAIL_ORDER_KEY, DETAIL_HIDDEN_KEY} from '../../utils/buttonLayout';
@@ -276,7 +277,7 @@ const DetailActionButtons = ({
 	];
 	const rowButtons = seerrOnly ? seerrOnlyRow(offered) : offered;
 	const customizable = arrange(
-		rowButtons.filter((btn) => btn.when),
+		kidsModeButtons(rowButtons.filter((btn) => btn.when), isKidsMode(settings)),
 		{order: settings[DETAIL_ORDER_KEY], hidden: settings[DETAIL_HIDDEN_KEY]}
 	);
 

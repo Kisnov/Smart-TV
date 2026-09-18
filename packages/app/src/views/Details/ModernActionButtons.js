@@ -1,4 +1,5 @@
 import {Fragment, useState, useCallback, useEffect} from 'react';
+import {isKidsMode, kidsModeButtons} from '../../utils/kidsMode';
 import $L from '@enact/i18n/$L';
 import Spotlight from '@enact/spotlight';
 import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDecorator';
@@ -108,7 +109,7 @@ const ModernActionButtons = (props) => {
 	const offered = detailActionCatalogue(props);
 	const rowButtons = seerrOnly ? seerrOnlyRow(offered) : offered;
 	const customizable = arrange(
-		rowButtons.filter((btn) => btn.when),
+		kidsModeButtons(rowButtons.filter((btn) => btn.when), isKidsMode(settings)),
 		{order: settings[DETAIL_ORDER_KEY], hidden: settings[DETAIL_HIDDEN_KEY]}
 	);
 

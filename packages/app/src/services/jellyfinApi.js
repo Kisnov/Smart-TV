@@ -825,7 +825,15 @@ export const api = {
 		request('/Library/VirtualFolders'),
 
 	checkWriteAccess: () =>
-		request('/Moonfin/Libraries/CheckWriteAccess')
+		request('/Moonfin/Libraries/CheckWriteAccess'),
+
+	// The same shape createApiForServer answers with, so anything holding a per server cache can
+	// tell the two apart without knowing which kind it was handed.
+	getServerInfo: () => ({
+		serverUrl: currentServer,
+		accessToken,
+		userId: currentUser
+	})
 };
 
 /**

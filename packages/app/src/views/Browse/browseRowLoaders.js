@@ -2,6 +2,7 @@
 // straight to appendRows, so a slow one only holds up its own row rather than the screen.
 
 import $L from '@enact/i18n/$L';
+import {scopedGetItems} from '../../services/libraryScope';
 import {genericCollectionLabel, mergeRecentRows} from '../../utils/mergeRecentRows';
 import {latestMediaFetchLimitForCollection, normalizeLatestMediaItems} from '../../utils/latestMediaRowNormalizer';
 
@@ -205,7 +206,14 @@ const loadCollections = async (ctx) => {
 	const {api, appendRows, collectionsSortBy, collectionsSortOrder, settings} = ctx;
 	if (!settings.displayCollectionsRows) return;
 	try {
-		const collectionsResult = await api.getCollections(20, collectionsSortBy, collectionsSortOrder).catch(() => null);
+		const collectionsResult = await scopedGetItems(api, {
+			IncludeItemTypes: 'BoxSet',
+			Recursive: true,
+			SortBy: collectionsSortBy,
+			SortOrder: collectionsSortOrder,
+			Limit: 20,
+			Fields: `${HOME_ROW_ITEM_FIELDS},DateCreated,PremiereDate,CommunityRating,CriticRating,RunTimeTicks`
+		}).catch(() => null);
 		if (collectionsResult?.Items?.length > 0) {
 			appendRows([{
 				id: 'collections',
@@ -244,7 +252,7 @@ const loadFavorites = async (ctx) => {
 	try {
 		const favoriteResults = await Promise.all(
 			FAVORITE_ROW_CONFIGS.map((rowConfig) =>
-				api.getItems({
+				scopedGetItems(api, {
 					IncludeItemTypes: rowConfig.includeItemTypes,
 					Filters: 'IsFavorite',
 					SortBy: favoriteSortBy,
@@ -384,8 +392,8 @@ const loadPlaylistsAndMusic = async (ctx) => {
 	try {
 		const [playlistsResult, audioArtistsResult, audioAlbumsResult, audioPlaylistsResult, resumeAudioResult, recordingsResult] = await Promise.all([
 			settings.displayPlaylistsRows ? api.getPlaylists(playlistsSortBy, playlistsSortOrder).catch(() => null) : Promise.resolve(null),
-			audioArtistsEnabled ? api.getAlbumArtists({Limit: 20, SortBy: audioRowsSortBy, SortOrder: audioRowsSortOrder, Fields: HOME_ROW_ITEM_FIELDS}).catch(() => null) : Promise.resolve(null),
-			audioAlbumsEnabled ? api.getItems({IncludeItemTypes: 'MusicAlbum', Recursive: true, SortBy: audioRowsSortBy, SortOrder: audioRowsSortOrder, Limit: 20, Fields: HOME_ROW_ITEM_FIELDS}).catch(() => null) : Promise.resolve(null),
+			audioArtistsEnabled ? scopedGetItems(api, {IncludeItemTypes: 'MusicArtist', Limit: 20, SortBy: audioRowsSortBy, SortOrder: audioRowsSortOrder, Fields: HOME_ROW_ITEM_FIELDS}, {via: (params) => api.getAlbumArtists(params)}).catch(() => null) : Promise.resolve(null),
+			audioAlbumsEnabled ? scopedGetItems(api, {IncludeItemTypes: 'MusicAlbum', Recursive: true, SortBy: audioRowsSortBy, SortOrder: audioRowsSortOrder, Limit: 20, Fields: HOME_ROW_ITEM_FIELDS}).catch(() => null) : Promise.resolve(null),
 			audioPlaylistsEnabled ? api.getPlaylists(audioRowsSortBy, audioRowsSortOrder).catch(() => null) : Promise.resolve(null),
 			resumeAudioEnabled ? api.getResumeAudioItems(20).catch(() => null) : Promise.resolve(null),
 			recordingsEnabled ? api.getLiveTvRecordings().catch(() => null) : Promise.resolve(null)

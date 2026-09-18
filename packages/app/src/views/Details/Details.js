@@ -1,4 +1,5 @@
 import {useState, useEffect, useCallback, useRef, useMemo} from 'react';
+import {isKidsMode} from '../../utils/kidsMode';
 import $L from '@enact/i18n/$L';
 import Spotlight from '@enact/spotlight';
 
@@ -471,8 +472,11 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		});
 	}, [item, onPlay, buildPlaybackOptions, closeModal, advancedResumeRef]);
 
-	const playLongPress = useLongPress(supportsStreamSelection ? modals.handleAdvancedPlay : null, handlePlay);
-	const resumeLongPress = useLongPress(supportsStreamSelection ? modals.handleAdvancedResume : null, handleResume);
+	// Transcode overrides and the external player handoff should not be a long press away in Kids
+	// Mode. Gated at the source so both entry points are covered, and the button keeps its tap.
+	const offersStreamOptions = supportsStreamSelection && !isKidsMode(settings);
+	const playLongPress = useLongPress(offersStreamOptions ? modals.handleAdvancedPlay : null, handlePlay);
+	const resumeLongPress = useLongPress(offersStreamOptions ? modals.handleAdvancedResume : null, handleResume);
 
 	const handleSelectAudio = useCallback((e) => {
 		const index = parseInt(e.currentTarget.dataset.index, 10);

@@ -138,6 +138,7 @@ const pluginFlag = (flag, yes, no) => {
 export const SETTINGS_SCHEMA = [
 	{
 		id: 'accountSecurity',
+		when: (ctx) => !ctx.settings.kidsModeEnabled,
 		label: () => $L('Account & Security'),
 		description: () => $L('Authentication, PIN code, and parental controls'),
 		icon: 'lock',
@@ -156,7 +157,7 @@ export const SETTINGS_SCHEMA = [
 						kind: KIND.NAV,
 						id: 'pinCode',
 						label: () => $L('PIN Code'),
-						desc: (ctx) => (typeof ctx.settings.pinCode === 'string' && /^\d{4}$/.test(ctx.settings.pinCode)
+						desc: (ctx) => (ctx.settings.pinCodeHash
 							? $L('Configured 4-digit PIN')
 							: $L('Default PIN: 0000')),
 						icon: 'pin',
@@ -166,6 +167,16 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.OPTION, key: 'uiLanguage', label: () => $L('Interface Language'), options: getUiLanguageOptions, fallback: () => 'English (US)', icon: 'language'},
 					{kind: KIND.OPTION, key: 'serverSortBy', label: () => $L('Sort Servers By'), options: getServerSortOptions, fallback: () => $L('Server name'), icon: 'swap_horiz'},
 					{kind: KIND.SECTION, id: 'privacySafety', label: () => $L('PRIVACY & SAFETY')},
+					{
+						kind: KIND.NAV,
+						id: 'kidsMode',
+						label: () => $L('Kids Mode'),
+						desc: () => $L('Simplify the app and lock the way out with a PIN'),
+						icon: 'child_care',
+						keywords: () => ['kids', 'child', 'children', 'simple', 'lock', 'pin'],
+						when: (ctx) => !ctx.settings.kidsModeEnabled,
+						action: (ctx) => ctx.actions.openKidsMode()
+					},
 					{
 						kind: KIND.NAV,
 						id: 'parentalControls',
@@ -195,6 +206,7 @@ export const SETTINGS_SCHEMA = [
 	},
 	{
 		id: 'personalization',
+		when: (ctx) => !ctx.settings.kidsModeEnabled,
 		label: () => $L('Personalization'),
 		description: () => $L('Theme, navigation, home rows, and library visibility'),
 		icon: 'palette',
@@ -545,6 +557,7 @@ export const SETTINGS_SCHEMA = [
 	},
 	{
 		id: 'playbackSyncPlay',
+		when: (ctx) => !ctx.settings.kidsModeEnabled,
 		label: () => $L('Playback & SyncPlay'),
 		description: () => $L('Audio/video settings, subtitles, and SyncPlay controls'),
 		icon: 'play_circle',
@@ -739,6 +752,7 @@ export const SETTINGS_SCHEMA = [
 	},
 	{
 		id: 'integrations',
+		when: (ctx) => !ctx.settings.kidsModeEnabled,
 		label: () => $L('Integrations'),
 		description: () => $L('Plugin sync, Seerr, ratings, and more'),
 		icon: 'hub',
@@ -875,6 +889,7 @@ export const SETTINGS_SCHEMA = [
 	},
 	{
 		id: 'about',
+		when: (ctx) => !ctx.settings.kidsModeEnabled,
 		label: () => $L('About'),
 		description: () => $L('App version, device info, and diagnostics'),
 		icon: 'info',
@@ -988,6 +1003,25 @@ export const SETTINGS_SCHEMA = [
 					},
 					{kind: KIND.CUSTOM, render: 'aboutDataActions'}
 				]
+			}
+		]
+	},
+	// The one category Kids Mode leaves standing. Hiding settings outright would leave no way back,
+	// and a hidden gesture is worse than an obvious tile.
+	{
+		id: 'kidsMode',
+		label: () => $L('Exit Kids Mode'),
+		description: () => $L('Enter your PIN to restore the full app'),
+		icon: 'lock_open',
+		when: (ctx) => ctx.settings.kidsModeEnabled,
+		subcategories: [
+			{
+				id: 'kidsModeExit',
+				icon: 'lock_open',
+				label: () => $L('Exit Kids Mode'),
+				description: () => $L('Enter your PIN to restore the full app'),
+				opensView: 'kidsModeExit',
+				rows: []
 			}
 		]
 	}

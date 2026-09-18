@@ -6,6 +6,7 @@ import Spotlight from '@enact/spotlight';
 import {isPaused} from '@enact/spotlight/Pause';
 import {useAuth} from '../../context/AuthContext';
 import {pointerHover} from '../../utils/focusScroll';
+import {isKidsMode} from '../../utils/kidsMode';
 import {useSettings} from '../../context/SettingsContext';
 import {useSeerr} from '../../context/SeerrContext';
 import * as connectionPool from '../../services/connectionPool';
@@ -203,7 +204,9 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 			}
 
 			// Seerr and Games load after the library results so the rows appear first.
-			if (seerrEnabled && seerrApi && !isStudioQuery) {
+			// Gated at the fetch rather than at the render, since the tab list and every tab index
+			// are worked out from whether there are any results.
+			if (seerrEnabled && seerrApi && !isStudioQuery && !isKidsMode(settings)) {
 				seerrApi.search(q).then((res) => {
 					if (requestId !== requestIdRef.current) return;
 					const filtered = (res.results || []).filter((r) => r.mediaType !== 'person').slice(0, SEERR_CAP);
@@ -230,7 +233,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 			setGameResults([]);
 			setIsLoading(false);
 		}
-	}, [api, seerrEnabled, seerrApi, unifiedMode, focusAllTab, rememberSearch]);
+	}, [api, seerrEnabled, seerrApi, unifiedMode, focusAllTab, rememberSearch, settings]);
 
 	const handleInputChange = useCallback((e) => {
 		let value = e.target.value;

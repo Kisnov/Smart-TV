@@ -31,3 +31,28 @@ describe('librariesForNav', () => {
 		expect(librariesForNav([], true)).toEqual([]);
 	});
 });
+
+describe('librariesForNav in Kids Mode', () => {
+	const libs = [
+		{Id: 'movies', CollectionType: 'movies'},
+		{Id: 'guide', CollectionType: 'livetv'}
+	];
+
+	test('drops the library even with no button to replace it', () => {
+		expect(librariesForNav(libs, false, {hideLiveTv: true}).map((l) => l.Id)).toEqual(['movies']);
+	});
+
+	test('drops it however the server spells the type', () => {
+		const shouty = [{Id: 'guide', CollectionType: 'LiveTV'}];
+		expect(librariesForNav(shouty, false, {hideLiveTv: true})).toEqual([]);
+	});
+
+	test('leaves a server with no Live TV library alone', () => {
+		const onlyMovies = [{Id: 'movies', CollectionType: 'movies'}];
+		expect(librariesForNav(onlyMovies, false, {hideLiveTv: true})).toEqual(onlyMovies);
+	});
+
+	test('keeps the library when neither the button nor the mode takes it', () => {
+		expect(librariesForNav(libs, false)).toEqual(libs);
+	});
+});

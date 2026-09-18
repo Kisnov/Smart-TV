@@ -1,4 +1,5 @@
 import {useState, useEffect, useCallback, useRef, useMemo} from 'react';
+import {isKidsMode, kidsModeRows} from '../../utils/kidsMode';
 import Spotlight from '@enact/spotlight';
 import $L from '@enact/i18n/$L';
 import {useAuth} from '../../context/AuthContext';
@@ -50,6 +51,20 @@ const Browse = ({
 }) => {
 	const {api, serverUrl, accessToken, hasMultipleServers, user} = useAuth();
 	const {settings, activeTheme, loaded: settingsLoaded} = useSettings();
+	// The one place the saved rows are read, so filtering here covers both what gets fetched and
+	// what gets drawn.
+	const kidsMode = isKidsMode(settings);
+
+	const homeRowsConfig = useMemo(() => {
+		return kidsModeRows([...(settings.homeRows || [])].sort((a, b) => a.order - b.order), kidsMode);
+	}, [settings.homeRows, kidsMode]);
+
+	// Plugin rows go too. A plugin renders whatever it was handed, which is not something this
+	// mode is in any position to vouch for.
+	const pluginSectionsConfig = useMemo(() => {
+		if (kidsMode) return [];
+		return [...(settings.pluginSections || [])].sort((a, b) => a.order - b.order);
+	}, [settings.pluginSections, kidsMode]);
 	const {isEnabled: seerrEnabled, isAuthenticated: seerrAuthenticated, user: seerrUser, pluginInfo} = useSeerr();
 	const recommendationsSupported = pluginInfo?.recommendationsSupported === true;
 	const seerrUserId = seerrUser?.seerrUserId;
@@ -57,9 +72,9 @@ const Browse = ({
 		seerrEnabled,
 		seerrAuthenticated,
 		seerrUserId,
-		homeRows: settings.homeRows
+		homeRows: homeRowsConfig
 	});
-	const externalRows = useExternalRows({settings});
+	const externalRows = useExternalRows({settings, homeRows: homeRowsConfig, kidsMode});
 	const unifiedMode = settings.unifiedLibraryMode && hasMultipleServers;
 	const isLegacy = typeof document !== 'undefined' && (' ' + document.documentElement.className + ' ').indexOf(' legacy ') >= 0;
 	const [focusedItemForBackdrop, setFocusedItemForBackdrop] = useState(null);
@@ -126,14 +141,6 @@ const Browse = ({
 		? Math.max(0, Math.min(Math.max((settings.modernHomeRowsPadding ?? 460) - 400, -40), 200) - 34)
 		: Math.max(0, settings.classicHomeRowsPadding ?? 30);
 
-	const homeRowsConfig = useMemo(() => {
-		return [...(settings.homeRows || [])].sort((a, b) => a.order - b.order);
-	}, [settings.homeRows]);
-
-	const pluginSectionsConfig = useMemo(() => {
-		return [...(settings.pluginSections || [])].sort((a, b) => a.order - b.order);
-	}, [settings.pluginSections]);
-
 	const {
 		isLoading, browseMode, allRowData, featuredItems,
 		setBrowseMode, fetchFreshFeaturedItems, refreshVolatileData
@@ -170,8 +177,9 @@ const Browse = ({
 		imdbMostPopularTvShowsEnabled: settings.imdbMostPopularTvShowsEnabled,
 		imdbLowestRatedMoviesEnabled: settings.imdbLowestRatedMoviesEnabled,
 		imdbTopEnglishMoviesEnabled: settings.imdbTopEnglishMoviesEnabled,
-		blockedRatings: settings.blockedRatings
-	}), [settings.mergeContinueWatchingNextUp, settings.hiddenContinueWatchingItems, settings.hiddenNextUpSeries,
+		blockedRatings: settings.blockedRatings,
+		kidsModeEnabled: settings.kidsModeEnabled
+	}), [settings.kidsModeEnabled, settings.mergeContinueWatchingNextUp, settings.hiddenContinueWatchingItems, settings.hiddenNextUpSeries,
 		settings.displayFavoritesRows, settings.displayCollectionsRows, settings.displayGenresRows, settings.displayPlaylistsRows,
 		settings.displayAudioRows, settings.displayStudiosRows, settings.displayRewatchRow,
 		settings.imdbTop250MoviesEnabled, settings.imdbTop250TvShowsEnabled, settings.imdbMostPopularMoviesEnabled,

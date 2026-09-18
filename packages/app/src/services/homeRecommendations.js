@@ -1,4 +1,6 @@
 import {HOME_ROW_ITEM_FIELDS} from './jellyfinApi';
+import {scopedGetItems, searchLibraries, visibleLibraryIds} from './libraryScope';
+import {byLastPlayedDesc} from '../utils/libraryScopeRules';
 import seerrApi from './seerrApi';
 import {normalizeMediaItem} from '../utils/seerrHomeRows';
 
@@ -205,34 +207,41 @@ export async function getRecommendations(api, seed, {includeWatched, candidateIt
 		}
 	};
 
+	// Narrowed once for the whole pass rather than per query. A library the user hid should not
+	// feed a recommendation any more than it should fill a row.
+	const parentIds = await visibleLibraryIds(api, types);
+	const askLibraries = (params) => searchLibraries(parentIds, (parentId) =>
+		api.getItems(parentId ? {...params, ParentId: parentId} : params));
+	const gather = (responses) => responses.forEach((res) => addItems(res && res.Items));
+
 	const queries = [];
 	if (genres.length) {
-		queries.push(api.getItems({
+		queries.push(askLibraries({
 			IncludeItemTypes: types,
 			Genres: genres.join('|'),
 			Recursive: true,
 			Limit: 40,
 			Fields: CANDIDATE_FIELDS
-		}).then((res) => addItems(res && res.Items)).catch(() => {}));
+		}).then(gather).catch(() => {}));
 	}
 	if (tags.length) {
-		queries.push(api.getItems({
+		queries.push(askLibraries({
 			IncludeItemTypes: types,
 			Tags: tags.join('|'),
 			Recursive: true,
 			Limit: 40,
 			Fields: CANDIDATE_FIELDS
-		}).then((res) => addItems(res && res.Items)).catch(() => {}));
+		}).then(gather).catch(() => {}));
 	}
 	const allPersonIds = [...idsOf(people, 'Director'), ...idsOf(people, 'Writer'), ...idsOf(people, 'Actor').slice(0, 10)];
 	if (allPersonIds.length) {
-		queries.push(api.getItems({
+		queries.push(askLibraries({
 			IncludeItemTypes: types,
 			PersonIds: allPersonIds.join(','),
 			Recursive: true,
 			Limit: 40,
 			Fields: CANDIDATE_FIELDS
-		}).then((res) => addItems(res && res.Items)).catch(() => {}));
+		}).then(gather).catch(() => {}));
 	}
 	await Promise.all(queries);
 
@@ -247,7 +256,7 @@ export async function getRecommendations(api, seed, {includeWatched, candidateIt
 	// Not enough matches, so pull recent titles in the same genres as filler.
 	if (scored.length < (limit || 20)) {
 		try {
-			const res = await api.getItems({
+			const res = await scopedGetItems(api, {
 				IncludeItemTypes: types,
 				Genres: genres.length ? genres.join('|') : undefined,
 				Recursive: true,
@@ -369,7 +378,7 @@ async function resolveSeedEpisodes(api, rawItems) {
 async function loadSeeds(api, sourceItem, sourceType) {
 	const includeItemTypes = seedItemTypes(sourceItem, sourceType);
 	if (sourceItem === 'favorites') {
-		const favRes = await api.getItems({
+		const favRes = await scopedGetItems(api, {
 			Filters: 'IsPlayed,IsFavorite',
 			Recursive: true,
 			IncludeItemTypes: includeItemTypes,
@@ -379,7 +388,7 @@ async function loadSeeds(api, sourceItem, sourceType) {
 		return (favRes && favRes.Items) || [];
 	}
 	if (sourceItem === 'random') {
-		const randomRes = await api.getItems({
+		const randomRes = await scopedGetItems(api, {
 			SortBy: 'Random',
 			Filters: 'IsPlayed',
 			Recursive: true,
@@ -390,7 +399,8 @@ async function loadSeeds(api, sourceItem, sourceType) {
 		return (randomRes && randomRes.Items) || [];
 	}
 
-	const res = await api.getItems({
+	// DatePlayed has no rule the merge can reproduce, so the order is handed over explicitly.
+	const res = await scopedGetItems(api, {
 		SortBy: 'DatePlayed',
 		SortOrder: 'Descending',
 		Filters: 'IsPlayed',
@@ -398,7 +408,7 @@ async function loadSeeds(api, sourceItem, sourceType) {
 		IncludeItemTypes: includeItemTypes,
 		Limit: 30,
 		Fields: SEED_FIELDS
-	});
+	}, {merge: byLastPlayedDesc});
 	return resolveSeedEpisodes(api, (res && res.Items) || []);
 }
 
@@ -630,7 +640,7 @@ export async function loadRewatchItems(api, settings) {
 
 	if (includeMovies) {
 		try {
-			const res = await api.getItems({
+			const res = await scopedGetItems(api, {
 				IncludeItemTypes: 'Movie',
 				Filters: 'IsPlayed',
 				SortBy: 'DatePlayed',
@@ -638,7 +648,7 @@ export async function loadRewatchItems(api, settings) {
 				Recursive: true,
 				Limit: 50,
 				Fields: `${HOME_ROW_ITEM_FIELDS},UserData`
-			});
+			}, {merge: byLastPlayedDesc});
 			for (const movie of (res && res.Items) || []) watchedItems.push(movie);
 		} catch (_error) {
 			// Skip movies on failure.
@@ -647,7 +657,7 @@ export async function loadRewatchItems(api, settings) {
 
 	if (includeShows) {
 		try {
-			const res = await api.getItems({
+			const res = await scopedGetItems(api, {
 				IncludeItemTypes: 'Episode',
 				Filters: 'IsPlayed',
 				SortBy: 'DatePlayed',
@@ -655,7 +665,7 @@ export async function loadRewatchItems(api, settings) {
 				Recursive: true,
 				Limit: 100,
 				Fields: 'SeriesId,UserData'
-			});
+			}, {merge: byLastPlayedDesc});
 			const episodes = (res && res.Items) || [];
 			const seriesIds = [];
 			for (const ep of episodes) {
@@ -684,7 +694,7 @@ export async function loadRewatchItems(api, settings) {
 
 	if (includeCollections) {
 		try {
-			const res = await api.getItems({
+			const res = await scopedGetItems(api, {
 				IncludeItemTypes: 'BoxSet',
 				Recursive: true,
 				Limit: 50,

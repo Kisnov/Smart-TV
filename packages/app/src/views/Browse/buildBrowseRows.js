@@ -3,6 +3,8 @@
 // this decides which survive, what they are called now, and what order they sit in.
 
 import $L from '@enact/i18n/$L';
+import {isKidsMode} from '../../utils/kidsMode';
+import {isLiveTvLibrary} from '../../utils/liveTvLibrary';
 
 import {SERVER_TO_TV_ROW, TV_TO_SERVER_ROW} from '../../utils/homeLayout';
 import {FAVORITE_ROW_CONFIGS, isHiddenByMap, parseHiddenMap} from './browseFilters';
@@ -66,8 +68,15 @@ const buildRowOrder = (homeRowsConfig, pluginSectionsConfig) => {
 	return rowOrderMap;
 };
 
+// Every per library latest row rides on the one latest-media id, so a Live TV library would keep
+// its row even in Kids Mode, which is the one thing the mode takes away everywhere else.
+const isLiveTvRow = (row) =>
+	Boolean(row.isLatestRow) &&
+	(row.id === 'latest-merged-livetv' || (row.library && isLiveTvLibrary(row.library)));
+
 const isRowEnabled = (row, {enabledRowIdsSet, enabledPluginIds, settings}) => {
 	if (row.isPluginRow) return enabledPluginIds.includes(row.id);
+	if (isKidsMode(settings) && isLiveTvRow(row)) return false;
 	if (!isRowEnabledBySetting(row.id, settings)) return false;
 	if (row.isLatestRow) return enabledRowIdsSet.has('latest-media') || enabledRowIdsSet.has('latestmedia');
 	if (row.isRecentlyReleasedRow) return enabledRowIdsSet.has('recently-released') || enabledRowIdsSet.has('recentlyreleased');

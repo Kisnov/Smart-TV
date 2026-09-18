@@ -1,6 +1,7 @@
 import {useCallback, useState} from 'react';
 
 import connectionPool from '../../services/connectionPool';
+import {resetLibraryScope} from '../../services/libraryScope';
 
 // Which libraries the viewer has hidden. This lives on the Jellyfin user configuration
 // rather than in app settings, and in unified mode it has to be written to every server.
@@ -72,6 +73,9 @@ const useLibraryVisibility = ({api, settings, hasMultipleServers, pushView, popV
 			setAllLibraries([]);
 			setHiddenLibraries([]);
 			setServerConfigs([]);
+			// The rows narrow themselves against this list, so it has to be re-read before the
+			// refresh rather than on the next launch.
+			resetLibraryScope();
 			onLibrariesChanged?.();
 			window.dispatchEvent(new window.Event('moonfin:browseRefresh'));
 		} catch (err) {

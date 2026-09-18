@@ -169,6 +169,15 @@ export const defaultSettings = {
 	alwaysAuthenticate: false,
 	pinCodeProtection: false,
 	pinCode: '0000',
+	pinCodeHash: '',
+	pinFailedAttempts: 0,
+	pinLockedUntil: 0,
+	// Strips the app back to what a child needs and locks the way out behind a PIN. Deliberately
+	// absent from SYNCABLE_KEYS, so it stays on the television it was turned on for.
+	kidsModeEnabled: false,
+	kidsPinHash: '',
+	kidsPinFailedAttempts: 0,
+	kidsPinLockedUntil: 0,
 	serverSortBy: 'name',
 	exitConfirmation: true,
 	updateNotificationsEnabled: true,

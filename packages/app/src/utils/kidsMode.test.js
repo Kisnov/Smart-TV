@@ -1,0 +1,172 @@
+import {
+	isKidsMode, kidsModeRows, kidsModeButtons, blockedPanels, allowedPanel,
+	KIDS_MODE_HIDDEN_BUTTONS, kidsModeNeedsPin
+} from './kidsMode';
+
+const row = (id, enabled = true, order = 0) => ({id, name: id, enabled, order});
+
+describe('the flag', () => {
+	test('is off unless it is turned on', () => {
+		expect(isKidsMode({})).toBe(false);
+		expect(isKidsMode(undefined)).toBe(false);
+		expect(isKidsMode({kidsModeEnabled: false})).toBe(false);
+		expect(isKidsMode({kidsModeEnabled: true})).toBe(true);
+	});
+
+	// Settings load asynchronously, so this is read before the blob exists. Anything other than a
+	// definite yes has to read as off rather than as truthy.
+	test('is off while the settings are still loading', () => {
+		expect(isKidsMode({kidsModeEnabled: undefined})).toBe(false);
+		expect(isKidsMode({kidsModeEnabled: 'true'})).toBe(false);
+	});
+});
+
+describe('home rows', () => {
+	const saved = [
+		row('library-tiles', true, 1),
+		row('latest-media', true, 2),
+		row('resume', true, 3),
+		row('livetv', true, 4),
+		row('seerr_trending', true, 5),
+		row('favorites-movies', true, 6)
+	];
+
+	test('keeps every row when the mode is off', () => {
+		expect(kidsModeRows(saved, false)).toBe(saved);
+	});
+
+	test('keeps only the libraries and what arrived lately', () => {
+		expect(kidsModeRows(saved, true).map((r) => r.id)).toEqual(['library-tiles', 'latest-media']);
+	});
+
+	test('drops the request and live tv rows', () => {
+		const ids = kidsModeRows(saved, true).map((r) => r.id);
+		expect(ids).not.toContain('livetv');
+		expect(ids).not.toContain('seerr_trending');
+		expect(ids).not.toContain('resume');
+	});
+
+	// An allow list, so anything added later stays out until someone decides otherwise.
+	test('hides a row type nobody thought about', () => {
+		expect(kidsModeRows([row('something-new')], true).map((r) => r.id)).toEqual(['library-tiles']);
+	});
+
+	// Rows are drawn in order, not in list position, so switching it on is not enough on its own.
+	test('switches My Media on and puts it ahead of the rest', () => {
+		const rows = kidsModeRows([row('library-tiles', false, 4), row('latest-media', true, 2)], true);
+		const myMedia = rows.find((r) => r.id === 'library-tiles');
+
+		expect(rows.map((r) => r.id)).toEqual(['library-tiles', 'latest-media']);
+		expect(myMedia.enabled).toBe(true);
+		expect(myMedia.order).toBeLessThan(rows.find((r) => r.id === 'latest-media').order);
+	});
+
+	// It is the only way into a library once the navbar entry is gone, so it leads either way.
+	test('brings a library row the user had already enabled to the front too', () => {
+		const rows = kidsModeRows([row('latest-media', true, 2), row('library-tiles', true, 4)], true);
+		const myMedia = rows.find((r) => r.id === 'library-tiles');
+
+		expect(myMedia.order).toBe(-1);
+		expect(myMedia.order).toBeLessThan(rows.find((r) => r.id === 'latest-media').order);
+	});
+
+	test('adds My Media when the saved rows have no library row at all', () => {
+		const rows = kidsModeRows([row('latest-media', true)], true);
+		expect(rows[0]).toEqual({id: 'library-tiles', name: 'My Media', enabled: true, order: -1});
+		expect(rows.map((r) => r.id)).toEqual(['library-tiles', 'latest-media']);
+	});
+
+	test('never carries the same row twice', () => {
+		const rows = kidsModeRows([row('library-tiles', false, 4), row('librarybuttons', false, 62)], true);
+		expect(rows.map((r) => r.id)).toEqual(['library-tiles', 'librarybuttons']);
+		expect(rows[0].order).toBe(-1);
+	});
+
+	test('adds nothing when a library row is already there', () => {
+		expect(kidsModeRows([row('librarybuttons', true)], true).map((r) => r.id)).toEqual(['librarybuttons']);
+	});
+
+	test('the row it leads with is the one the user already had', () => {
+		const rows = kidsModeRows([row('latest-media', true, 2), row('librarybuttons', true, 62)], true);
+		expect(rows.map((r) => r.id)).toEqual(['latest-media', 'librarybuttons']);
+		expect(rows.find((r) => r.id === 'librarybuttons').order).toBe(-1);
+	});
+
+	test('the row it adds sorts ahead of the rest', () => {
+		const rows = kidsModeRows([row('latest-media', true, 2)], true);
+		expect(rows[0].order).toBe(-1);
+	});
+
+	test('does not rewrite the saved rows', () => {
+		const before = saved.map((r) => r.id);
+		kidsModeRows(saved, true);
+		expect(saved.map((r) => r.id)).toEqual(before);
+	});
+});
+
+describe('details buttons', () => {
+	const buttons = [
+		{id: 'play'}, {id: 'watched'}, {id: 'favorite'}, {id: 'shuffle'}, {id: 'trailer'},
+		{id: 'playlist'}, {id: 'collection'}, {id: 'goToSeries'}, {id: 'subtitles'},
+		...KIDS_MODE_HIDDEN_BUTTONS.map((id) => ({id}))
+	];
+
+	test('takes away everything it hides elsewhere', () => {
+		const left = kidsModeButtons(buttons, true).map((b) => b.id);
+		KIDS_MODE_HIDDEN_BUTTONS.forEach((id) => expect(left).not.toContain(id));
+	});
+
+	test('leaves the buttons a child still needs alone', () => {
+		const left = kidsModeButtons(buttons, true).map((b) => b.id);
+		expect(left).toEqual([
+			'play', 'watched', 'favorite', 'shuffle', 'trailer',
+			'playlist', 'collection', 'goToSeries', 'subtitles'
+		]);
+	});
+
+	test('the mode being on is what takes them away', () => {
+		expect(kidsModeButtons(buttons, false)).toBe(buttons);
+	});
+});
+
+describe('the panel guard', () => {
+	const PANELS = {
+		BROWSE: 1, LIBRARY: 3, SEARCH: 4, SETTINGS: 5, PLAYER: 6, FAVORITES: 7,
+		LIVETV: 10, SEERR_DISCOVER: 11, SEERR_REQUESTS: 12, RECORDINGS: 14,
+		SEERR_BROWSE: 15, SEERR_PERSON: 16, GAMES: 19
+	};
+	const blocked = blockedPanels(PANELS);
+
+	test('sends the live tv and request panels back home', () => {
+		[PANELS.LIVETV, PANELS.RECORDINGS, PANELS.SEERR_DISCOVER, PANELS.SEERR_REQUESTS,
+			PANELS.SEERR_BROWSE, PANELS.SEERR_PERSON].forEach((panel) => {
+			expect(allowedPanel(panel, blocked, PANELS.BROWSE)).toBe(PANELS.BROWSE);
+		});
+	});
+
+	test('leaves the panels a child still uses alone', () => {
+		[PANELS.BROWSE, PANELS.LIBRARY, PANELS.SEARCH, PANELS.SETTINGS, PANELS.PLAYER,
+			PANELS.FAVORITES, PANELS.GAMES].forEach((panel) => {
+			expect(allowedPanel(panel, blocked, PANELS.BROWSE)).toBe(panel);
+		});
+	});
+
+	test('skips a panel this client does not have', () => {
+		expect(blockedPanels({LIVETV: 10})).toEqual([10]);
+	});
+});
+
+describe('the way out', () => {
+	test('asks for the PIN that was set', () => {
+		expect(kidsModeNeedsPin({kidsModeEnabled: true, kidsPinHash: 'abc'})).toBe(true);
+	});
+
+	// Turning the mode on stores a PIN and turning it off clears both, so this should be
+	// unreachable. If it ever happens there is no code to check and no way to recover on a
+	// television, so the door has to open rather than lock for good.
+	test('opens without one when the mode is on but no PIN was kept', () => {
+		expect(kidsModeNeedsPin({kidsModeEnabled: true, kidsPinHash: ''})).toBe(false);
+		expect(kidsModeNeedsPin({kidsModeEnabled: true})).toBe(false);
+		expect(kidsModeNeedsPin(undefined)).toBe(false);
+	});
+});
