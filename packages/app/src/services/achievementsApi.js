@@ -3,14 +3,17 @@
 //
 // Nothing here throws. A server without the plugin answers 404 on every route, and a panel that
 // asked for everything at once and got nothing back wants an empty screen rather than a pile of
-// errors, so a failed call reads as no answer. Nothing here polls.
+// errors, so a failed call reads as no answer. Nothing here polls, and the login ping and the
+// quest reroll are the only things written, because they are the only parts the plugin expects a
+// client to drive.
 
 import {getServerUrl, getAuthHeader, getApiKey, getUserId, getServerType} from './jellyfinApi';
 import {legacyAuthHeader} from '../utils/serverRoutes';
 import {platformFetch} from './secureFetch';
 import {
-	isObject, parseSummary, parseRank, parseBadges, parseQuests,
-	parseLeaderboardEntry, parseRecap, parseLibraryCompletion
+	isObject, parseSummary, parseRank, parseBadges, parseQuests, parseRerolledQuests,
+	parseLeaderboardEntry, parseRecap, parseLibraryCompletion,
+	REROLLED, REROLL_ALREADY_USED, REROLL_FAILED
 } from '../utils/achievementsModel';
 
 const ROOT = 'Plugins/AchievementBadges';
@@ -34,20 +37,24 @@ const authHeaders = () => {
 // It is a Jellyfin plugin, so an Emby server never carries it and is never asked.
 const isJellyfin = () => getServerType() !== 'emby';
 
-const request = async (path, {method = 'GET'} = {}) => {
-	if (!getApiKey()) return null;
+// The status travels back with the body because the reroll is the one call that has to tell a
+// refusal from a fault. Everything else only wants what came back.
+const send = async (path, method = 'GET') => {
+	if (!getApiKey()) return {status: 0, data: null};
 	try {
 		const res = await platformFetch(`${base()}/${ROOT}/${path}`, {
 			method,
 			headers: {...authHeaders(), Accept: 'application/json'}
 		}, TIMEOUT_MS);
-		if (!res.ok) return null;
+		if (!res.ok) return {status: res.status, data: null};
 		const text = await res.text();
-		return text ? JSON.parse(text) : null;
+		return {status: res.status, data: text ? JSON.parse(text) : null};
 	} catch {
-		return null;
+		return {status: 0, data: null};
 	}
 };
+
+const request = async (path, method) => (await send(path, method)).data;
 
 const getMap = async (path) => {
 	const data = await request(path);
@@ -84,7 +91,19 @@ export const probe = async () => {
 export const sendLoginPing = () => {
 	const userId = getUserId();
 	if (!userId) return Promise.resolve(null);
-	return request(`users/${userId}/login-ping`, {method: 'POST'});
+	return request(`users/${userId}/login-ping`, 'POST');
+};
+
+// Swaps one quest set for a fresh one. The plugin answers 429 once that allowance is spent.
+export const rerollQuests = async ({weekly = false} = {}) => {
+	const userId = getUserId();
+	if (!userId) return {outcome: REROLL_FAILED};
+
+	const questSet = weekly ? 'weekly' : 'daily';
+	const {status, data} = await send(`users/${userId}/quests/${questSet}/reroll`, 'POST');
+	if (status === 429) return {outcome: REROLL_ALREADY_USED};
+	if (!isObject(data)) return {outcome: REROLL_FAILED};
+	return {outcome: REROLLED, ...parseRerolledQuests(data)};
 };
 
 export const fetchLeaderboard = async ({category = '', limit = 10} = {}) => {

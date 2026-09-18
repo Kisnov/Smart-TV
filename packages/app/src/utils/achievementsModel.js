@@ -151,14 +151,36 @@ export const parseQuest = (json) => {
 	};
 };
 
-const questList = (value) => (Array.isArray(value) ? value.filter(isObject).map(parseQuest) : []);
+// Reads either the quest arrays on the overview or the replacement list a reroll answers with,
+// which carry the same shape.
+const parseQuestList = (value) =>
+	(Array.isArray(value) ? value.filter(isObject).map(parseQuest) : []);
 
 export const parseQuests = (json) => {
 	if (!json) return null;
-	const daily = questList(json.Daily);
-	const weekly = questList(json.Weekly);
-	return {daily, weekly, isEmpty: daily.length === 0 && weekly.length === 0};
+	const daily = parseQuestList(json.Daily);
+	const weekly = parseQuestList(json.Weekly);
+	return {
+		daily,
+		weekly,
+		// The plugin grants one reroll per UTC day and one per ISO week, so these are only ever
+		// 1 or 0.
+		dailyRerollsLeft: asInt(json.DailyRerollsRemaining),
+		weeklyRerollsLeft: asInt(json.WeeklyRerollsRemaining),
+		isEmpty: daily.length === 0 && weekly.length === 0
+	};
 };
+
+// How a reroll attempt ended. A spent reroll is a refusal the panel reports plainly, not a fault.
+export const REROLLED = 'rerolled';
+export const REROLL_ALREADY_USED = 'alreadyUsed';
+export const REROLL_FAILED = 'failed';
+
+// The replacement set comes back with the answer, so a reroll needs no second fetch.
+export const parseRerolledQuests = (json) => ({
+	quests: parseQuestList(json.Quests),
+	rerollsLeft: asInt(json.RerollsRemaining)
+});
 
 // The overall board carries a score and a completion count. A category board carries one value
 // that means whatever the category is and leaves the rest out, so what is present decides which

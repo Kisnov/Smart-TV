@@ -1,7 +1,7 @@
 import {
 	groupBadges, leaderboardValue, parseBadge, parseLeaderboardEntry, parseLibraryCompletion,
-	parseQuest, parseQuests, parseRank, parseRecap, parseSummary, parseHexColor, rarityColor,
-	scoreForRarity
+	parseQuest, parseQuests, parseRank, parseRecap, parseRerolledQuests, parseSummary,
+	parseHexColor, rarityColor, scoreForRarity
 } from './achievementsModel';
 
 const badge = (over) => parseBadge({
@@ -127,6 +127,36 @@ describe('parseQuests', () => {
 
 	test('a finished quest is full however the counters read', () => {
 		expect(parseQuest({Completed: true, Current: 0, Target: 5}).progress).toBe(1);
+	});
+
+	test('carries what is left to reroll on each set', () => {
+		const quests = parseQuests({Daily: [], Weekly: [], DailyRerollsRemaining: 1, WeeklyRerollsRemaining: 0});
+		expect(quests.dailyRerollsLeft).toBe(1);
+		expect(quests.weeklyRerollsLeft).toBe(0);
+	});
+
+	// A plugin too old to report the allowance offers nothing rather than a free reroll.
+	test('an allowance the plugin never mentions is none', () => {
+		const quests = parseQuests({Daily: [], Weekly: []});
+		expect(quests.dailyRerollsLeft).toBe(0);
+		expect(quests.weeklyRerollsLeft).toBe(0);
+	});
+});
+
+describe('parseRerolledQuests', () => {
+	test('reads the replacement set and what is left, so nothing needs refetching', () => {
+		const result = parseRerolledQuests({
+			Quests: [{Id: 'd1', Title: 'A fresh day', Target: 2, Current: 0, Reward: 30}],
+			RerollsRemaining: 0
+		});
+		expect(result.quests).toHaveLength(1);
+		expect(result.quests[0].title).toBe('A fresh day');
+		expect(result.rerollsLeft).toBe(0);
+	});
+
+	test('an answer carrying no list is no quests rather than a crash', () => {
+		expect(parseRerolledQuests({}).quests).toEqual([]);
+		expect(parseRerolledQuests({}).rerollsLeft).toBe(0);
 	});
 });
 

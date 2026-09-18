@@ -2,10 +2,15 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import $L from '@enact/i18n/$L';
 
 import * as achievementsApi from '../../../services/achievementsApi';
-import {BADGE_FILTERS, groupBadges, leaderboardValue, parseHexColor, rarityColor} from '../../../utils/achievementsModel';
+import {
+	BADGE_FILTERS, groupBadges, leaderboardValue, parseHexColor, rarityColor,
+	REROLLED, REROLL_FAILED
+} from '../../../utils/achievementsModel';
 import {achievementIconPath} from './achievementIcons';
+import RerollDialog from './RerollDialog';
 import DetailsTabBar from '../../../components/DetailsTabBar/DetailsTabBar';
 import SettingsView from '../SettingsView';
+import {renderSettingsIcon} from '../settingsIcons';
 import {SectionTitle, NavRow} from '../settingsRows';
 import {SpottableDiv} from '../settingsSpottables';
 
@@ -346,22 +351,90 @@ const QuestRow = ({quest}) => (
 	</ReadOnlyRow>
 );
 
-export const AchievementsQuestsView = ({quests}) => (
-	<SettingsView spotlightId="achievements-quests-view">
-		{quests.daily.length > 0 && (
-			<>
-				<SectionTitle>{$L('Daily')}</SectionTitle>
-				{quests.daily.map((quest) => <QuestRow key={quest.id} quest={quest} />)}
-			</>
-		)}
-		{quests.weekly.length > 0 && (
-			<>
-				<SectionTitle>{$L('Weekly')}</SectionTitle>
-				{quests.weekly.map((quest) => <QuestRow key={quest.id} quest={quest} />)}
-			</>
-		)}
-	</SettingsView>
-);
+const RerollRow = ({weekly, rerollsLeft = 0, busy, onReroll}) => {
+	const handleClick = useCallback(() => onReroll(weekly), [onReroll, weekly]);
+	const spent = rerollsLeft <= 0;
+	const offered = !spent && !busy;
+
+	return (
+		<SpottableDiv
+			className={`${settingsCss.listItem}${offered ? '' : ` ${css.rowSpent}`}`}
+			spotlightId={`setting-achievement-reroll-${weekly ? 'weekly' : 'daily'}`}
+			onClick={offered ? handleClick : null}
+		>
+			{renderSettingsIcon('casino')}
+			<div className={settingsCss.listItemBody}>
+				<div className={settingsCss.listItemHeading}>
+					{weekly ? $L('Reroll weekly quests') : $L('Reroll daily quests')}
+				</div>
+				<div className={settingsCss.listItemCaption}>
+					{!spent
+						? $L('Swap this set for a different one')
+						: weekly
+							? $L('Used this week, comes back Monday UTC')
+							: $L('Used today, comes back at midnight UTC')}
+				</div>
+			</div>
+		</SpottableDiv>
+	);
+};
+
+// The server is the authority on what is left, so its answer settles the row whether it handed
+// back a fresh set or refused.
+const afterReroll = (quests, weekly, result) => {
+	const rerolled = result.outcome === REROLLED;
+	const left = rerolled ? result.rerollsLeft : 0;
+	if (weekly) {
+		return {...quests, weekly: rerolled ? result.quests : quests.weekly, weeklyRerollsLeft: left};
+	}
+	return {...quests, daily: rerolled ? result.quests : quests.daily, dailyRerollsLeft: left};
+};
+
+export const AchievementsQuestsView = ({quests: initial}) => {
+	const [quests, setQuests] = useState(initial);
+	const [asking, setAsking] = useState(null);
+	const [busy, setBusy] = useState(false);
+	const [failed, setFailed] = useState(false);
+
+	const askReroll = useCallback((weekly) => setAsking(weekly ? 'weekly' : 'daily'), []);
+	const cancelReroll = useCallback(() => setAsking(null), []);
+
+	const confirmReroll = useCallback(async () => {
+		const weekly = asking === 'weekly';
+		setAsking(null);
+		setBusy(true);
+		setFailed(false);
+
+		const result = await achievementsApi.rerollQuests({weekly});
+		setBusy(false);
+		if (result.outcome === REROLL_FAILED) {
+			setFailed(true);
+			return;
+		}
+		setQuests((prev) => afterReroll(prev, weekly, result));
+	}, [asking]);
+
+	return (
+		<SettingsView spotlightId="achievements-quests-view">
+			{quests.daily.length > 0 && (
+				<>
+					<SectionTitle>{$L('Daily')}</SectionTitle>
+					{quests.daily.map((quest) => <QuestRow key={quest.id} quest={quest} />)}
+					<RerollRow rerollsLeft={quests.dailyRerollsLeft} busy={busy} onReroll={askReroll} />
+				</>
+			)}
+			{quests.weekly.length > 0 && (
+				<>
+					<SectionTitle>{$L('Weekly')}</SectionTitle>
+					{quests.weekly.map((quest) => <QuestRow key={quest.id} quest={quest} />)}
+					<RerollRow weekly rerollsLeft={quests.weeklyRerollsLeft} busy={busy} onReroll={askReroll} />
+				</>
+			)}
+			{failed && <Message>{$L('Could not reroll those quests.')}</Message>}
+			<RerollDialog open={Boolean(asking)} onCancel={cancelReroll} onConfirm={confirmReroll} />
+		</SettingsView>
+	);
+};
 
 export const AchievementsLeaderboardView = ({initial}) => {
 	const [board, setBoard] = useState(OVERALL_BOARD);

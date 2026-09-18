@@ -33,6 +33,26 @@ const serve = (routes) => {
 const paths = () => platformFetch.mock.calls.map((call) => call[0].split('/Plugins/AchievementBadges/')[1]);
 
 const CONFIG = {LeaderboardEnabled: true, QuestsEnabled: true};
+
+// One reroll a day and one a week, the same budget the plugin grants.
+let rerollsLeft = {daily: 1, weekly: 1};
+const serveWithReroll = (routes) => {
+	platformFetch.mockImplementation((url) => {
+		const path = url.split('/Plugins/AchievementBadges/')[1];
+		const set = /quests\/(daily|weekly)\/reroll$/.exec(path);
+		if (set) {
+			const which = set[1];
+			if (rerollsLeft[which] <= 0) return Promise.resolve({ok: false, status: 429, text: () => Promise.resolve('')});
+			rerollsLeft[which] = 0;
+			return Promise.resolve(ok({
+				Quests: [{Id: `${which}-new`, Title: which === 'weekly' ? 'A fresh week' : 'A fresh day', Target: 1, Current: 0, Reward: 10}],
+				RerollsRemaining: 0
+			}));
+		}
+		const match = Object.keys(routes).find((suffix) => path === suffix || path.startsWith(`${suffix}?`));
+		return Promise.resolve(match ? ok(routes[match]) : missing);
+	});
+};
 const FULL = {
 	'public-config': CONFIG,
 	'users/user1/summary': {Unlocked: 12, Total: 200, Percentage: 6, Score: 430, CurrentWatchStreak: 3, BestWatchStreak: 9},
@@ -51,6 +71,7 @@ beforeEach(() => {
 	mockToken = 'mockToken';
 	mockUserId = 'user1';
 	mockServerType = 'jellyfin';
+	rerollsLeft = {daily: 1, weekly: 1};
 	api.reset();
 });
 
@@ -202,5 +223,65 @@ describe('the login ping', () => {
 		mockUserId = null;
 		await api.sendLoginPing();
 		expect(platformFetch).not.toHaveBeenCalled();
+	});
+});
+
+describe('quest reroll', () => {
+	test('a reroll swaps the set and spends the allowance', async () => {
+		serveWithReroll(FULL);
+		const result = await api.rerollQuests();
+
+		expect(result.outcome).toBe('rerolled');
+		expect(result.quests[0].title).toBe('A fresh day');
+		expect(result.rerollsLeft).toBe(0);
+		expect(paths()).toEqual(['users/user1/quests/daily/reroll']);
+		expect(platformFetch.mock.calls[0][1].method).toBe('POST');
+	});
+
+	test('daily and weekly spend separately', async () => {
+		serveWithReroll(FULL);
+		await api.rerollQuests();
+
+		const weekly = await api.rerollQuests({weekly: true});
+		expect(weekly.outcome).toBe('rerolled');
+		expect(weekly.quests[0].title).toBe('A fresh week');
+	});
+
+	test('a spent reroll reads as refused rather than broken', async () => {
+		serveWithReroll(FULL);
+		await api.rerollQuests();
+
+		const again = await api.rerollQuests();
+		expect(again.outcome).toBe('alreadyUsed');
+		expect(again.quests).toBeUndefined();
+	});
+
+	test('anything else that goes wrong is a plain failure', async () => {
+		platformFetch.mockResolvedValue({ok: false, status: 500, text: () => Promise.resolve('')});
+		expect((await api.rerollQuests()).outcome).toBe('failed');
+
+		platformFetch.mockRejectedValue(new Error('network gone'));
+		expect((await api.rerollQuests()).outcome).toBe('failed');
+	});
+
+	test('a session without a user has nothing to reroll', async () => {
+		mockUserId = null;
+		serveWithReroll(FULL);
+		expect((await api.rerollQuests()).outcome).toBe('failed');
+		expect(platformFetch).not.toHaveBeenCalled();
+	});
+
+	test('the overview carries what is left to spend', async () => {
+		serve({...FULL, 'users/user1/quests': {
+			Daily: [{Id: 'd1', Title: 'Movie Night', Target: 1, Current: 0}],
+			Weekly: [],
+			DailyRerollsRemaining: 1,
+			WeeklyRerollsRemaining: 0
+		}});
+		await api.probe();
+		const overview = await api.loadOverview();
+
+		expect(overview.quests.dailyRerollsLeft).toBe(1);
+		expect(overview.quests.weeklyRerollsLeft).toBe(0);
 	});
 });
