@@ -123,7 +123,7 @@
     "Cap the streaming bitrate. Content above this threshold will be transcoded to fit.": "Begrenzen Sie die Streaming-Bitrate. Inhalte über diesem Schwellenwert werden entsprechend transkodiert.",
     "Capabilities": "Fähigkeiten",
     "Card size": "Kartengröße",
-    "Cast": "Besetzung",
+    "Cast": "Cast",
     "Change Server": "Server wechseln",
     "Change subtitle modes, default languages, appearance, and rendering options.": "Untertitelmodi, Standardsprachen, Erscheinungsbild und Rendering-Optionen ändern.",
     "Channels": "Kanäle",
