@@ -19,6 +19,11 @@ const SpottableButton = Spottable('button');
 const CANCEL_ID = 'confirm-spend-cancel-btn';
 const CONFIRM_ID = 'confirm-spend-ok-btn';
 
+// Settings binds its back key listener before this one, so it asks here and leaves the key alone
+// while a confirm is up. Otherwise one press would both cancel the spend and leave the screen.
+let openDialogs = 0;
+export const isConfirmSpendOpen = () => openDialogs > 0;
+
 // Asks before spending something the user only gets so many of.
 const ConfirmSpendDialog = ({open, title, body, onCancel, onConfirm}) => {
 	useEffect(() => {
@@ -30,6 +35,7 @@ const ConfirmSpendDialog = ({open, title, body, onCancel, onConfirm}) => {
 
 	useEffect(() => {
 		if (!open) return undefined;
+		openDialogs += 1;
 		const handleKey = (e) => {
 			if (isBackKey(e)) {
 				e.preventDefault();
@@ -51,7 +57,10 @@ const ConfirmSpendDialog = ({open, title, body, onCancel, onConfirm}) => {
 			}
 		};
 		window.addEventListener('keydown', handleKey, true);
-		return () => window.removeEventListener('keydown', handleKey, true);
+		return () => {
+			openDialogs -= 1;
+			window.removeEventListener('keydown', handleKey, true);
+		};
 	}, [open, onCancel]);
 
 	if (!open) return null;

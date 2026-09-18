@@ -39,6 +39,7 @@ import renderDescriptorRow from './settingsDescriptorRow';
 import {CategoriesView, CategoryView, SubcategoryView, OptionsView} from './BrowseViews';
 import {ThemesView, ThemeStoreView} from './ThemeViews';
 import AchievementsScreens, {ACHIEVEMENT_VIEWS} from './achievements/AchievementsScreens';
+import {isConfirmSpendOpen} from './achievements/ConfirmSpendDialog';
 import {SeerrHomeRowsView, ImdbListsView} from './HomeRowToggleViews';
 import {ExternalTmdbListsView, ExternalCalendarsView, ExternalCustomRowsView} from './ExternalRowViews';
 import {RatingSourcesView, ExcludedGenresView, PinCodeView, BlockedRatingsView, RowImageTypesView} from './PickerViews';
@@ -249,6 +250,8 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		const handleKeyDown = (e) => {
 			if (isTvKeyboardVisible()) return;
 			if (!isBackKey(e)) return;
+			// A confirm is a layer of its own and closes itself on this key.
+			if (isConfirmSpendOpen()) return;
 			e.preventDefault();
 			e.stopPropagation();
 			// App.js stops back keys propagating before React sees them, so SpottableInput

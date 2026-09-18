@@ -4,7 +4,7 @@ import $L from '@enact/i18n/$L';
 import * as achievementsApi from '../../../services/achievementsApi';
 import {
 	BADGE_FILTERS, groupBadges, leaderboardValue, parseHexColor, rarityColor,
-	REROLLED, REROLL_FAILED, POWER_UP_USED
+	REROLLED, REROLL_FAILED, POWER_UP_USED, PURCHASE_BOUGHT
 } from '../../../utils/achievementsModel';
 import {achievementIconPath} from './achievementIcons';
 import ConfirmSpendDialog from './ConfirmSpendDialog';
@@ -102,6 +102,45 @@ const AchievementRow = ({spotlightId, onClick, children}) => (
 	</SpottableDiv>
 );
 
+// The rounded shell every row in this panel leads with.
+const TileIcon = ({icon, color, dimmed}) => (
+	<div className={`${css.badgeAvatar}${dimmed ? ` ${css.badgeAvatarLocked}` : ''}`} style={shell(color)}>
+		<Icon name={icon} className={css.badgeIcon} />
+	</div>
+);
+
+// The score a user still has to spend, above whatever it can be spent on.
+const ScoreBank = ({bank}) => (
+	<>
+		<SectionTitle>{$L('Score bank')}</SectionTitle>
+		<div className={css.progressBlock}>
+			<div className={css.progressFigure}>
+				{$L('{score} points').replace('{score}', String(bank))}
+			</div>
+		</div>
+	</>
+);
+
+// The plugin sends English names for its three power-ups, so the panel words them itself and falls
+// back to the raw type if a fourth ever turns up.
+const POWER_UP_TEXT = {
+	XpBoost: {
+		name: () => $L('XP Boost'),
+		body: () => $L('Doubles score for an hour. Using it again restarts the hour.')
+	},
+	DoubleCredit: {
+		name: () => $L('Double Credit'),
+		body: () => $L('The next thing you finish counts twice towards badges.')
+	},
+	StreakFreeze: {
+		name: () => $L('Streak Freeze'),
+		body: () => $L('Covers one missed day. Only one can be banked.')
+	}
+};
+
+const powerUpName = (type) => (POWER_UP_TEXT[type] ? POWER_UP_TEXT[type].name() : type);
+const powerUpBody = (type) => (POWER_UP_TEXT[type] ? POWER_UP_TEXT[type].body() : '');
+
 const BadgeRow = ({badge, onOpenBadge}) => {
 	const color = rarityColor(badge.rarity);
 	const showsProgress = !badge.unlocked && badge.targetValue > 0;
@@ -109,12 +148,7 @@ const BadgeRow = ({badge, onOpenBadge}) => {
 
 	return (
 		<AchievementRow spotlightId={`achievement-badge-${badge.id}`} onClick={handleClick}>
-			<div
-				className={`${css.badgeAvatar}${badge.unlocked ? '' : ` ${css.badgeAvatarLocked}`}`}
-				style={shell(color)}
-			>
-				<Icon name={badge.icon} className={css.badgeIcon} />
-			</div>
+			<TileIcon icon={badge.icon} color={color} dimmed={!badge.unlocked} />
 			<div className={settingsCss.listItemBody}>
 				<div className={settingsCss.listItemHeading}>
 					{badge.isSecret ? $L('Hidden achievement') : badge.title}
@@ -427,22 +461,6 @@ export const AchievementsBadgeView = ({badge, onSelectItem}) => {
 	);
 };
 
-// The panel names the three consumables itself, since the plugin only describes them in English.
-const POWER_UP_TEXT = {
-	XpBoost: {
-		name: () => $L('XP Boost'),
-		body: () => $L('Doubles score for an hour. Using it again restarts the hour.')
-	},
-	DoubleCredit: {
-		name: () => $L('Double Credit'),
-		body: () => $L('The next thing you finish counts twice towards badges.')
-	},
-	StreakFreeze: {
-		name: () => $L('Streak Freeze'),
-		body: () => $L('Covers one missed day. Only one can be banked.')
-	}
-};
-
 const heldLabel = (count) => {
 	if (count <= 0) return $L('None held');
 	if (count === 1) return $L('1 held');
@@ -451,7 +469,7 @@ const heldLabel = (count) => {
 
 const PowerUpRow = ({slot, busy, onUse}) => {
 	const handleClick = useCallback(() => onUse(slot), [onUse, slot]);
-	const text = POWER_UP_TEXT[slot.type];
+	const body = powerUpBody(slot.type);
 	const held = heldLabel(slot.count);
 	const offered = slot.count > 0 && !busy;
 
@@ -462,12 +480,10 @@ const PowerUpRow = ({slot, busy, onUse}) => {
 			spotlightId={`achievement-powerup-${slot.type}`}
 			onClick={offered ? handleClick : null}
 		>
-			<div className={css.badgeAvatar} style={shell(ACCENT)}>
-				<Icon name={slot.icon} className={css.badgeIcon} />
-			</div>
+			<TileIcon icon={slot.icon} color={ACCENT} />
 			<div className={settingsCss.listItemBody}>
-				<div className={settingsCss.listItemHeading}>{text ? text.name() : slot.type}</div>
-				{text && <div className={settingsCss.listItemCaption}>{text.body()}</div>}
+				<div className={settingsCss.listItemHeading}>{powerUpName(slot.type)}</div>
+				{body && <div className={settingsCss.listItemCaption}>{body}</div>}
 				<div className={css.progressText} style={slot.active ? {color: ACCENT} : null}>
 					{slot.active ? `${held} · ${$L('Running now')}` : held}
 				</div>
@@ -476,13 +492,61 @@ const PowerUpRow = ({slot, busy, onUse}) => {
 	);
 };
 
+const ShopRow = ({item, affordable, onBuy}) => {
+	const handleClick = useCallback(() => onBuy(item), [onBuy, item]);
+	const name = powerUpName(item.type);
+	const body = powerUpBody(item.type);
+
+	return (
+		<AchievementRow
+			spotlightId={`achievement-shop-${item.id}`}
+			onClick={affordable ? handleClick : null}
+		>
+			<TileIcon icon="storefront" color={ACCENT} />
+			<div className={settingsCss.listItemBody}>
+				<div className={settingsCss.listItemHeading}>
+					{item.bundleSize > 1
+						? $L('{name} ×{count}').replace('{name}', name).replace('{count}', String(item.bundleSize))
+						: name}
+				</div>
+				{body && <div className={settingsCss.listItemCaption}>{body}</div>}
+			</div>
+			<div className={css.price} style={affordable ? {color: ACCENT} : null}>
+				{$L('{score} points').replace('{score}', String(item.priceScore))}
+			</div>
+		</AchievementRow>
+	);
+};
+
+// Both spending screens ask before they write, so the asking, the busy flag and whatever a
+// refusal came back with are held here. perform does the write and hands back what went wrong,
+// or nothing when it worked.
+const useSpendConfirm = (perform) => {
+	const [asking, setAsking] = useState(null);
+	const [busy, setBusy] = useState(false);
+	const [problem, setProblem] = useState('');
+
+	const ask = useCallback((subject) => setAsking(subject), []);
+	const cancel = useCallback(() => setAsking(null), []);
+
+	const confirm = useCallback(async () => {
+		const subject = asking;
+		setAsking(null);
+		setBusy(true);
+		setProblem('');
+
+		const failed = await perform(subject);
+		setBusy(false);
+		setProblem(failed || '');
+	}, [asking, perform]);
+
+	return {asking, busy, problem, ask, cancel, confirm};
+};
+
 // The score bank and the consumables it has bought.
-export const AchievementsLoadoutView = () => {
+export const AchievementsLoadoutView = ({onOpen}) => {
 	const [state, setState] = useState(null);
 	const [loading, setLoading] = useState(true);
-	const [busy, setBusy] = useState(false);
-	const [asking, setAsking] = useState(null);
-	const [problem, setProblem] = useState('');
 	const [attempt, setAttempt] = useState(0);
 
 	useEffect(() => {
@@ -499,24 +563,16 @@ export const AchievementsLoadoutView = () => {
 	}, [attempt]);
 
 	const reload = useCallback(() => setAttempt((n) => n + 1), []);
-	const askUse = useCallback((slot) => setAsking(slot), []);
-	const cancelUse = useCallback(() => setAsking(null), []);
 
-	const confirmUse = useCallback(async () => {
-		const slot = asking;
-		setAsking(null);
-		setBusy(true);
-		setProblem('');
-
+	const spend = useCallback(async (slot) => {
 		const result = await achievementsApi.usePowerUp(slot.type);
-		setBusy(false);
-		if (result.outcome === POWER_UP_USED) {
-			// Spending one costs no score, so only the inventory moves.
-			setState((prev) => ({bank: prev.bank, slots: result.slots}));
-			return;
-		}
-		setProblem(result.message || $L('Could not use that power-up.'));
-	}, [asking]);
+		if (result.outcome !== POWER_UP_USED) return result.message || $L('Could not use that power-up.');
+		// Spending one costs no score, so only the inventory moves.
+		setState((prev) => ({bank: prev.bank, slots: result.slots}));
+		return null;
+	}, []);
+
+	const {asking, busy, problem, ask, cancel, confirm} = useSpendConfirm(spend);
 
 	if (loading) {
 		return (
@@ -536,23 +592,92 @@ export const AchievementsLoadoutView = () => {
 
 	return (
 		<SettingsView spotlightId="achievements-loadout-view">
-			<SectionTitle>{$L('Score bank')}</SectionTitle>
-			<div className={css.progressBlock}>
-				<div className={css.progressFigure}>
-					{$L('{score} points').replace('{score}', String(state.bank))}
-				</div>
-			</div>
+			<ScoreBank bank={state.bank} />
 			<SectionTitle>{$L('Power-ups')}</SectionTitle>
 			{state.slots.map((slot) => (
-				<PowerUpRow key={slot.type} slot={slot} busy={busy} onUse={askUse} />
+				<PowerUpRow key={slot.type} slot={slot} busy={busy} onUse={ask} />
 			))}
+			<OpenScreenRow
+				id="achievements-shop"
+				title={$L('Shop')}
+				desc={$L('Spend score on more boosts')}
+				icon="storefront"
+				view="achievementsShop"
+				onOpen={onOpen}
+			/>
 			{problem && <Message>{problem}</Message>}
 			<ConfirmSpendDialog
 				open={Boolean(asking)}
 				title={$L('Use this power-up?')}
 				body={$L("It's spent as soon as you confirm.")}
-				onCancel={cancelUse}
-				onConfirm={confirmUse}
+				onCancel={cancel}
+				onConfirm={confirm}
+			/>
+		</SettingsView>
+	);
+};
+
+// What score can be spent on. Going back to the loadout mounts it afresh, so a purchase shows up
+// in both the bank and the inventory without either screen being told about it.
+export const AchievementsShopView = () => {
+	const [items, setItems] = useState([]);
+	const [bank, setBank] = useState(0);
+	const [loading, setLoading] = useState(true);
+
+	useEffect(() => {
+		let cancelled = false;
+		// The catalogue carries no bank, so the two are read together.
+		Promise.all([
+			achievementsApi.fetchShopPowerUps(),
+			achievementsApi.fetchPowerUps()
+		]).then(([catalog, state]) => {
+			if (cancelled) return;
+			setItems(catalog);
+			setBank(state ? state.bank : 0);
+			setLoading(false);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	const buy = useCallback(async (item) => {
+		const result = await achievementsApi.buyShopItem(item.id);
+		if (result.outcome !== PURCHASE_BOUGHT) return result.message || $L('Could not buy that.');
+		if (result.bankAfter !== null) setBank(result.bankAfter);
+		return null;
+	}, []);
+
+	const {asking, busy, problem, ask, cancel, confirm} = useSpendConfirm(buy);
+
+	if (loading) {
+		return (
+			<SettingsView spotlightId="achievements-shop-view">
+				<Message>{$L('Loading...')}</Message>
+			</SettingsView>
+		);
+	}
+
+	return (
+		<SettingsView spotlightId="achievements-shop-view">
+			<ScoreBank bank={bank} />
+			{items.length === 0
+				? <Message>{$L('Nothing for sale right now.')}</Message>
+				: items.map((item) => (
+					<ShopRow
+						key={item.id}
+						item={item}
+						affordable={item.priceScore <= bank && !busy}
+						onBuy={ask}
+					/>
+				))}
+			{problem && <Message>{problem}</Message>}
+			<ConfirmSpendDialog
+				open={Boolean(asking)}
+				title={$L('Buy this?')}
+				body={$L('It comes straight out of your score bank.')}
+				onCancel={cancel}
+				onConfirm={confirm}
 			/>
 		</SettingsView>
 	);
@@ -560,9 +685,7 @@ export const AchievementsLoadoutView = () => {
 
 const QuestRow = ({quest}) => (
 	<AchievementRow spotlightId={`achievement-quest-${quest.id}`}>
-		<div className={css.badgeAvatar} style={shell(ACCENT)}>
-			<Icon name={quest.completed ? 'check_circle' : quest.icon} className={css.badgeIcon} />
-		</div>
+		<TileIcon icon={quest.completed ? 'check_circle' : quest.icon} color={ACCENT} />
 		<div className={settingsCss.listItemBody}>
 			<div className={settingsCss.listItemHeading}>{quest.title}</div>
 			{quest.description && <div className={settingsCss.listItemCaption}>{quest.description}</div>}

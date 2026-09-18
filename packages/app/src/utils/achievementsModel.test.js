@@ -1,7 +1,7 @@
 import {
 	groupBadges, leaderboardValue, parseBadge, parseLeaderboardEntry, parseLibraryCompletion,
 	parseBadgeChase, parseQuest, parseQuests, parseRank, parseRecap, parseRerolledQuests,
-	parseSummary, parsePowerUpState, parseHexColor, rarityColor, scoreForRarity
+	parseSummary, parsePowerUpState, parseShopCatalog, parseHexColor, rarityColor, scoreForRarity
 } from './achievementsModel';
 
 const badge = (over) => parseBadge({
@@ -212,6 +212,20 @@ describe('parsePowerUpState', () => {
 
 	test('an empty answer is a bank of nothing', () => {
 		expect(parsePowerUpState({})).toEqual({bank: 0, slots: []});
+	});
+});
+
+describe('parseShopCatalog', () => {
+	test('the cosmetics the panel cannot draw are left behind', () => {
+		const items = parseShopCatalog({
+			PowerUps: [{Id: 'pu-xp-boost-3', Type: 'XpBoost', BundleSize: 3, PriceScore: 130}],
+			Cosmetics: [{Id: 'theme-sunset', Kind: 'ProfileTheme', PriceScore: 250}]
+		});
+		expect(items).toEqual([{id: 'pu-xp-boost-3', type: 'XpBoost', bundleSize: 3, priceScore: 130}]);
+	});
+
+	test('a catalogue with nothing in it sells nothing', () => {
+		expect(parseShopCatalog({})).toEqual([]);
 	});
 });
 

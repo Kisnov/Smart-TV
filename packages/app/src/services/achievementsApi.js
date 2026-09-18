@@ -4,8 +4,8 @@
 // Nothing here throws. A server without the plugin answers 404 on every route, and a panel that
 // asked for everything at once and got nothing back wants an empty screen rather than a pile of
 // errors, so a failed call reads as no answer. Nothing here polls, and the login ping, the quest
-// reroll and spending a power-up are the only things written, because they are the only parts the
-// plugin expects a client to drive.
+// reroll, spending a power-up and buying one are the only things written, because they are the
+// only parts the plugin expects a client to drive.
 
 import {getServerUrl, getAuthHeader, getApiKey, getUserId, getServerType} from './jellyfinApi';
 import {legacyAuthHeader} from '../utils/serverRoutes';
@@ -13,9 +13,10 @@ import {platformFetch} from './secureFetch';
 import {
 	isObject, parseBadgeChase, parseSummary, parseRank, parseBadges, parseQuests, parseRerolledQuests,
 	parseLeaderboardEntry, parseRecap, parseLibraryCompletion,
-	parsePowerUpState, parsePowerUpSlots,
+	parsePowerUpState, parsePowerUpSlots, parseShopCatalog,
 	REROLLED, REROLL_ALREADY_USED, REROLL_FAILED,
-	POWER_UP_USED, POWER_UP_REFUSED, POWER_UP_FAILED
+	POWER_UP_USED, POWER_UP_REFUSED, POWER_UP_FAILED,
+	PURCHASE_BOUGHT, PURCHASE_REFUSED, PURCHASE_FAILED
 } from '../utils/achievementsModel';
 
 const ROOT = 'Plugins/AchievementBadges';
@@ -39,10 +40,14 @@ const authHeaders = () => {
 // It is a Jellyfin plugin, so an Emby server never carries it and is never asked.
 const isJellyfin = () => getServerType() !== 'emby';
 
-const call = (path, method) => platformFetch(`${base()}/${ROOT}/${path}`, {
-	method,
-	headers: {...authHeaders(), Accept: 'application/json'}
-}, TIMEOUT_MS);
+const call = (path, method, body) => {
+	const init = {method, headers: {...authHeaders(), Accept: 'application/json'}};
+	if (body) {
+		init.headers['Content-Type'] = 'application/json';
+		init.body = JSON.stringify(body);
+	}
+	return platformFetch(`${base()}/${ROOT}/${path}`, init, TIMEOUT_MS);
+};
 
 const request = async (path, method = 'GET') => {
 	if (!getApiKey()) return null;
@@ -59,10 +64,10 @@ const request = async (path, method = 'GET') => {
 // Writes to a path and tells a refusal apart from a fault. refusedWith is the status the plugin
 // answers when it means no, so that one comes back with whatever the plugin said, and anything
 // else reads as a plain failure.
-const post = async (path, {refusedWith}) => {
+const post = async (path, {refusedWith, body: sent}) => {
 	if (!getApiKey()) return {};
 	try {
-		const res = await call(path, 'POST');
+		const res = await call(path, 'POST', sent);
 		const text = await res.text();
 		let body = null;
 		try {
@@ -154,6 +159,28 @@ export const usePowerUp = async (type) => {
 	if (written.refused) return {outcome: POWER_UP_REFUSED, message: written.message};
 	if (!written.body) return {outcome: POWER_UP_FAILED};
 	return {outcome: POWER_UP_USED, slots: parsePowerUpSlots(written.body.Inventory)};
+};
+
+// What the shop sells, narrowed to the power-ups. The catalogue is the same for everyone, so this
+// route carries no user.
+export const fetchShopPowerUps = async () => {
+	const json = await getMap('shop/catalog');
+	return json ? parseShopCatalog(json) : [];
+};
+
+// Buys one thing from the shop. The plugin refuses with 400 when the bank is short or the slot is
+// already full, and its wording says which.
+export const buyShopItem = async (itemId) => {
+	const userId = getUserId();
+	if (!userId) return {outcome: PURCHASE_FAILED};
+
+	const written = await post(`users/${userId}/shop/purchase`, {refusedWith: 400, body: {ItemId: itemId}});
+	if (written.refused) return {outcome: PURCHASE_REFUSED, message: written.message};
+	if (!written.body) return {outcome: PURCHASE_FAILED};
+
+	// The answer says what the bank holds now, so nothing has to be read again.
+	const after = written.body.ScoreBalanceAfter;
+	return {outcome: PURCHASE_BOUGHT, bankAfter: typeof after === 'number' ? after : null};
 };
 
 export const fetchLeaderboard = async ({category = '', limit = 10} = {}) => {

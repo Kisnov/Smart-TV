@@ -394,3 +394,80 @@ describe('loadout', () => {
 		expect(platformFetch).not.toHaveBeenCalled();
 	});
 });
+
+describe('shop', () => {
+	const CATALOG = {
+		PowerUps: [
+			{Id: 'pu-xp-boost-1', Type: 'XpBoost', BundleSize: 1, PriceScore: 50},
+			{Id: 'pu-xp-boost-3', Type: 'XpBoost', BundleSize: 3, PriceScore: 130},
+			{Id: 'pu-streak-freeze-1', Type: 'StreakFreeze', BundleSize: 1, PriceScore: 100}
+		],
+		Cosmetics: [{Id: 'theme-sunset', Kind: 'ProfileTheme', PriceScore: 250}]
+	};
+
+	// Only the pack is granted. Anything else comes back the way the plugin answers a bank that
+	// cannot cover it.
+	const serveShop = () => {
+		platformFetch.mockImplementation((url, options) => {
+			const path = url.split('/Plugins/AchievementBadges/')[1];
+			if (path === 'shop/catalog') return Promise.resolve(ok(CATALOG));
+			if (path === 'users/user1/shop/purchase' && options.method === 'POST') {
+				const {ItemId} = JSON.parse(options.body);
+				if (ItemId !== 'pu-xp-boost-3') {
+					return Promise.resolve({
+						ok: false,
+						status: 400,
+						text: () => Promise.resolve(JSON.stringify({Message: 'Not enough score.'}))
+					});
+				}
+				return Promise.resolve(ok({Success: true, Message: 'Bought.', ScoreBalanceAfter: 1240 - 130}));
+			}
+			return Promise.resolve(missing);
+		});
+	};
+
+	test('only the power-ups are read from the catalogue', async () => {
+		serveShop();
+		const items = await api.fetchShopPowerUps();
+
+		expect(items).toHaveLength(3);
+		expect(items[0].id).toBe('pu-xp-boost-1');
+		expect(items[0].priceScore).toBe(50);
+		expect(items[1].bundleSize).toBe(3);
+	});
+
+	test('the catalogue is the same for everyone, so it carries no user', async () => {
+		serveShop();
+		await api.fetchShopPowerUps();
+
+		expect(paths()).toEqual(['shop/catalog']);
+	});
+
+	test('buying names the item and says what the bank holds after', async () => {
+		serveShop();
+		const result = await api.buyShopItem('pu-xp-boost-3');
+
+		expect(result.outcome).toBe('bought');
+		expect(result.bankAfter).toBe(1110);
+
+		const [, init] = platformFetch.mock.calls[0];
+		expect(init.headers['Content-Type']).toBe('application/json');
+		expect(JSON.parse(init.body)).toEqual({ItemId: 'pu-xp-boost-3'});
+	});
+
+	test('a bank too short is refused, not broken', async () => {
+		serveShop();
+		const result = await api.buyShopItem('pu-streak-freeze-1');
+
+		expect(result.outcome).toBe('refused');
+		expect(result.message).toBe('Not enough score.');
+	});
+
+	test('a session without a user buys nothing', async () => {
+		mockUserId = null;
+		serveShop();
+
+		expect((await api.buyShopItem('pu-xp-boost-1')).outcome).toBe('failed');
+		expect(platformFetch).not.toHaveBeenCalled();
+	});
+});

@@ -231,6 +231,24 @@ export const POWER_UP_USED = 'used';
 export const POWER_UP_REFUSED = 'refused';
 export const POWER_UP_FAILED = 'failed';
 
+// One thing the shop sells. The name and description the catalogue carries are English only, so
+// only the type, the pack size and the price are read.
+const parseShopPowerUp = (json) => ({
+	id: asString(json.Id),
+	// Matches a slot's type, which is how a row finds its own wording.
+	type: asString(json.Type),
+	bundleSize: asInt(json.BundleSize),
+	priceScore: asInt(json.PriceScore)
+});
+
+// The catalogue also carries cosmetics, which this panel has no way to draw, so only the
+// power-ups are read.
+export const parseShopCatalog = (json) => mapList(json.PowerUps, parseShopPowerUp);
+
+export const PURCHASE_BOUGHT = 'bought';
+export const PURCHASE_REFUSED = 'refused';
+export const PURCHASE_FAILED = 'failed';
+
 // The overall board carries a score and a completion count. A category board carries one value
 // that means whatever the category is and leaves the rest out, so what is present decides which
 // board this row came from.
