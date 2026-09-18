@@ -3,9 +3,9 @@
 //
 // Nothing here throws. A server without the plugin answers 404 on every route, and a panel that
 // asked for everything at once and got nothing back wants an empty screen rather than a pile of
-// errors, so a failed call reads as no answer. Nothing here polls, and the login ping and the
-// quest reroll are the only things written, because they are the only parts the plugin expects a
-// client to drive.
+// errors, so a failed call reads as no answer. Nothing here polls, and the login ping, the quest
+// reroll and spending a power-up are the only things written, because they are the only parts the
+// plugin expects a client to drive.
 
 import {getServerUrl, getAuthHeader, getApiKey, getUserId, getServerType} from './jellyfinApi';
 import {legacyAuthHeader} from '../utils/serverRoutes';
@@ -13,7 +13,9 @@ import {platformFetch} from './secureFetch';
 import {
 	isObject, parseBadgeChase, parseSummary, parseRank, parseBadges, parseQuests, parseRerolledQuests,
 	parseLeaderboardEntry, parseRecap, parseLibraryCompletion,
-	REROLLED, REROLL_ALREADY_USED, REROLL_FAILED
+	parsePowerUpState, parsePowerUpSlots,
+	REROLLED, REROLL_ALREADY_USED, REROLL_FAILED,
+	POWER_UP_USED, POWER_UP_REFUSED, POWER_UP_FAILED
 } from '../utils/achievementsModel';
 
 const ROOT = 'Plugins/AchievementBadges';
@@ -37,24 +39,44 @@ const authHeaders = () => {
 // It is a Jellyfin plugin, so an Emby server never carries it and is never asked.
 const isJellyfin = () => getServerType() !== 'emby';
 
-// The status travels back with the body because the reroll is the one call that has to tell a
-// refusal from a fault. Everything else only wants what came back.
-const send = async (path, method = 'GET') => {
-	if (!getApiKey()) return {status: 0, data: null};
+const call = (path, method) => platformFetch(`${base()}/${ROOT}/${path}`, {
+	method,
+	headers: {...authHeaders(), Accept: 'application/json'}
+}, TIMEOUT_MS);
+
+const request = async (path, method = 'GET') => {
+	if (!getApiKey()) return null;
 	try {
-		const res = await platformFetch(`${base()}/${ROOT}/${path}`, {
-			method,
-			headers: {...authHeaders(), Accept: 'application/json'}
-		}, TIMEOUT_MS);
-		if (!res.ok) return {status: res.status, data: null};
+		const res = await call(path, method);
+		if (!res.ok) return null;
 		const text = await res.text();
-		return {status: res.status, data: text ? JSON.parse(text) : null};
+		return text ? JSON.parse(text) : null;
 	} catch {
-		return {status: 0, data: null};
+		return null;
 	}
 };
 
-const request = async (path, method) => (await send(path, method)).data;
+// Writes to a path and tells a refusal apart from a fault. refusedWith is the status the plugin
+// answers when it means no, so that one comes back with whatever the plugin said, and anything
+// else reads as a plain failure.
+const post = async (path, {refusedWith}) => {
+	if (!getApiKey()) return {};
+	try {
+		const res = await call(path, 'POST');
+		const text = await res.text();
+		let body = null;
+		try {
+			body = text ? JSON.parse(text) : null;
+		} catch {
+			body = null;
+		}
+		if (res.ok) return {body: isObject(body) ? body : null};
+		if (res.status !== refusedWith) return {};
+		return {refused: true, message: isObject(body) ? body.Message : null};
+	} catch {
+		return {};
+	}
+};
 
 const getMap = async (path) => {
 	const data = await request(path);
@@ -109,10 +131,29 @@ export const rerollQuests = async ({weekly = false} = {}) => {
 	if (!userId) return {outcome: REROLL_FAILED};
 
 	const questSet = weekly ? 'weekly' : 'daily';
-	const {status, data} = await send(`users/${userId}/quests/${questSet}/reroll`, 'POST');
-	if (status === 429) return {outcome: REROLL_ALREADY_USED};
-	if (!isObject(data)) return {outcome: REROLL_FAILED};
-	return {outcome: REROLLED, ...parseRerolledQuests(data)};
+	const written = await post(`users/${userId}/quests/${questSet}/reroll`, {refusedWith: 429});
+	if (written.refused) return {outcome: REROLL_ALREADY_USED};
+	if (!written.body) return {outcome: REROLL_FAILED};
+	return {outcome: REROLLED, ...parseRerolledQuests(written.body)};
+};
+
+export const fetchPowerUps = async () => {
+	const userId = getUserId();
+	if (!userId) return null;
+	const json = await getMap(`users/${userId}/powerups`);
+	return json ? parsePowerUpState(json) : null;
+};
+
+// Spends one power-up. The plugin refuses with 400 when the slot is empty or the boost is already
+// running, and its own wording explains which better than a guess here would.
+export const usePowerUp = async (type) => {
+	const userId = getUserId();
+	if (!userId) return {outcome: POWER_UP_FAILED};
+
+	const written = await post(`users/${userId}/powerups/use/${encodeURIComponent(type)}`, {refusedWith: 400});
+	if (written.refused) return {outcome: POWER_UP_REFUSED, message: written.message};
+	if (!written.body) return {outcome: POWER_UP_FAILED};
+	return {outcome: POWER_UP_USED, slots: parsePowerUpSlots(written.body.Inventory)};
 };
 
 export const fetchLeaderboard = async ({category = '', limit = 10} = {}) => {

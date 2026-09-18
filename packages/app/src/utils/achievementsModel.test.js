@@ -1,7 +1,7 @@
 import {
 	groupBadges, leaderboardValue, parseBadge, parseLeaderboardEntry, parseLibraryCompletion,
 	parseBadgeChase, parseQuest, parseQuests, parseRank, parseRecap, parseRerolledQuests,
-	parseSummary, parseHexColor, rarityColor, scoreForRarity
+	parseSummary, parsePowerUpState, parseHexColor, rarityColor, scoreForRarity
 } from './achievementsModel';
 
 const badge = (over) => parseBadge({
@@ -187,6 +187,31 @@ describe('parseBadgeChase', () => {
 		const chase = parseBadgeChase({Items: [{Id: 'x', Name: 'Untitled', Type: 'Video'}]});
 		expect(chase.items[0].year).toBe(0);
 		expect(chase.items[0].runtimeMinutes).toBe(0);
+	});
+});
+
+describe('parsePowerUpState', () => {
+	test('reads the bank and the inventory under it', () => {
+		const state = parsePowerUpState({
+			ScoreBank: 1240,
+			Inventory: [{Type: 'XpBoost', Icon: 'bolt', Count: 2, Active: true}]
+		});
+		expect(state.bank).toBe(1240);
+		expect(state.slots[0].type).toBe('XpBoost');
+		expect(state.slots[0].icon).toBe('bolt');
+		expect(state.slots[0].count).toBe(2);
+		expect(state.slots[0].active).toBe(true);
+	});
+
+	test('a slot the plugin left bare reads as held but idle', () => {
+		const state = parsePowerUpState({Inventory: [{Type: 'StreakFreeze', Count: 1}]});
+		expect(state.slots[0].icon).toBe('');
+		expect(state.slots[0].active).toBe(false);
+		expect(state.bank).toBe(0);
+	});
+
+	test('an empty answer is a bank of nothing', () => {
+		expect(parsePowerUpState({})).toEqual({bank: 0, slots: []});
 	});
 });
 

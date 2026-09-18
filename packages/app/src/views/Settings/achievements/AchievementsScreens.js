@@ -3,7 +3,8 @@ import {useCallback, useEffect, useState} from 'react';
 import * as achievementsApi from '../../../services/achievementsApi';
 import {
 	AchievementsView, AchievementsBadgesView, AchievementsBadgeView, AchievementsQuestsView,
-	AchievementsLeaderboardView, AchievementsRecapView, AchievementsLibraryView
+	AchievementsLeaderboardView, AchievementsRecapView, AchievementsLibraryView,
+	AchievementsLoadoutView
 } from './AchievementsViews';
 
 // Every achievement screen renders from here so the one load survives moving between them. Each
@@ -11,7 +12,7 @@ import {
 // anything more.
 export const ACHIEVEMENT_VIEWS = [
 	'achievements', 'achievementsBadges', 'achievementsBadge', 'achievementsQuests',
-	'achievementsLeaderboard', 'achievementsRecap', 'achievementsLibrary'
+	'achievementsLeaderboard', 'achievementsRecap', 'achievementsLibrary', 'achievementsLoadout'
 ];
 
 const AchievementsScreens = ({view, badgeId, onOpen, onSelectItem}) => {
@@ -59,6 +60,9 @@ const AchievementsScreens = ({view, badgeId, onOpen, onSelectItem}) => {
 	}
 	if (view === 'achievementsRecap') {
 		return <AchievementsRecapView initial={overview ? overview.recap : null} />;
+	}
+	if (view === 'achievementsLoadout') {
+		return <AchievementsLoadoutView />;
 	}
 	if (view === 'achievementsLibrary') {
 		return <AchievementsLibraryView completion={overview ? overview.libraryCompletion : {}} />;

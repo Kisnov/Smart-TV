@@ -4,10 +4,10 @@ import $L from '@enact/i18n/$L';
 import * as achievementsApi from '../../../services/achievementsApi';
 import {
 	BADGE_FILTERS, groupBadges, leaderboardValue, parseHexColor, rarityColor,
-	REROLLED, REROLL_FAILED
+	REROLLED, REROLL_FAILED, POWER_UP_USED
 } from '../../../utils/achievementsModel';
 import {achievementIconPath} from './achievementIcons';
-import RerollDialog from './RerollDialog';
+import ConfirmSpendDialog from './ConfirmSpendDialog';
 import DetailsTabBar from '../../../components/DetailsTabBar/DetailsTabBar';
 import SettingsView from '../SettingsView';
 import {renderSettingsIcon} from '../settingsIcons';
@@ -81,6 +81,18 @@ const OpenScreenRow = ({id, title, desc, icon, view, onOpen, enabled = true}) =>
 };
 
 const Message = ({children}) => <div className={css.message}>{children}</div>;
+
+// What a screen shows when the plugin answered it with nothing.
+const LoadFailed = ({spotlightId, onRetry}) => (
+	<>
+		<Message>{$L('Could not load your achievements.')}</Message>
+		<div className={css.retryRow}>
+			<SpottableDiv className={css.retryButton} spotlightId={spotlightId} onClick={onRetry}>
+				{$L('Retry')}
+			</SpottableDiv>
+		</div>
+	</>
+);
 
 // A row takes focus even when it does nothing, because a list whose rows cannot be focused is a
 // list the remote cannot scroll.
@@ -227,12 +239,7 @@ export const AchievementsView = ({overview, loading, onReload, onOpen}) => {
 	if (!overview) {
 		return (
 			<SettingsView spotlightId="achievements-view">
-				<Message>{$L('Could not load your achievements.')}</Message>
-				<div className={css.retryRow}>
-					<SpottableDiv className={css.retryButton} spotlightId="achievements-retry" onClick={onReload}>
-						{$L('Retry')}
-					</SpottableDiv>
-				</div>
+				<LoadFailed spotlightId="achievements-retry" onRetry={onReload} />
 			</SettingsView>
 		);
 	}
@@ -284,6 +291,14 @@ export const AchievementsView = ({overview, loading, onReload, onOpen}) => {
 				desc={$L('What you watched recently')}
 				icon="insights"
 				view="achievementsRecap"
+				onOpen={onOpen}
+			/>
+			<OpenScreenRow
+				id="achievements-loadout"
+				title={$L('Loadout')}
+				desc={$L('Score to spend and the boosts you hold')}
+				icon="backpack"
+				view="achievementsLoadout"
 				onOpen={onOpen}
 			/>
 			{libraries.length > 0 && (
@@ -412,6 +427,137 @@ export const AchievementsBadgeView = ({badge, onSelectItem}) => {
 	);
 };
 
+// The panel names the three consumables itself, since the plugin only describes them in English.
+const POWER_UP_TEXT = {
+	XpBoost: {
+		name: () => $L('XP Boost'),
+		body: () => $L('Doubles score for an hour. Using it again restarts the hour.')
+	},
+	DoubleCredit: {
+		name: () => $L('Double Credit'),
+		body: () => $L('The next thing you finish counts twice towards badges.')
+	},
+	StreakFreeze: {
+		name: () => $L('Streak Freeze'),
+		body: () => $L('Covers one missed day. Only one can be banked.')
+	}
+};
+
+const heldLabel = (count) => {
+	if (count <= 0) return $L('None held');
+	if (count === 1) return $L('1 held');
+	return $L('{count} held').replace('{count}', String(count));
+};
+
+const PowerUpRow = ({slot, busy, onUse}) => {
+	const handleClick = useCallback(() => onUse(slot), [onUse, slot]);
+	const text = POWER_UP_TEXT[slot.type];
+	const held = heldLabel(slot.count);
+	const offered = slot.count > 0 && !busy;
+
+	// The row keeps its press only while there is one to spend, but it is never dimmed, since
+	// holding none is already said underneath and a greyed row is harder to read from a sofa.
+	return (
+		<AchievementRow
+			spotlightId={`achievement-powerup-${slot.type}`}
+			onClick={offered ? handleClick : null}
+		>
+			<div className={css.badgeAvatar} style={shell(ACCENT)}>
+				<Icon name={slot.icon} className={css.badgeIcon} />
+			</div>
+			<div className={settingsCss.listItemBody}>
+				<div className={settingsCss.listItemHeading}>{text ? text.name() : slot.type}</div>
+				{text && <div className={settingsCss.listItemCaption}>{text.body()}</div>}
+				<div className={css.progressText} style={slot.active ? {color: ACCENT} : null}>
+					{slot.active ? `${held} · ${$L('Running now')}` : held}
+				</div>
+			</div>
+		</AchievementRow>
+	);
+};
+
+// The score bank and the consumables it has bought.
+export const AchievementsLoadoutView = () => {
+	const [state, setState] = useState(null);
+	const [loading, setLoading] = useState(true);
+	const [busy, setBusy] = useState(false);
+	const [asking, setAsking] = useState(null);
+	const [problem, setProblem] = useState('');
+	const [attempt, setAttempt] = useState(0);
+
+	useEffect(() => {
+		let cancelled = false;
+		setLoading(true);
+		achievementsApi.fetchPowerUps().then((next) => {
+			if (cancelled) return;
+			setState(next);
+			setLoading(false);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [attempt]);
+
+	const reload = useCallback(() => setAttempt((n) => n + 1), []);
+	const askUse = useCallback((slot) => setAsking(slot), []);
+	const cancelUse = useCallback(() => setAsking(null), []);
+
+	const confirmUse = useCallback(async () => {
+		const slot = asking;
+		setAsking(null);
+		setBusy(true);
+		setProblem('');
+
+		const result = await achievementsApi.usePowerUp(slot.type);
+		setBusy(false);
+		if (result.outcome === POWER_UP_USED) {
+			// Spending one costs no score, so only the inventory moves.
+			setState((prev) => ({bank: prev.bank, slots: result.slots}));
+			return;
+		}
+		setProblem(result.message || $L('Could not use that power-up.'));
+	}, [asking]);
+
+	if (loading) {
+		return (
+			<SettingsView spotlightId="achievements-loadout-view">
+				<Message>{$L('Loading...')}</Message>
+			</SettingsView>
+		);
+	}
+
+	if (!state) {
+		return (
+			<SettingsView spotlightId="achievements-loadout-view">
+				<LoadFailed spotlightId="loadout-retry" onRetry={reload} />
+			</SettingsView>
+		);
+	}
+
+	return (
+		<SettingsView spotlightId="achievements-loadout-view">
+			<SectionTitle>{$L('Score bank')}</SectionTitle>
+			<div className={css.progressBlock}>
+				<div className={css.progressFigure}>
+					{$L('{score} points').replace('{score}', String(state.bank))}
+				</div>
+			</div>
+			<SectionTitle>{$L('Power-ups')}</SectionTitle>
+			{state.slots.map((slot) => (
+				<PowerUpRow key={slot.type} slot={slot} busy={busy} onUse={askUse} />
+			))}
+			{problem && <Message>{problem}</Message>}
+			<ConfirmSpendDialog
+				open={Boolean(asking)}
+				title={$L('Use this power-up?')}
+				body={$L("It's spent as soon as you confirm.")}
+				onCancel={cancelUse}
+				onConfirm={confirmUse}
+			/>
+		</SettingsView>
+	);
+};
+
 const QuestRow = ({quest}) => (
 	<AchievementRow spotlightId={`achievement-quest-${quest.id}`}>
 		<div className={css.badgeAvatar} style={shell(ACCENT)}>
@@ -507,7 +653,13 @@ export const AchievementsQuestsView = ({quests: initial}) => {
 				</>
 			)}
 			{failed && <Message>{$L('Could not reroll those quests.')}</Message>}
-			<RerollDialog open={Boolean(asking)} onCancel={cancelReroll} onConfirm={confirmReroll} />
+			<ConfirmSpendDialog
+				open={Boolean(asking)}
+				title={$L('Reroll these quests?')}
+				body={$L('You get one daily and one weekly reroll, and this spends it.')}
+				onCancel={cancelReroll}
+				onConfirm={confirmReroll}
+			/>
 		</SettingsView>
 	);
 };

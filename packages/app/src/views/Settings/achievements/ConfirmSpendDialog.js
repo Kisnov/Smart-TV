@@ -16,11 +16,11 @@ const DialogContainer = SpotlightContainerDecorator({
 
 const SpottableButton = Spottable('button');
 
-const CANCEL_ID = 'reroll-cancel-btn';
-const CONFIRM_ID = 'reroll-confirm-btn';
+const CANCEL_ID = 'confirm-spend-cancel-btn';
+const CONFIRM_ID = 'confirm-spend-ok-btn';
 
-// Spending a reroll is worth asking about, since there is no way back.
-const RerollDialog = ({open, onCancel, onConfirm}) => {
+// Asks before spending something the user only gets so many of.
+const ConfirmSpendDialog = ({open, title, body, onCancel, onConfirm}) => {
 	useEffect(() => {
 		if (!open) return undefined;
 		// The dialog mounts before Spotlight has anywhere to put focus, so it lands a moment later.
@@ -58,11 +58,9 @@ const RerollDialog = ({open, onCancel, onConfirm}) => {
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={css.dialog} spotlightId="reroll-dialog">
-				<h2 className={css.title}>{$L('Reroll these quests?')}</h2>
-				<p className={css.message}>
-					{$L('You get one daily and one weekly reroll, and this spends it.')}
-				</p>
+			<DialogContainer className={css.dialog} spotlightId="confirm-spend-dialog">
+				<h2 className={css.title}>{title}</h2>
+				<p className={css.message}>{body}</p>
 				<div className={css.buttons}>
 					<SpottableButton className={css.btn} onClick={onCancel} spotlightId={CANCEL_ID}>
 						{$L('Cancel')}
@@ -80,4 +78,4 @@ const RerollDialog = ({open, onCancel, onConfirm}) => {
 	);
 };
 
-export default RerollDialog;
+export default ConfirmSpendDialog;

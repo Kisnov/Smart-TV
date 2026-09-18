@@ -205,6 +205,32 @@ export const parseRerolledQuests = (json) => ({
 	rerollsLeft: asInt(json.RerollsRemaining)
 });
 
+// One consumable the user holds. The plugin also sends a name and a description, both English
+// only, so the panel names the three types itself and takes just the icon.
+const parsePowerUpSlot = (json) => ({
+	// XpBoost, DoubleCredit or StreakFreeze, which is also what the use route takes.
+	type: asString(json.Type),
+	icon: asString(json.Icon),
+	count: asInt(json.Count),
+	// Running, pending or banked, depending on which consumable this is.
+	active: asBool(json.Active)
+});
+
+// The inventory array, which both the read and the spend answer with.
+export const parsePowerUpSlots = (value) => mapList(value, parsePowerUpSlot);
+
+// The score bank and what it has already bought. The bank is score left to spend, which is not
+// the same as the score a rank is measured on.
+export const parsePowerUpState = (json) => ({
+	bank: asInt(json.ScoreBank),
+	slots: parsePowerUpSlots(json.Inventory)
+});
+
+// How spending a power-up ended. A refusal is the plugin saying no, not a fault.
+export const POWER_UP_USED = 'used';
+export const POWER_UP_REFUSED = 'refused';
+export const POWER_UP_FAILED = 'failed';
+
 // The overall board carries a score and a completion count. A category board carries one value
 // that means whatever the category is and leaves the rest out, so what is present decides which
 // board this row came from.

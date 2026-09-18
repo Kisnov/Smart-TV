@@ -322,3 +322,75 @@ describe('badge suggestions', () => {
 		expect(platformFetch).not.toHaveBeenCalled();
 	});
 });
+
+describe('loadout', () => {
+	// An account holding two boosts and no double credit, before and after one boost is spent.
+	const inventory = ({boosts, running}) => [
+		{Type: 'XpBoost', Icon: 'bolt', Count: boosts, Active: running},
+		{Type: 'DoubleCredit', Icon: 'filter_2', Count: 0, Active: false},
+		{Type: 'StreakFreeze', Icon: 'ac_unit', Count: 1, Active: false}
+	];
+
+	// The plugin answers a spend it will not grant with 400 and says why, rather than failing.
+	const serveLoadout = () => {
+		platformFetch.mockImplementation((url, options) => {
+			const path = url.split('/Plugins/AchievementBadges/')[1];
+			if (path === 'users/user1/powerups') {
+				return Promise.resolve(ok({ScoreBank: 1240, Inventory: inventory({boosts: 2, running: false})}));
+			}
+			if (path === 'users/user1/powerups/use/XpBoost' && options.method === 'POST') {
+				return Promise.resolve(ok({Message: 'Boost running.', Inventory: inventory({boosts: 1, running: true})}));
+			}
+			if (path === 'users/user1/powerups/use/DoubleCredit' && options.method === 'POST') {
+				return Promise.resolve({
+					ok: false,
+					status: 400,
+					text: () => Promise.resolve(JSON.stringify({Message: 'None left.'}))
+				});
+			}
+			return Promise.resolve(missing);
+		});
+	};
+
+	test('the bank and the inventory come back together', async () => {
+		serveLoadout();
+		const state = await api.fetchPowerUps();
+
+		expect(state.bank).toBe(1240);
+		expect(state.slots).toHaveLength(3);
+		expect(state.slots.find((slot) => slot.type === 'XpBoost').count).toBe(2);
+		expect(state.slots.find((slot) => slot.type === 'DoubleCredit').count).toBe(0);
+	});
+
+	test('spending one hands back the inventory it left', async () => {
+		serveLoadout();
+		const result = await api.usePowerUp('XpBoost');
+
+		expect(result.outcome).toBe('used');
+		const boost = result.slots.find((slot) => slot.type === 'XpBoost');
+		expect(boost.count).toBe(1);
+		expect(boost.active).toBe(true);
+	});
+
+	test("an empty slot is refused in the plugin's own wording", async () => {
+		serveLoadout();
+		const result = await api.usePowerUp('DoubleCredit');
+
+		expect(result.outcome).toBe('refused');
+		expect(result.message).toBe('None left.');
+	});
+
+	test('anything else that goes wrong is a plain failure', async () => {
+		platformFetch.mockResolvedValue({ok: false, status: 500, text: () => Promise.resolve('')});
+		expect((await api.usePowerUp('XpBoost')).outcome).toBe('failed');
+		expect(await api.fetchPowerUps()).toBeNull();
+	});
+
+	test('a session without a user spends nothing', async () => {
+		mockUserId = null;
+		serveLoadout();
+		expect((await api.usePowerUp('XpBoost')).outcome).toBe('failed');
+		expect(await api.fetchPowerUps()).toBeNull();
+		expect(platformFetch).not.toHaveBeenCalled();
+	});
+});
