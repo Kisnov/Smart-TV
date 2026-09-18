@@ -285,3 +285,40 @@ describe('quest reroll', () => {
 		expect(overview.quests.weeklyRerollsLeft).toBe(0);
 	});
 });
+
+describe('badge suggestions', () => {
+	const CHASE = {
+		BadgeId: 'binge-titan',
+		BadgeTitle: 'Binge Titan',
+		Progress: {Current: 4, Target: 10},
+		Items: [
+			{Id: 'item-1', Name: 'Trolls Band Together', Type: 'Movie', Year: 2023, RunTimeMinutes: 91},
+			{Id: 'item-2', Name: 'Turf War', Type: 'Episode', Year: 2012, RunTimeMinutes: 22}
+		]
+	};
+
+	test('a badge carries its progress and what to watch', async () => {
+		serve({'users/user1/chase/binge-titan': CHASE});
+		const chase = await api.fetchBadgeChase('binge-titan');
+
+		expect(chase.current).toBe(4);
+		expect(chase.target).toBe(10);
+		expect(chase.items).toHaveLength(2);
+		expect(chase.items[0].name).toBe('Trolls Band Together');
+		expect(chase.items[0].runtimeMinutes).toBe(91);
+		expect(chase.items[0].id).toBe('item-1');
+		expect(paths()).toEqual(['users/user1/chase/binge-titan?limit=10']);
+	});
+
+	test('a badge the plugin cannot recommend for comes back as nothing', async () => {
+		serve({});
+		expect(await api.fetchBadgeChase('binge-titan')).toBeNull();
+	});
+
+	test('a session without a user has nothing to ask for', async () => {
+		mockUserId = null;
+		serve({'users/user1/chase/binge-titan': CHASE});
+		expect(await api.fetchBadgeChase('binge-titan')).toBeNull();
+		expect(platformFetch).not.toHaveBeenCalled();
+	});
+});

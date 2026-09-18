@@ -2,7 +2,7 @@ import {useCallback, useEffect, useState} from 'react';
 
 import * as achievementsApi from '../../../services/achievementsApi';
 import {
-	AchievementsView, AchievementsBadgesView, AchievementsQuestsView,
+	AchievementsView, AchievementsBadgesView, AchievementsBadgeView, AchievementsQuestsView,
 	AchievementsLeaderboardView, AchievementsRecapView, AchievementsLibraryView
 } from './AchievementsViews';
 
@@ -10,11 +10,11 @@ import {
 // of them reads a slice of it, and only the leaderboard and the recap ask the server for
 // anything more.
 export const ACHIEVEMENT_VIEWS = [
-	'achievements', 'achievementsBadges', 'achievementsQuests',
+	'achievements', 'achievementsBadges', 'achievementsBadge', 'achievementsQuests',
 	'achievementsLeaderboard', 'achievementsRecap', 'achievementsLibrary'
 ];
 
-const AchievementsScreens = ({view, onOpen}) => {
+const AchievementsScreens = ({view, badgeId, onOpen, onSelectItem}) => {
 	const [overview, setOverview] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [attempt, setAttempt] = useState(0);
@@ -34,8 +34,22 @@ const AchievementsScreens = ({view, onOpen}) => {
 
 	const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
+	const openBadge = useCallback(
+		(id) => onOpen('achievementsBadge', `achievement-badge-${id}`, id),
+		[onOpen]
+	);
+
 	if (view === 'achievementsBadges') {
-		return <AchievementsBadgesView badges={overview ? overview.badges : []} />;
+		return (
+			<AchievementsBadgesView
+				badges={overview ? overview.badges : []}
+				onOpenBadge={openBadge}
+			/>
+		);
+	}
+	if (view === 'achievementsBadge') {
+		const badge = (overview ? overview.badges : []).find((entry) => entry.id === badgeId);
+		return badge ? <AchievementsBadgeView badge={badge} onSelectItem={onSelectItem} /> : null;
 	}
 	if (view === 'achievementsQuests') {
 		return <AchievementsQuestsView quests={overview && overview.quests ? overview.quests : {daily: [], weekly: []}} />;

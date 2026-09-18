@@ -1,7 +1,7 @@
 import {
 	groupBadges, leaderboardValue, parseBadge, parseLeaderboardEntry, parseLibraryCompletion,
-	parseQuest, parseQuests, parseRank, parseRecap, parseRerolledQuests, parseSummary,
-	parseHexColor, rarityColor, scoreForRarity
+	parseBadgeChase, parseQuest, parseQuests, parseRank, parseRecap, parseRerolledQuests,
+	parseSummary, parseHexColor, rarityColor, scoreForRarity
 } from './achievementsModel';
 
 const badge = (over) => parseBadge({
@@ -157,6 +157,36 @@ describe('parseRerolledQuests', () => {
 	test('an answer carrying no list is no quests rather than a crash', () => {
 		expect(parseRerolledQuests({}).quests).toEqual([]);
 		expect(parseRerolledQuests({}).rerollsLeft).toBe(0);
+	});
+});
+
+describe('parseBadgeChase', () => {
+	test('reads the progress envelope and the items under it', () => {
+		const chase = parseBadgeChase({
+			Progress: {Current: 4, Target: 10},
+			Items: [{Id: 'item-1', Name: 'Trolls Band Together', Type: 'Movie', Year: 2023, RunTimeMinutes: 91}]
+		});
+		expect(chase.current).toBe(4);
+		expect(chase.target).toBe(10);
+		expect(chase.items[0]).toEqual({
+			id: 'item-1', name: 'Trolls Band Together', type: 'Movie', year: 2023, runtimeMinutes: 91
+		});
+	});
+
+	test('an answer with nothing to suggest still reads', () => {
+		const chase = parseBadgeChase({Progress: {Current: 0, Target: 5}});
+		expect(chase.items).toEqual([]);
+		expect(chase.target).toBe(5);
+	});
+
+	test('a missing progress envelope reads as no progress', () => {
+		expect(parseBadgeChase({})).toEqual({current: 0, target: 0, items: []});
+	});
+
+	test('a year or runtime the server does not hold reads as zero', () => {
+		const chase = parseBadgeChase({Items: [{Id: 'x', Name: 'Untitled', Type: 'Video'}]});
+		expect(chase.items[0].year).toBe(0);
+		expect(chase.items[0].runtimeMinutes).toBe(0);
 	});
 });
 

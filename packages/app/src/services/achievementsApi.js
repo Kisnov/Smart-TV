@@ -11,7 +11,7 @@ import {getServerUrl, getAuthHeader, getApiKey, getUserId, getServerType} from '
 import {legacyAuthHeader} from '../utils/serverRoutes';
 import {platformFetch} from './secureFetch';
 import {
-	isObject, parseSummary, parseRank, parseBadges, parseQuests, parseRerolledQuests,
+	isObject, parseBadgeChase, parseSummary, parseRank, parseBadges, parseQuests, parseRerolledQuests,
 	parseLeaderboardEntry, parseRecap, parseLibraryCompletion,
 	REROLLED, REROLL_ALREADY_USED, REROLL_FAILED
 } from '../utils/achievementsModel';
@@ -92,6 +92,15 @@ export const sendLoginPing = () => {
 	const userId = getUserId();
 	if (!userId) return Promise.resolve(null);
 	return request(`users/${userId}/login-ping`, 'POST');
+};
+
+// What the plugin suggests watching to move a badge along. The server picks unplayed items that
+// match the badge's metric, so one measured on something it cannot query comes back with nothing.
+export const fetchBadgeChase = async (badgeId, {limit = 10} = {}) => {
+	const userId = getUserId();
+	if (!userId) return null;
+	const json = await getMap(`users/${userId}/chase/${encodeURIComponent(badgeId)}?limit=${limit}`);
+	return json ? parseBadgeChase(json) : null;
 };
 
 // Swaps one quest set for a fresh one. The plugin answers 429 once that allowance is spent.

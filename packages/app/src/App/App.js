@@ -913,6 +913,12 @@ const AppContent = (props) => {
 		setShowSettingsPanel(false);
 	}, []);
 
+	// Settings sits over everything, so picking something in it has to step out of the way first.
+	const handleSelectItemFromSettings = useCallback((item) => {
+		setShowSettingsPanel(false);
+		handleSelectItem(item);
+	}, [handleSelectItem]);
+
 	const handleOpenAccountModal = useCallback(() => {
 		setShowAccountModal(true);
 	}, []);
@@ -1384,7 +1390,12 @@ const AppContent = (props) => {
 					</Panel>
 					<Panel>
 						{panelIndex === PANELS.SETTINGS && (
-							<Settings onBack={handleBack} onLibrariesChanged={fetchLibraries} onRunSetupWizard={handleRunSetupWizard} />
+							<Settings
+								onBack={handleBack}
+								onLibrariesChanged={fetchLibraries}
+								onRunSetupWizard={handleRunSetupWizard}
+								onSelectItem={handleSelectItemFromSettings}
+							/>
 						)}
 					</Panel>
 					<Panel>
@@ -1663,6 +1674,7 @@ const AppContent = (props) => {
 					onClose={handleCloseSettingsPanel}
 					onLibrariesChanged={fetchLibraries}
 					onRunSetupWizard={handleRunSetupWizard}
+					onSelectItem={handleSelectItemFromSettings}
 				/>
 			)}
 			<TVKeyboard />

@@ -63,7 +63,7 @@ const PROFILE_CHIPS = [
 ];
 
 
-const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, panelMode }) => {
+const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, panelMode }) => {
 	const { api, serverUrl, accessToken, hasMultipleServers, logoutAll, activeServerInfo, user } = useAuth();
 	const { settings, updateSetting, updateSettings, resetSettings, restoreSyncedDefaults, availableThemes, activeThemeId, selectThemeById, saveStoreTheme, deleteStoreTheme } = useSettings();
 	const { capabilities } = useDeviceInfo();
@@ -644,8 +644,8 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, panelMode }) =
 	} = useSeerrAccount({seerr, seerrLabel, settings, updateSetting, serverUrl, accessToken});
 
 	// The achievement screens push by name so BACK walks back through them one at a time.
-	const openAchievementsView = useCallback((view, returnFocusTo) => {
-		pushView({view, returnFocusTo});
+	const openAchievementsView = useCallback((view, returnFocusTo, badgeId) => {
+		pushView({view, returnFocusTo, badgeId});
 	}, [pushView]);
 
 	const {
@@ -1195,7 +1195,12 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, panelMode }) =
 				/>
 			)}
 			{ACHIEVEMENT_VIEWS.indexOf(viewName) >= 0 && (
-				<AchievementsScreens view={viewName} onOpen={openAchievementsView} />
+				<AchievementsScreens
+					view={viewName}
+					badgeId={currentView.badgeId}
+					onOpen={openAchievementsView}
+					onSelectItem={onSelectItem}
+				/>
 			)}
 			{viewName === 'themes' && (
 				<ThemesView

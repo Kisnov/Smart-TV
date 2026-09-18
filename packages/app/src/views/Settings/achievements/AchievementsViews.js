@@ -82,20 +82,21 @@ const OpenScreenRow = ({id, title, desc, icon, view, onOpen, enabled = true}) =>
 
 const Message = ({children}) => <div className={css.message}>{children}</div>;
 
-// A row that is there to be read rather than pressed. It still has to take focus, because a list
-// whose rows cannot be focused is a list the remote cannot scroll.
-const ReadOnlyRow = ({spotlightId, children}) => (
-	<SpottableDiv className={settingsCss.listItem} spotlightId={spotlightId}>
+// A row takes focus even when it does nothing, because a list whose rows cannot be focused is a
+// list the remote cannot scroll.
+const AchievementRow = ({spotlightId, onClick, children}) => (
+	<SpottableDiv className={settingsCss.listItem} spotlightId={spotlightId} onClick={onClick}>
 		{children}
 	</SpottableDiv>
 );
 
-const BadgeRow = ({badge}) => {
+const BadgeRow = ({badge, onOpenBadge}) => {
 	const color = rarityColor(badge.rarity);
 	const showsProgress = !badge.unlocked && badge.targetValue > 0;
+	const handleClick = useCallback(() => onOpenBadge(badge.id), [onOpenBadge, badge.id]);
 
 	return (
-		<ReadOnlyRow spotlightId={`achievement-badge-${badge.id}`}>
+		<AchievementRow spotlightId={`achievement-badge-${badge.id}`} onClick={handleClick}>
 			<div
 				className={`${css.badgeAvatar}${badge.unlocked ? '' : ` ${css.badgeAvatarLocked}`}`}
 				style={shell(color)}
@@ -125,11 +126,11 @@ const BadgeRow = ({badge}) => {
 				<div className={css.rarity} style={{color}}>{badge.rarity}</div>
 				<div className={css.points}>{$L('{points} pts').replace('{points}', String(badge.score))}</div>
 			</div>
-		</ReadOnlyRow>
+		</AchievementRow>
 	);
 };
 
-const CategorySection = ({group, open, onToggle}) => {
+const CategorySection = ({group, open, onToggle, onOpenBadge}) => {
 	const handleToggle = useCallback(() => onToggle(group.category), [onToggle, group.category]);
 
 	return (
@@ -143,7 +144,9 @@ const CategorySection = ({group, open, onToggle}) => {
 				icon={open ? 'folder_open' : 'folder'}
 				onClick={handleToggle}
 			/>
-			{open && group.badges.map((badge) => <BadgeRow key={badge.id} badge={badge} />)}
+			{open && group.badges.map((badge) => (
+				<BadgeRow key={badge.id} badge={badge} onOpenBadge={onOpenBadge} />
+			))}
 		</>
 	);
 };
@@ -297,7 +300,7 @@ export const AchievementsView = ({overview, loading, onReload, onOpen}) => {
 	);
 };
 
-export const AchievementsBadgesView = ({badges}) => {
+export const AchievementsBadgesView = ({badges, onOpenBadge}) => {
 	const [filter, setFilter] = useState(BADGE_FILTERS[0]);
 	const [open, setOpen] = useState([]);
 
@@ -330,14 +333,87 @@ export const AchievementsBadgesView = ({badges}) => {
 						group={group}
 						open={open.includes(group.category)}
 						onToggle={toggle}
+						onOpenBadge={onOpenBadge}
 					/>
 				))}
 		</SettingsView>
 	);
 };
 
+const ChaseRow = ({item, onSelectItem}) => {
+	// Details fetches the full record by id, so the seed only has to say which item this was.
+	const handleClick = useCallback(
+		() => onSelectItem({Id: item.id, Name: item.name, Type: item.type}),
+		[onSelectItem, item.id, item.name, item.type]
+	);
+	const parts = [
+		item.type,
+		item.year > 0 ? String(item.year) : '',
+		item.runtimeMinutes > 0 ? $L('{minutes} min').replace('{minutes}', String(item.runtimeMinutes)) : ''
+	].filter(Boolean);
+
+	return (
+		<AchievementRow spotlightId={`achievement-chase-${item.id}`} onClick={handleClick}>
+			<div className={settingsCss.listItemBody}>
+				<div className={settingsCss.listItemHeading}>{item.name}</div>
+				{parts.length > 0 && <div className={settingsCss.listItemCaption}>{parts.join(' \u00b7 ')}</div>}
+			</div>
+		</AchievementRow>
+	);
+};
+
+// One badge on its own, with what the plugin suggests watching for it.
+export const AchievementsBadgeView = ({badge, onSelectItem}) => {
+	const [chase, setChase] = useState(null);
+	const [loading, setLoading] = useState(true);
+
+	useEffect(() => {
+		let cancelled = false;
+		setLoading(true);
+		achievementsApi.fetchBadgeChase(badge.id).then((next) => {
+			if (cancelled) return;
+			setChase(next);
+			setLoading(false);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [badge.id]);
+
+	if (loading) {
+		return (
+			<SettingsView spotlightId="achievements-badge-view">
+				<Message>{$L('Loading...')}</Message>
+			</SettingsView>
+		);
+	}
+
+	// The badge carries its own figures, so they stand in when the chase had nothing to say.
+	const current = chase ? chase.current : badge.currentValue;
+	const target = chase ? chase.target : badge.targetValue;
+	const items = chase ? chase.items : [];
+
+	return (
+		<SettingsView spotlightId="achievements-badge-view">
+			<SectionTitle>{badge.isSecret ? $L('Hidden achievement') : badge.title}</SectionTitle>
+			{badge.description && !badge.descriptionHidden && (
+				<div className={css.badgeBlurb}>{badge.description}</div>
+			)}
+			<SectionTitle>{$L('Progress')}</SectionTitle>
+			<div className={css.progressBlock}>
+				<div className={css.progressFigure}>{`${current} / ${target}`}</div>
+				<Bar value={badge.progress} color={rarityColor(badge.rarity)} />
+			</div>
+			<SectionTitle>{$L('Suggested items to watch')}</SectionTitle>
+			{items.length === 0
+				? <Message>{$L('Nothing to suggest for this badge.')}</Message>
+				: items.map((item) => <ChaseRow key={item.id} item={item} onSelectItem={onSelectItem} />)}
+		</SettingsView>
+	);
+};
+
 const QuestRow = ({quest}) => (
-	<ReadOnlyRow spotlightId={`achievement-quest-${quest.id}`}>
+	<AchievementRow spotlightId={`achievement-quest-${quest.id}`}>
 		<div className={css.badgeAvatar} style={shell(ACCENT)}>
 			<Icon name={quest.completed ? 'check_circle' : quest.icon} className={css.badgeIcon} />
 		</div>
@@ -348,7 +424,7 @@ const QuestRow = ({quest}) => (
 			<div className={css.progressText}>{`${quest.current} / ${quest.target}`}</div>
 		</div>
 		<div className={css.reward}>{$L('+{points}').replace('{points}', String(quest.reward))}</div>
-	</ReadOnlyRow>
+	</AchievementRow>
 );
 
 const RerollRow = ({weekly, rerollsLeft = 0, busy, onReroll}) => {
@@ -479,7 +555,7 @@ export const AchievementsLeaderboardView = ({initial}) => {
 			{loading && <Message>{$L('Loading...')}</Message>}
 			{!loading && entries.length === 0 && <Message>{$L('Nothing here yet.')}</Message>}
 			{!loading && entries.map((entry, index) => (
-				<ReadOnlyRow key={entry.userId || index} spotlightId={`achievement-board-row-${index}`}>
+				<AchievementRow key={entry.userId || index} spotlightId={`achievement-board-row-${index}`}>
 					<div className={css.rankGutter}>{index + 1}</div>
 					<div className={settingsCss.listItemBody}>
 						<div className={settingsCss.listItemHeading}>{entry.userName}</div>
@@ -492,7 +568,7 @@ export const AchievementsLeaderboardView = ({initial}) => {
 						)}
 					</div>
 					<div className={css.boardValue}>{leaderboardValue(entry)}</div>
-				</ReadOnlyRow>
+				</AchievementRow>
 			))}
 		</SettingsView>
 	);
@@ -502,12 +578,12 @@ const CountList = ({title, counts, idPrefix}) => (
 	<>
 		<SectionTitle>{title}</SectionTitle>
 		{counts.map((count, index) => (
-			<ReadOnlyRow key={count.name} spotlightId={`${idPrefix}-${index}`}>
+			<AchievementRow key={count.name} spotlightId={`${idPrefix}-${index}`}>
 				<div className={settingsCss.listItemBody}>
 					<div className={settingsCss.listItemHeading}>{count.name}</div>
 				</div>
 				<div className={css.boardValue}>{count.count}</div>
-			</ReadOnlyRow>
+			</AchievementRow>
 		))}
 	</>
 );
@@ -581,7 +657,7 @@ export const AchievementsRecapView = ({initial}) => {
 export const AchievementsLibraryView = ({completion}) => (
 	<SettingsView spotlightId="achievements-library-view">
 		{Object.keys(completion).sort().map((name) => (
-			<ReadOnlyRow key={name} spotlightId={`achievement-library-${name}`}>
+			<AchievementRow key={name} spotlightId={`achievement-library-${name}`}>
 				<div className={settingsCss.listItemBody}>
 					<div className={settingsCss.listItemHeading}>{name}</div>
 					<div className={css.rowBar}>
@@ -589,7 +665,7 @@ export const AchievementsLibraryView = ({completion}) => (
 					</div>
 				</div>
 				<div className={css.boardValue}>{`${completion[name]}%`}</div>
-			</ReadOnlyRow>
+			</AchievementRow>
 		))}
 	</SettingsView>
 );

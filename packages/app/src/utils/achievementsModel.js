@@ -28,6 +28,10 @@ const asNumber = (value) => {
 
 const asString = (value) => (typeof value === 'string' ? value : '');
 
+// Every array the plugin sends is a list of objects, and a missing one arrives as nothing rather
+// than as an empty array.
+const mapList = (value, from) => (Array.isArray(value) ? value.filter(isObject).map(from) : []);
+
 const asBool = (value) => value === true;
 
 // An unparseable date reads as nothing rather than throwing, since a badge with a bad timestamp
@@ -153,8 +157,7 @@ export const parseQuest = (json) => {
 
 // Reads either the quest arrays on the overview or the replacement list a reroll answers with,
 // which carry the same shape.
-const parseQuestList = (value) =>
-	(Array.isArray(value) ? value.filter(isObject).map(parseQuest) : []);
+const parseQuestList = (value) => mapList(value, parseQuest);
 
 export const parseQuests = (json) => {
 	if (!json) return null;
@@ -175,6 +178,26 @@ export const parseQuests = (json) => {
 export const REROLLED = 'rerolled';
 export const REROLL_ALREADY_USED = 'alreadyUsed';
 export const REROLL_FAILED = 'failed';
+
+// One thing to watch that would move a badge along. Year and runtime come back as zero when the
+// server holds no such value for the item.
+const parseChaseItem = (json) => ({
+	id: asString(json.Id),
+	name: asString(json.Name),
+	type: asString(json.Type),
+	year: asInt(json.Year),
+	runtimeMinutes: asInt(json.RunTimeMinutes)
+});
+
+// What the plugin suggests watching for one badge.
+export const parseBadgeChase = (json) => {
+	const progress = isObject(json.Progress) ? json.Progress : {};
+	return {
+		current: asInt(progress.Current),
+		target: asInt(progress.Target),
+		items: mapList(json.Items, parseChaseItem)
+	};
+};
 
 // The replacement set comes back with the answer, so a reroll needs no second fetch.
 export const parseRerolledQuests = (json) => ({
@@ -205,7 +228,7 @@ export const leaderboardValue = (entry) => {
 
 const parseCount = (json) => ({name: asString(json.Name), count: asInt(json.Count)});
 
-const countList = (value) => (Array.isArray(value) ? value.filter(isObject).map(parseCount) : []);
+const countList = (value) => mapList(value, parseCount);
 
 export const parseRecap = (json) => (json ? {
 	period: asString(json.Period),
@@ -228,7 +251,7 @@ export const parseLibraryCompletion = (json) => {
 	return out;
 };
 
-export const parseBadges = (list) => (Array.isArray(list) ? list.filter(isObject).map(parseBadge) : []);
+export const parseBadges = (list) => mapList(list, parseBadge);
 
 export const BADGE_FILTERS = ['all', 'unlocked', 'locked'];
 
