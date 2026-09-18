@@ -4,7 +4,7 @@ import $L from '@enact/i18n/$L';
 import * as achievementsApi from '../../../services/achievementsApi';
 import {
 	BADGE_FILTERS, groupBadges, leaderboardValue, parseHexColor, rarityColor,
-	REROLLED, REROLL_FAILED, POWER_UP_USED, PURCHASE_BOUGHT
+	REROLLED, REROLL_FAILED, POWER_UP_USED, PURCHASE_BOUGHT, statsAreEmpty
 } from '../../../utils/achievementsModel';
 import {relativeTimeLabel} from '../../../utils/relativeTime';
 import {achievementIconPath} from './achievementIcons';
@@ -361,6 +361,14 @@ export const AchievementsView = ({overview, loading, onReload, onOpen}) => {
 				/>
 			)}
 			<OpenScreenRow
+				id="achievements-stats"
+				title={$L('Stats')}
+				desc={$L('Your records and how the server is doing')}
+				icon="bar_chart"
+				view="achievementsStats"
+				onOpen={onOpen}
+			/>
+			<OpenScreenRow
 				id="achievements-recap"
 				title={$L('Recap')}
 				desc={$L('What you watched recently')}
@@ -624,6 +632,173 @@ export const AchievementsLoadoutView = ({onOpen}) => {
 				onCancel={cancel}
 				onConfirm={confirm}
 			/>
+		</SettingsView>
+	);
+};
+
+// The counters worth showing, in the order they read best. The plugin sends more than this. What
+// is left out is either a duplicate of something here, like minutes beside hours, or plumbing a
+// badge counts on that means nothing on its own.
+const statGroups = () => [
+	{
+		header: $L('Watched'),
+		rows: [
+			['TotalItemsWatched', $L('Items watched')],
+			['MoviesWatched', $L('Films watched')],
+			['SeriesCompleted', $L('Series finished')],
+			['TotalHoursWatched', $L('Hours watched')],
+			['DaysWatched', $L('Days watched')],
+			['RewatchCount', $L('Rewatches')]
+		]
+	},
+	{
+		header: $L('Bests'),
+		rows: [
+			['BestWatchStreak', $L('Best watch streak')],
+			['BestLoginStreak', $L('Best login streak')],
+			['MaxEpisodesInSingleDay', $L('Most episodes in a day')],
+			['MaxMoviesInSingleDay', $L('Most films in a day')],
+			['LongestItemMinutes', $L('Longest single item')],
+			['BestComboCount', $L('Best combo')]
+		]
+	},
+	{
+		header: $L('Habits'),
+		rows: [
+			['LateNightSessions', $L('Late night sessions')],
+			['EarlyMorningSessions', $L('Early morning sessions')],
+			['WeekendSessions', $L('Weekend sessions')],
+			['DaysLoggedIn', $L('Days signed in')]
+		]
+	},
+	{
+		header: $L('Variety'),
+		rows: [
+			['UniqueLibrariesVisited', $L('Libraries visited')],
+			['UniqueGenresWatched', $L('Genres watched')],
+			['UniqueDecadesWatched', $L('Decades watched')],
+			['UniqueCountriesWatched', $L('Countries watched')],
+			['UniqueLanguagesWatched', $L('Languages watched')]
+		]
+	}
+];
+
+const StatRow = ({label, value, spotlightId}) => (
+	<AchievementRow spotlightId={spotlightId}>
+		<div className={settingsCss.listItemBody}>
+			<div className={settingsCss.listItemHeading}>{label}</div>
+		</div>
+		<div className={css.statValue}>{value}</div>
+	</AchievementRow>
+);
+
+// A heading and its rows, or nothing when the server sent none of them.
+const StatSection = ({header, rows}) => {
+	const shown = rows.filter(Boolean);
+	if (shown.length === 0) return null;
+	return (
+		<>
+			<SectionTitle>{header}</SectionTitle>
+			{shown}
+		</>
+	);
+};
+
+const CLOCK_HOURS = [...Array(24).keys()];
+const CLOCK_LABELS = [0, 6, 12, 18, 23];
+
+// Each hour is drawn as a share of the busiest one, over a 56px box with a 2px floor so an hour
+// with nothing in it still reads as a column.
+const barHeight = (count, busiest) => percent((2 + 54 * (count / busiest)) / 56);
+
+const WatchClock = ({hours}) => {
+	const busiest = CLOCK_HOURS.reduce((most, hour) => Math.max(most, hours[hour] || 0), 0);
+	if (busiest === 0) return null;
+
+	return (
+		<div className={css.clock}>
+			<div className={css.clockBars}>
+				{CLOCK_HOURS.map((hour) => (
+					<div key={hour} className={css.clockBar} style={{height: barHeight(hours[hour] || 0, busiest)}} />
+				))}
+			</div>
+			<div className={css.clockLabels}>
+				{CLOCK_LABELS.map((hour) => <span key={hour}>{hour}</span>)}
+			</div>
+		</div>
+	);
+};
+
+// The one counter that is a run time rather than a tally.
+const statValue = (key, count) =>
+	(key === 'LongestItemMinutes'
+		? $L('{minutes} min').replace('{minutes}', String(count))
+		: String(count));
+
+const serverRows = (server) => [
+	['users', $L('Users'), String(server.users)],
+	['badges', $L('Badges unlocked'), String(server.badgesUnlocked)],
+	['items', $L('Items watched'), String(server.itemsWatched)],
+	['movies', $L('Films watched'), String(server.moviesWatched)],
+	['series', $L('Series finished'), String(server.seriesCompleted)],
+	['score', $L('Score earned'), String(server.score)],
+	...(server.mostCommonBadge ? [['common-badge', $L('Most common badge'), server.mostCommonBadge]] : [])
+];
+
+// A user's own records, and how the whole server is doing when the admin has not hidden it.
+export const AchievementsStatsView = () => {
+	const {data: stats, loading} = useLoadOnOpen(achievementsApi.fetchStats);
+
+	if (loading) {
+		return (
+			<SettingsView spotlightId="achievements-stats-view">
+				<Message>{$L('Loading...')}</Message>
+			</SettingsView>
+		);
+	}
+
+	if (statsAreEmpty(stats)) {
+		return (
+			<SettingsView spotlightId="achievements-stats-view">
+				<Message>{$L('Nothing here yet.')}</Message>
+			</SettingsView>
+		);
+	}
+
+	const {records, server} = stats;
+
+	return (
+		<SettingsView spotlightId="achievements-stats-view">
+			{statGroups().map((group) => (
+				<StatSection
+					key={group.header}
+					header={group.header}
+					rows={group.rows.map(([key, label]) => (
+						key in records
+							? <StatRow
+								key={key}
+								spotlightId={`achievement-stat-${key}`}
+								label={label}
+								value={statValue(key, records[key])}
+							/>
+							: null
+					))}
+				/>
+			))}
+			{Object.keys(stats.watchClock).length > 0 && (
+				<>
+					<SectionTitle>{$L('When you watch')}</SectionTitle>
+					<WatchClock hours={stats.watchClock} />
+				</>
+			)}
+			{server && (
+				<StatSection
+					header={$L('This server')}
+					rows={serverRows(server).map(([key, label, value]) => (
+						<StatRow key={key} spotlightId={`achievement-stat-server-${key}`} label={label} value={value} />
+					))}
+				/>
+			)}
 		</SettingsView>
 	);
 };

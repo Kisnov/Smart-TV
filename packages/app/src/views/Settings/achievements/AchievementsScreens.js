@@ -4,7 +4,8 @@ import * as achievementsApi from '../../../services/achievementsApi';
 import {
 	AchievementsView, AchievementsBadgesView, AchievementsBadgeView, AchievementsQuestsView,
 	AchievementsLeaderboardView, AchievementsRecapView, AchievementsLibraryView,
-	AchievementsLoadoutView, AchievementsShopView, AchievementsActivityView, useLoadOnOpen
+	AchievementsLoadoutView, AchievementsShopView, AchievementsActivityView, AchievementsStatsView,
+	useLoadOnOpen
 } from './AchievementsViews';
 
 // Every achievement screen renders from here so the one load survives moving between them. Each
@@ -13,7 +14,7 @@ import {
 export const ACHIEVEMENT_VIEWS = [
 	'achievements', 'achievementsBadges', 'achievementsBadge', 'achievementsQuests',
 	'achievementsLeaderboard', 'achievementsRecap', 'achievementsLibrary', 'achievementsLoadout',
-	'achievementsShop', 'achievementsActivity'
+	'achievementsShop', 'achievementsActivity', 'achievementsStats'
 ];
 
 const AchievementsScreens = ({view, badgeId, onOpen, onSelectItem}) => {
@@ -53,6 +54,9 @@ const AchievementsScreens = ({view, badgeId, onOpen, onSelectItem}) => {
 	}
 	if (view === 'achievementsActivity') {
 		return <AchievementsActivityView />;
+	}
+	if (view === 'achievementsStats') {
+		return <AchievementsStatsView />;
 	}
 	if (view === 'achievementsLibrary') {
 		return <AchievementsLibraryView completion={overview ? overview.libraryCompletion : {}} />;

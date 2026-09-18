@@ -395,6 +395,49 @@ describe('loadout', () => {
 	});
 });
 
+describe('stats', () => {
+	const STATS = {
+		'users/user1/records': {TotalItemsWatched: 5, BestWatchStreak: 1, LongestItemMinutes: 21},
+		'users/user1/watch-clock': {0: 0, 21: 4},
+		'server/stats': {TotalUsers: 3, TotalBadgesUnlocked: 17, MostCommonBadge: 'First Contact'}
+	};
+
+	test('the records, the clock and the server figures come back in one pass', async () => {
+		serve({'public-config': CONFIG, ...STATS});
+		await api.probe();
+		const stats = await api.fetchStats();
+
+		expect(stats.records.TotalItemsWatched).toBe(5);
+		expect(stats.watchClock[21]).toBe(4);
+		expect(stats.server.users).toBe(3);
+		expect(stats.server.mostCommonBadge).toBe('First Contact');
+	});
+
+	test('privacy mode leaves the server figures unasked', async () => {
+		serve({'public-config': {...CONFIG, ForcePrivacyMode: true}, ...STATS});
+		await api.probe();
+		const stats = await api.fetchStats();
+
+		expect(stats.server).toBeNull();
+		expect(stats.records.TotalItemsWatched).toBe(5);
+		expect(paths()).not.toContain('server/stats');
+	});
+
+	test('a server that answers none of it still reads as a shape', async () => {
+		serve({'public-config': CONFIG});
+		await api.probe();
+		expect(await api.fetchStats()).toEqual({records: {}, watchClock: {}, server: null});
+	});
+
+	test('a session without a user asks for nothing', async () => {
+		mockUserId = null;
+		serve({'public-config': CONFIG, ...STATS});
+
+		expect(await api.fetchStats()).toEqual({records: {}, watchClock: {}, server: null});
+		expect(platformFetch).not.toHaveBeenCalled();
+	});
+});
+
 describe('activity feed', () => {
 	const FEED = {
 		Page: 1,

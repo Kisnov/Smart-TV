@@ -231,6 +231,45 @@ export const POWER_UP_USED = 'used';
 export const POWER_UP_REFUSED = 'refused';
 export const POWER_UP_FAILED = 'failed';
 
+// Counters keyed the way the plugin names them, such as BestWatchStreak. Keeping the map rather
+// than naming all twenty-seven means a counter the plugin adds later needs a label and nothing
+// else.
+export const parseCounters = (json) => {
+	if (!isObject(json)) return {};
+	const out = {};
+	Object.keys(json).forEach((key) => {
+		if (typeof json[key] === 'number') out[key] = Math.round(json[key]);
+	});
+	return out;
+};
+
+// The clock arrives keyed by hour, as strings.
+export const parseWatchClock = (json) => {
+	if (!isObject(json)) return {};
+	const out = {};
+	Object.keys(json).forEach((key) => {
+		const hour = Number(key);
+		if (Number.isInteger(hour) && typeof json[key] === 'number') out[hour] = Math.round(json[key]);
+	});
+	return out;
+};
+
+// How the whole server is doing, which an admin can hide.
+export const parseServerStats = (json) => ({
+	users: asInt(json.TotalUsers),
+	badgesUnlocked: asInt(json.TotalBadgesUnlocked),
+	itemsWatched: asInt(json.TotalItemsWatched),
+	moviesWatched: asInt(json.TotalMoviesWatched),
+	seriesCompleted: asInt(json.TotalSeriesCompleted),
+	score: asInt(json.TotalAchievementScore),
+	mostCommonBadge: asString(json.MostCommonBadge)
+});
+
+export const statsAreEmpty = (stats) =>
+	Object.keys(stats.records).length === 0 &&
+	Object.keys(stats.watchClock).length === 0 &&
+	!stats.server;
+
 // One badge someone on this server unlocked. The feed also pages, and says who and which badge by
 // id, none of which this screen needs.
 const parseActivityEntry = (json) => ({

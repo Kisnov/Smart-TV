@@ -1,8 +1,8 @@
 import {
 	groupBadges, leaderboardValue, parseBadge, parseLeaderboardEntry, parseLibraryCompletion,
 	parseBadgeChase, parseQuest, parseQuests, parseRank, parseRecap, parseRerolledQuests,
-	parseSummary, parsePowerUpState, parseShopCatalog, parseActivityFeed, parseHexColor, rarityColor,
-	scoreForRarity
+	parseSummary, parsePowerUpState, parseShopCatalog, parseActivityFeed, parseCounters,
+	parseWatchClock, parseServerStats, statsAreEmpty, parseHexColor, rarityColor, scoreForRarity
 } from './achievementsModel';
 
 const badge = (over) => parseBadge({
@@ -213,6 +213,34 @@ describe('parsePowerUpState', () => {
 
 	test('an empty answer is a bank of nothing', () => {
 		expect(parsePowerUpState({})).toEqual({bank: 0, slots: []});
+	});
+});
+
+describe('stats', () => {
+	test('a counter that is not a number is dropped rather than shown as one', () => {
+		expect(parseCounters({TotalItemsWatched: 5, LongestItemMinutes: 21.4, MostCommonBadge: 'First Contact'}))
+			.toEqual({TotalItemsWatched: 5, LongestItemMinutes: 21});
+	});
+
+	test('the clock keys come back as hours rather than the strings they arrived as', () => {
+		expect(parseWatchClock({0: 0, 21: 4, notAnHour: 9})).toEqual({0: 0, 21: 4});
+	});
+
+	test('the server figures read into one shape', () => {
+		const server = parseServerStats({
+			TotalUsers: 3, TotalBadgesUnlocked: 17, TotalItemsWatched: 11, TotalMoviesWatched: 1,
+			TotalSeriesCompleted: 0, MostCommonBadge: 'First Contact', TotalAchievementScore: 290
+		});
+		expect(server).toEqual({
+			users: 3, badgesUnlocked: 17, itemsWatched: 11, moviesWatched: 1,
+			seriesCompleted: 0, score: 290, mostCommonBadge: 'First Contact'
+		});
+	});
+
+	test('nothing anywhere is an empty screen, but one counter is not', () => {
+		expect(statsAreEmpty({records: {}, watchClock: {}, server: null})).toBe(true);
+		expect(statsAreEmpty({records: {DaysWatched: 0}, watchClock: {}, server: null})).toBe(false);
+		expect(statsAreEmpty({records: {}, watchClock: {}, server: {users: 3}})).toBe(false);
 	});
 });
 

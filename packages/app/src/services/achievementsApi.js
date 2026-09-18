@@ -14,6 +14,7 @@ import {
 	isObject, parseBadgeChase, parseSummary, parseRank, parseBadges, parseQuests, parseRerolledQuests,
 	parseLeaderboardEntry, parseRecap, parseLibraryCompletion,
 	parsePowerUpState, parsePowerUpSlots, parseShopCatalog, parseActivityFeed,
+	parseCounters, parseWatchClock, parseServerStats,
 	REROLLED, REROLL_ALREADY_USED, REROLL_FAILED,
 	POWER_UP_USED, POWER_UP_REFUSED, POWER_UP_FAILED,
 	PURCHASE_BOUGHT, PURCHASE_REFUSED, PURCHASE_FAILED
@@ -30,6 +31,9 @@ export const DEFAULT_RECAP_PERIOD = 'month';
 let leaderboardEnabled = true;
 let questsEnabled = true;
 let activityEnabled = true;
+
+// Set when the admin hides the whole server's figures from everyone.
+let privacyMode = false;
 
 const base = () => (getServerUrl() || '').replace(/\/+$/, '');
 
@@ -102,6 +106,7 @@ export const reset = () => {
 	leaderboardEnabled = true;
 	questsEnabled = true;
 	activityEnabled = true;
+	privacyMode = false;
 };
 
 // Whether the plugin answered here. public-config needs no administrator, so an ordinary user
@@ -113,6 +118,7 @@ export const probe = async () => {
 	leaderboardEnabled = config.LeaderboardEnabled !== false;
 	questsEnabled = config.QuestsEnabled !== false;
 	activityEnabled = config.ActivityFeedEnabled !== false;
+	privacyMode = config.ForcePrivacyMode === true;
 	return true;
 };
 
@@ -162,6 +168,24 @@ export const usePowerUp = async (type) => {
 	if (written.refused) return {outcome: POWER_UP_REFUSED, message: written.message};
 	if (!written.body) return {outcome: POWER_UP_FAILED};
 	return {outcome: POWER_UP_USED, slots: parsePowerUpSlots(written.body.Inventory)};
+};
+
+// The counters behind the stats screen, read in one pass.
+export const fetchStats = async () => {
+	const userId = getUserId();
+	if (!userId) return {records: {}, watchClock: {}, server: null};
+
+	const [records, clock, server] = await Promise.all([
+		getMap(`users/${userId}/records`),
+		getMap(`users/${userId}/watch-clock`),
+		privacyMode ? Promise.resolve(null) : getMap('server/stats')
+	]);
+
+	return {
+		records: parseCounters(records),
+		watchClock: parseWatchClock(clock),
+		server: server ? parseServerStats(server) : null
+	};
 };
 
 // What the server has unlocked lately, newest first. It can come back empty because the admin
