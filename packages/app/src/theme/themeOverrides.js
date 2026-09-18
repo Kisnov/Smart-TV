@@ -11,6 +11,7 @@
 
 import {
 	contrastRatio,
+	deepenForLightInk,
 	DEFAULT_ERROR_COLOR,
 	inkOn,
 	MIN_BUTTON_CONTRAST,
@@ -27,6 +28,7 @@ import appCss from '../App/App.module.less';
 import sidebarCss from '../components/Sidebar/Sidebar.module.less';
 import navBarCss from '../components/NavBar/NavBar.module.less';
 import settingsCss from '../views/Settings/Settings.module.less';
+import achievementsCss from '../views/Settings/achievements/Achievements.module.less';
 import searchCss from '../views/Search/Search.module.less';
 import detailsCss from '../views/Details/Details.module.less';
 import trackOptionCss from '../components/TrackOptionRow/TrackOptionRow.module.less';
@@ -118,13 +120,16 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 
 	// The glow a tile falls back to when the theme carries none of its own.
 	const tileGlow = glowOr(`0 0 14px 0.5px ${accentA(0.22)}`);
-	// A focused row fills with the theme's own colour, anything from near white to
-	// a saturated cyan, so its text is picked against that fill rather than assumed
-	// dark. The quieter line stays close behind the heading, since a caption at half
-	// strength on a bright fill is what turns unreadable from across a room.
 	const focusInk = inkOn(c.buttonFocused);
-	const invertedStrong = `rgba(${focusInk}, 0.92)`;
-	const invertedSoft = `rgba(${focusInk}, 0.75)`;
+	// A focused row keeps the theme's colour but takes it down far enough to carry the same
+	// light text the rows around it use. Flipping to dark text on a bright fill measures well
+	// and still reads muddy across a room, and it makes the list flash every time focus moves.
+	const tileFocusFill = deepenForLightInk(c.buttonFocused);
+	const tileInk = inkOn(tileFocusFill);
+	const invertedStrong = `rgba(${tileInk}, 0.96)`;
+	// The quieter line stays close behind the heading, since a caption at half strength is what
+	// turns unreadable from across a room.
+	const invertedSoft = `rgba(${tileInk}, 0.78)`;
 	// The sidebar and nav fill with onSurface, which is a colour of its own.
 	const onSurfaceInk = `rgba(${inkOn(c.onSurface)}, 0.92)`;
 	// A theme names the colour it wants on a focused button, but some name one that
@@ -182,7 +187,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${settingsCss.page}`, `background: ${background};`);
 	rule(`.${settingsCss.sectionTitle}`, `color: ${onBackground};`);
 	rule(`.${settingsCss.listItem}, .${settingsCss.sliderContainer}, .${settingsCss.themeCard}`, `background: ${surfaceA(0.82)}; border: 1px solid ${tileBorderColor};`);
-	const tileFocus = `background: ${buttonFocused}; border-color: ${accentA(0.72)}; box-shadow: ${tileGlow};`;
+	const tileFocus = `background: ${toCssColor(tileFocusFill)}; border-color: ${accentA(0.72)}; box-shadow: ${tileGlow};`;
 	rule(`.${settingsCss.listItem}:focus, .${settingsCss.themeCard}:focus`, tileFocus);
 	// The older engines treat focus-within as a parse error that voids the whole
 	// rule, so it always stands alone instead of joining the selectors above.
@@ -201,6 +206,13 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${settingsCss.sliderContainer}:focus-within .${settingsCss.sliderValue}`, `color: ${invertedSoft};`);
 	rule(`.${settingsCss.listItemIcon}`, `background: ${accentA(0.14)}; border: 1px solid ${accentA(0.42)}; box-sizing: border-box; color: ${os(0.78)};`);
 	rule(`.${settingsCss.listItem}:focus .${settingsCss.listItemIcon}`, `background: ${accentA(0.22)}; border-color: ${accentA(0.64)}; color: ${invertedSoft};`);
+	// An achievement row carries its own figures on the end, so they follow the tile rather than
+	// keeping a resting colour nobody can read once it lights up.
+	rule(`.${achievementsCss.points}, .${achievementsCss.progressText}`, `color: ${os(0.7)};`);
+	rule(`.${achievementsCss.boardValue}, .${achievementsCss.rankGutter}`, `color: ${onSurface};`);
+	rule(`.${achievementsCss.reward}`, `color: ${accent};`);
+	rule(`.${settingsCss.listItem}:focus .${achievementsCss.points}, .${settingsCss.listItem}:focus .${achievementsCss.progressText}`, `color: ${invertedSoft};`);
+	rule(`.${settingsCss.listItem}:focus .${achievementsCss.boardValue}, .${settingsCss.listItem}:focus .${achievementsCss.rankGutter}, .${settingsCss.listItem}:focus .${achievementsCss.reward}`, `color: ${invertedStrong};`);
 	rule(`.${settingsCss.toggleTrack}`, `background: ${surfaceVariant};`);
 	rule(`.${settingsCss.toggleOn}`, `background: ${accent};`);
 	rule(`.${settingsCss.toggleThumb}`, `background: ${onSurface};`);

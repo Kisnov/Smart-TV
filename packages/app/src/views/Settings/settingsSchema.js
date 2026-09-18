@@ -830,6 +830,17 @@ export const SETTINGS_SCHEMA = [
 				]
 			},
 			{
+				id: 'achievements',
+				icon: 'military_tech',
+				section: () => $L('General'),
+				label: () => $L('Achievement Badges'),
+				description: () => $L('Badges, ranks and quests earned from what you watch'),
+				// A screen of its own rather than a page of settings rows.
+				opensView: 'achievements',
+				when: (ctx) => ctx.achievements.available,
+				rows: []
+			},
+			{
 				id: 'externalRows',
 				icon: 'list_alt',
 				section: () => $L('General'),

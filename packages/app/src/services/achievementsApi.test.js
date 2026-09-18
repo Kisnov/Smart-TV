@@ -1,0 +1,206 @@
+import {platformFetch} from './secureFetch';
+import * as api from './achievementsApi';
+
+jest.mock('./secureFetch', () => ({platformFetch: jest.fn()}));
+
+let mockServerUrl = 'http://badges.test';
+let mockToken = 'mockToken';
+let mockUserId = 'user1';
+let mockServerType = 'jellyfin';
+
+jest.mock('./jellyfinApi', () => ({
+	getServerUrl: () => mockServerUrl,
+	getAuthHeader: () => 'MediaBrowser Token="mockToken"',
+	getApiKey: () => mockToken,
+	getUserId: () => mockUserId,
+	getServerType: () => mockServerType
+}));
+
+jest.mock('../utils/serverRoutes', () => ({legacyAuthHeader: () => ({})}));
+
+const ok = (body) => ({ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body))});
+const missing = {ok: false, status: 404, text: () => Promise.resolve('')};
+
+// The plugin's own route shapes, matched by suffix so a path carrying a query still finds one.
+const serve = (routes) => {
+	platformFetch.mockImplementation((url) => {
+		const path = url.split('/Plugins/AchievementBadges/')[1];
+		const match = Object.keys(routes).find((suffix) => path === suffix || path.startsWith(`${suffix}?`));
+		return Promise.resolve(match ? ok(routes[match]) : missing);
+	});
+};
+
+const paths = () => platformFetch.mock.calls.map((call) => call[0].split('/Plugins/AchievementBadges/')[1]);
+
+const CONFIG = {LeaderboardEnabled: true, QuestsEnabled: true};
+const FULL = {
+	'public-config': CONFIG,
+	'users/user1/summary': {Unlocked: 12, Total: 200, Percentage: 6, Score: 430, CurrentWatchStreak: 3, BestWatchStreak: 9},
+	'users/user1/rank': {Score: 430, Tier: {Name: 'Viewer', MinScore: 300, Color: '#2196f3', Icon: 'visibility'}, NextTier: {Name: 'Regular', MinScore: 700, Color: '#03a9f4', Icon: 'person'}, ProgressToNext: 32},
+	'users/user1': [{Id: 'first-contact', Title: 'First Contact', Rarity: 'Common', Unlocked: true, UnlockedAt: '2026-09-01T00:00:00Z', Category: 'Getting Started', CurrentValue: 1, TargetValue: 1}],
+	'users/user1/equipped': [{Id: 'first-contact', Title: 'First Contact', Rarity: 'Common', Unlocked: true}],
+	'users/user1/quests': {Daily: [{Id: 'd1', Title: 'Movie Night', Reward: 30, Target: 1, Current: 0, Completed: false}], Weekly: []},
+	'leaderboard': [{UserId: 'u1', UserName: 'Ada', Score: 430, Unlocked: 12, Total: 200}],
+	'users/user1/recap': {Period: 'month', MoviesWatched: 4, EpisodesWatched: 18, DaysWatched: 11, BadgesUnlocked: 2, TopGenres: [{Name: 'Drama', Count: 9}]},
+	'users/user1/library-completion': {LibraryCompletionPercents: {Movies: 63, Shows: 12}}
+};
+
+beforeEach(() => {
+	platformFetch.mockReset();
+	mockServerUrl = 'http://badges.test';
+	mockToken = 'mockToken';
+	mockUserId = 'user1';
+	mockServerType = 'jellyfin';
+	api.reset();
+});
+
+describe('availability', () => {
+	test('a server running the plugin is available and reports what the admin left on', async () => {
+		serve({'public-config': {LeaderboardEnabled: true, QuestsEnabled: false}});
+		expect(await api.probe()).toBe(true);
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: false});
+	});
+
+	// A plugin too old to report a flag still serves the section, so only a definite no turns
+	// one off.
+	test('a flag the plugin never mentions is still on', async () => {
+		serve({'public-config': {}});
+		await api.probe();
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true});
+	});
+
+	test('a server without the plugin is unavailable after one look', async () => {
+		serve({});
+		expect(await api.probe()).toBe(false);
+		expect(paths()).toEqual(['public-config']);
+	});
+
+	test('an Emby server is never asked, since this is a Jellyfin plugin', async () => {
+		mockServerType = 'emby';
+		serve(FULL);
+		expect(await api.probe()).toBe(false);
+		expect(await api.loadOverview()).toBeNull();
+		expect(platformFetch).not.toHaveBeenCalled();
+	});
+
+	test('a session with no token sends nothing', async () => {
+		mockToken = null;
+		serve(FULL);
+		expect(await api.probe()).toBe(false);
+		expect(platformFetch).not.toHaveBeenCalled();
+	});
+
+	test('reset puts the flags back, so they cannot survive a sign out', async () => {
+		serve({'public-config': {LeaderboardEnabled: false, QuestsEnabled: false}});
+		await api.probe();
+		api.reset();
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true});
+	});
+});
+
+describe('overview', () => {
+	test('reads the plugin PascalCase payloads into one shape', async () => {
+		serve(FULL);
+		await api.probe();
+		const overview = await api.loadOverview();
+
+		expect(overview.summary.unlocked).toBe(12);
+		expect(overview.rank.tier.name).toBe('Viewer');
+		expect(overview.rank.nextTier.name).toBe('Regular');
+		expect(overview.badges).toHaveLength(1);
+		expect(overview.equipped).toHaveLength(1);
+		expect(overview.quests.daily).toHaveLength(1);
+		expect(overview.leaderboard[0].userName).toBe('Ada');
+		expect(overview.recap.moviesWatched).toBe(4);
+		expect(overview.libraryCompletion).toEqual({Movies: 63, Shows: 12});
+	});
+
+	test('a section the admin switched off is not even asked for', async () => {
+		serve({...FULL, 'public-config': {LeaderboardEnabled: false, QuestsEnabled: false}});
+		await api.probe();
+		const overview = await api.loadOverview();
+
+		expect(overview.quests).toBeNull();
+		expect(overview.leaderboard).toEqual([]);
+		expect(paths().some((path) => path.indexOf('quests') >= 0)).toBe(false);
+		expect(paths().some((path) => path.indexOf('leaderboard') >= 0)).toBe(false);
+	});
+
+	test('a plugin that answers nothing loads as nothing', async () => {
+		serve({'public-config': CONFIG});
+		await api.probe();
+		expect(await api.loadOverview()).toBeNull();
+	});
+
+	test('a session without a user has nothing to load', async () => {
+		mockUserId = null;
+		serve(FULL);
+		expect(await api.loadOverview()).toBeNull();
+		expect(platformFetch).not.toHaveBeenCalled();
+	});
+
+	test('a trailing slash on the server address does not double up', async () => {
+		mockServerUrl = 'http://badges.test/';
+		serve(FULL);
+		await api.probe();
+		expect(platformFetch.mock.calls[0][0]).toBe('http://badges.test/Plugins/AchievementBadges/public-config');
+	});
+
+	test('a body that is not the shape asked for reads as no answer', async () => {
+		platformFetch.mockResolvedValue(ok('a string, somehow'));
+		await api.probe();
+		expect(await api.loadOverview()).toBeNull();
+	});
+
+	test('a request that throws reads as no answer rather than breaking the screen', async () => {
+		platformFetch.mockRejectedValue(new Error('network gone'));
+		expect(await api.probe()).toBe(false);
+		expect(await api.loadOverview()).toBeNull();
+	});
+});
+
+describe('the boards and the recap', () => {
+	test('an empty category asks for the overall board', async () => {
+		serve(FULL);
+		const entries = await api.fetchLeaderboard();
+		expect(entries[0].score).toBe(430);
+		expect(paths()).toEqual(['leaderboard?limit=10']);
+	});
+
+	test('a category board carries a value instead of a score', async () => {
+		serve({'leaderboard/movies': [{UserId: 'u1', UserName: 'Ada', Value: 42}]});
+		const entries = await api.fetchLeaderboard({category: 'movies'});
+		expect(entries[0].value).toBe(42);
+		expect(entries[0].score).toBeNull();
+	});
+
+	test('the board is not fetched when the admin turned it off', async () => {
+		serve({...FULL, 'public-config': {LeaderboardEnabled: false}});
+		await api.probe();
+		platformFetch.mockClear();
+		expect(await api.fetchLeaderboard()).toEqual([]);
+		expect(platformFetch).not.toHaveBeenCalled();
+	});
+
+	test('the recap is refetched for the period asked for', async () => {
+		serve({'users/user1/recap': {Period: 'year', DaysWatched: 11}});
+		const recap = await api.fetchRecap('year');
+		expect(recap.daysWatched).toBe(11);
+		expect(paths()).toEqual(['users/user1/recap?period=year']);
+	});
+});
+
+describe('the login ping', () => {
+	test('is posted, since it is what keeps a daily streak alive', async () => {
+		serve({'users/user1/login-ping': {}});
+		await api.sendLoginPing();
+		expect(platformFetch.mock.calls[0][0]).toBe('http://badges.test/Plugins/AchievementBadges/users/user1/login-ping');
+		expect(platformFetch.mock.calls[0][1].method).toBe('POST');
+	});
+
+	test('has nowhere to go without a user', async () => {
+		mockUserId = null;
+		await api.sendLoginPing();
+		expect(platformFetch).not.toHaveBeenCalled();
+	});
+});

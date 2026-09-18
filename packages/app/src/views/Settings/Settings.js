@@ -8,6 +8,7 @@ import {getMoonfinResolvedProfile, deleteMoonfinProfile, saveMoonfinProfile} fro
 import {homeRowsFromProfile} from '../../utils/homeLayout';
 import {seedLanguagePreferences} from '../../utils/languagePrefSeed';
 import {useSeerr} from '../../context/SeerrContext';
+import {useAchievements} from '../../context/AchievementsContext';
 import {useDeviceInfo} from '../../hooks/useDeviceInfo';
 import {isBackKey} from '../../utils/keys';
 import {isTvKeyboardVisible} from '../../components/TVKeyboard/keyboardBus';
@@ -37,6 +38,7 @@ import useDiagnosticsLog from './useDiagnosticsLog';
 import renderDescriptorRow from './settingsDescriptorRow';
 import {CategoriesView, CategoryView, SubcategoryView, OptionsView} from './BrowseViews';
 import {ThemesView, ThemeStoreView} from './ThemeViews';
+import AchievementsScreens, {ACHIEVEMENT_VIEWS} from './achievements/AchievementsScreens';
 import {SeerrHomeRowsView, ImdbListsView} from './HomeRowToggleViews';
 import {ExternalTmdbListsView, ExternalCalendarsView, ExternalCustomRowsView} from './ExternalRowViews';
 import {RatingSourcesView, ExcludedGenresView, PinCodeView, BlockedRatingsView, RowImageTypesView} from './PickerViews';
@@ -66,6 +68,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, panelMode }) =
 	const { settings, updateSetting, updateSettings, resetSettings, restoreSyncedDefaults, availableThemes, activeThemeId, selectThemeById, saveStoreTheme, deleteStoreTheme } = useSettings();
 	const { capabilities } = useDeviceInfo();
 	const seerr = useSeerr();
+	const achievements = useAchievements();
 	const isSeerr = seerr.isMoonfin && seerr.variant === 'seerr';
 	const bootLocaleRef = useRef(settings.uiLanguage);
 	useEffect(() => {
@@ -640,6 +643,11 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, panelMode }) =
 		handleSeerrPasswordKeyDown, handleSeerrLogout
 	} = useSeerrAccount({seerr, seerrLabel, settings, updateSetting, serverUrl, accessToken});
 
+	// The achievement screens push by name so BACK walks back through them one at a time.
+	const openAchievementsView = useCallback((view, returnFocusTo) => {
+		pushView({view, returnFocusTo});
+	}, [pushView]);
+
 	const {
 		themeStoreCatalog, themeStoreLoading, themeStoreError, themeStoreBusyId,
 		openThemes, openThemeStore, handleStoreThemeClick
@@ -908,6 +916,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, panelMode }) =
 		settings,
 		capabilities,
 		seerr,
+		achievements,
 		seerrLabel,
 		isSeerr,
 		isWebOS: isWebOS(),
@@ -947,7 +956,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, panelMode }) =
 			runSetupAgain: onRunSetupWizard
 		}
 	}), [
-		settings, capabilities, seerr, seerrLabel, isSeerr, serverUrl, ratingsResetArmed, resetRatingsSettings,
+		settings, capabilities, seerr, achievements, seerrLabel, isSeerr, serverUrl, ratingsResetArmed, resetRatingsSettings,
 		serverVersion, availableThemes, activeThemeId, openThemes, openThemeStore, openHomeRows,
 		openDetailButtons, openOsdButtons, openDetailMetadata, openDiagnostics,
 		openPinCode, openLibraries, openParentalControls, openQrLink, openRatingSources, openRowImageTypes, openExcludedGenres, openMediaBarLibraries,
@@ -977,13 +986,17 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, panelMode }) =
 
 
 	const openSubcategory = useCallback((sub) => {
-		pushView({
-			view: 'subcategory',
-			categoryId: currentView.id,
-			subcategoryId: sub.id,
-			label: sub.label,
-			returnFocusTo: `subcat-${sub.id}`
-		});
+		// An entry that is a screen in its own right rather than a list of settings rows opens
+		// that screen, instead of a page holding nothing but a link to it.
+		pushView(sub.opensView
+			? {view: sub.opensView, label: sub.label, returnFocusTo: `subcat-${sub.id}`}
+			: {
+				view: 'subcategory',
+				categoryId: currentView.id,
+				subcategoryId: sub.id,
+				label: sub.label,
+				returnFocusTo: `subcat-${sub.id}`
+			});
 	}, [pushView, currentView.id]);
 
 	const selectOptionValue = useCallback((value) => {
@@ -1103,7 +1116,8 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, panelMode }) =
 				label: resolve(sub.label, settingsCtx),
 				description: resolve(sub.description, settingsCtx),
 				section: resolve(sub.section, settingsCtx),
-				icon: sub.icon
+				icon: sub.icon,
+				opensView: sub.opensView
 			}));
 	};
 
@@ -1179,6 +1193,9 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, panelMode }) =
 					currentValue={currentView.settingKey === '__themeSelection' ? activeThemeId : settings[currentView.settingKey]}
 					onSelect={selectOptionValue}
 				/>
+			)}
+			{ACHIEVEMENT_VIEWS.indexOf(viewName) >= 0 && (
+				<AchievementsScreens view={viewName} onOpen={openAchievementsView} />
 			)}
 			{viewName === 'themes' && (
 				<ThemesView

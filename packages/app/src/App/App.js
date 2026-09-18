@@ -25,6 +25,7 @@ import {seedLanguagePreferences} from '../utils/languagePrefSeed';
 import {shouldRun as shouldRunSetupWizard, beginRerun as beginSetupWizardRerun} from '../utils/setupWizardGate';
 import {getActiveServer} from '../services/multiServerManager';
 import {SeerrProvider, useSeerr} from '../context/SeerrContext';
+import {AchievementsProvider} from '../context/AchievementsContext';
 import {ServerMessagesProvider, useServerMessages} from '../context/ServerMessagesContext';
 import {SyncPlayProvider, useSyncPlay} from '../context/SyncPlayContext';
 import {useVersionCheck} from '../hooks/useVersionCheck';
@@ -1712,11 +1713,13 @@ const AppBase = (props) => (
 	<SettingsProvider>
 		<AuthProvider>
 			<SeerrProvider>
-				<ServerMessagesProvider>
-					<SyncPlayProvider>
-						<AppContent {...props} />
-					</SyncPlayProvider>
-				</ServerMessagesProvider>
+				<AchievementsProvider>
+					<ServerMessagesProvider>
+						<SyncPlayProvider>
+							<AppContent {...props} />
+						</SyncPlayProvider>
+					</ServerMessagesProvider>
+				</AchievementsProvider>
 			</SeerrProvider>
 		</AuthProvider>
 	</SettingsProvider>
