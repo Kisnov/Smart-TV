@@ -4,7 +4,10 @@ import $L from '@enact/i18n/$L';
 import * as achievementsApi from '../../../services/achievementsApi';
 import {
 	BADGE_FILTERS, groupBadges, leaderboardValue, parseHexColor, rarityColor,
-	REROLLED, REROLL_FAILED, POWER_UP_USED, PURCHASE_BOUGHT, statsAreEmpty
+	REROLLED, REROLL_FAILED, POWER_UP_USED, PURCHASE_BOUGHT, statsAreEmpty,
+	COSMETIC_AVATAR, COSMETIC_RANK_TITLE, COSMETIC_CHANGED,
+	cosmeticsOf, equippedCosmetic, ownsCosmetic, wornAvatarIcon, wornTitle, cosmeticsAreEmpty,
+	wearingCosmetic, boughtCosmetic
 } from '../../../utils/achievementsModel';
 import {relativeTimeLabel} from '../../../utils/relativeTime';
 import {achievementIconPath} from './achievementIcons';
@@ -59,8 +62,8 @@ const Chip = ({icon, label}) => (
 );
 
 // The same bar the search results use, so a tab reads and behaves the same wherever it appears.
-// Only the badge filter follows focus, since the other two fetch and would leave the bar and the
-// rows disagreeing while an answer was still out.
+// Only the bars that switch a list already loaded follow focus. The ones that fetch would leave
+// the bar and the rows disagreeing while an answer was still out.
 const Tabs = ({ids, labels, activeId, onSelect, spotlightId, expanded = false}) => (
 	<DetailsTabBar
 		className={css.tabs}
@@ -223,8 +226,10 @@ const CategorySection = ({group, open, onToggle, onOpenBadge}) => {
 	);
 };
 
-const RankHeader = ({rank, summary}) => {
+const RankHeader = ({rank, summary, worn}) => {
 	const color = (rank && parseHexColor(rank.tier.color)) || ACCENT;
+	const avatar = wornAvatarIcon(worn);
+	const title = wornTitle(worn);
 
 	return (
 		<div className={css.rankHeader}>
@@ -232,10 +237,10 @@ const RankHeader = ({rank, summary}) => {
 				<>
 					<div className={css.rankRow}>
 						<div className={css.rankAvatar} style={shell(color)}>
-							<Icon name={rank.tier.icon} className={css.rankAvatarIcon} />
+							<Icon name={avatar || rank.tier.icon} className={css.rankAvatarIcon} />
 						</div>
 						<div>
-							<div className={css.rankName}>{rank.tier.name}</div>
+							<div className={css.rankName}>{title || rank.tier.name}</div>
 							<div className={css.rankScore}>
 								{$L('{score} points').replace('{score}', String(rank.score))}
 							</div>
@@ -317,7 +322,7 @@ export const AchievementsView = ({overview, loading, onReload, onOpen}) => {
 
 	return (
 		<SettingsView spotlightId="achievements-view">
-			<RankHeader rank={overview.rank} summary={overview.summary} />
+			<RankHeader rank={overview.rank} summary={overview.summary} worn={overview.cosmetics} />
 			{overview.equipped.length > 0 && <Showcase badges={overview.equipped} />}
 			<OpenScreenRow
 				id="achievements-badges"
@@ -384,6 +389,16 @@ export const AchievementsView = ({overview, loading, onReload, onOpen}) => {
 				view="achievementsLoadout"
 				onOpen={onOpen}
 			/>
+			{overview.cosmetics && !cosmeticsAreEmpty(overview.cosmetics) && (
+				<OpenScreenRow
+					id="achievements-appearance"
+					title={$L('Appearance')}
+					desc={$L('The avatar and title on your profile')}
+					icon="face_5"
+					view="achievementsAppearance"
+					onOpen={onOpen}
+				/>
+			)}
 			{libraries.length > 0 && (
 				<OpenScreenRow
 					id="achievements-libraries"
@@ -554,9 +569,9 @@ const ShopRow = ({item, affordable, onBuy}) => {
 	);
 };
 
-// Both spending screens ask before they write, so the asking, the busy flag and whatever a
-// refusal came back with are held here. perform does the write and hands back what went wrong,
-// or nothing when it worked.
+// The spending screens ask before they write, so the asking, the busy flag and whatever a refusal
+// came back with are held here. perform does the write and hands back what went wrong, or nothing
+// when it worked.
 const useSpendConfirm = (perform) => {
 	const [asking, setAsking] = useState(null);
 	const [busy, setBusy] = useState(false);
@@ -565,18 +580,23 @@ const useSpendConfirm = (perform) => {
 	const ask = useCallback((subject) => setAsking(subject), []);
 	const cancel = useCallback(() => setAsking(null), []);
 
-	const confirm = useCallback(async () => {
-		const subject = asking;
-		setAsking(null);
+	// A write that needs no asking first, which still wants the busy flag and the same message.
+	const run = useCallback(async (write) => {
 		setBusy(true);
 		setProblem('');
 
-		const failed = await perform(subject);
+		const failed = await write();
 		setBusy(false);
 		setProblem(failed || '');
-	}, [asking, perform]);
+	}, []);
 
-	return {asking, busy, problem, ask, cancel, confirm};
+	const confirm = useCallback(() => {
+		const subject = asking;
+		setAsking(null);
+		return run(() => perform(subject));
+	}, [asking, perform, run]);
+
+	return {asking, busy, problem, ask, cancel, confirm, run};
 };
 
 // The score bank and the consumables it has bought.
@@ -629,6 +649,144 @@ export const AchievementsLoadoutView = ({onOpen}) => {
 				open={Boolean(asking)}
 				title={$L('Use this power-up?')}
 				body={$L("It's spent as soon as you confirm.")}
+				onCancel={cancel}
+				onConfirm={confirm}
+			/>
+		</SettingsView>
+	);
+};
+
+const COSMETIC_KINDS = [COSMETIC_AVATAR, COSMETIC_RANK_TITLE];
+
+// One avatar or title, and whichever of wearing or buying it allows. Nothing to do with one that
+// has to be earned and has not been, or one the bank is short of.
+const CosmeticRow = ({item, worn, busy, onWear, onBuy}) => {
+	const wearing = equippedCosmetic(worn, item.kind) === item.id;
+	const held = ownsCosmetic(worn, item);
+	const affordable = item.priceScore <= worn.bank;
+
+	const handleWear = useCallback(() => onWear(item), [onWear, item]);
+	const handleBuy = useCallback(() => onBuy(item), [onBuy, item]);
+
+	let press = null;
+	if (!busy) {
+		if (held) press = handleWear;
+		else if (!item.isEarned && affordable) press = handleBuy;
+	}
+
+	// Never dimmed, since what blocks a press already shows in the row itself, as a price the bank
+	// cannot cover or the score an earned one still needs.
+	return (
+		<AchievementRow spotlightId={`achievement-cosmetic-${item.id}`} onClick={press}>
+			<TileIcon icon={item.icon} color={ACCENT} />
+			<div className={settingsCss.listItemBody}>
+				<div className={settingsCss.listItemHeading}>{item.name}</div>
+				{wearing && (
+					<div className={css.progressText} style={{color: ACCENT}}>{$L('Equipped')}</div>
+				)}
+				{!wearing && held && <div className={css.progressText}>{$L('Owned')}</div>}
+				{!held && item.isEarned && (
+					<>
+						<div className={css.progressText}>
+							{$L('Earned at {score} lifetime score').replace('{score}', String(item.milestoneScore))}
+						</div>
+						<div className={css.rowBar}>
+							<Bar value={Math.min(1, worn.lifetimeScore / item.milestoneScore)} color={ACCENT} slim />
+						</div>
+					</>
+				)}
+			</div>
+			{wearing && <Icon name="check_circle" className={css.wornCheck} />}
+			{!wearing && !held && !item.isEarned && (
+				<div className={css.price} style={affordable ? {color: ACCENT} : null}>
+					{$L('{score} points').replace('{score}', String(item.priceScore))}
+				</div>
+			)}
+		</AchievementRow>
+	);
+};
+
+// The avatars and titles a profile can wear, and the shop for the rest. onChanged refreshes the
+// screen behind this one, since the rank header up there is drawn from whatever is worn.
+export const AchievementsAppearanceView = ({onChanged}) => {
+	const {data: worn, setData: setWorn, loading, reload} = useLoadOnOpen(achievementsApi.fetchCosmetics);
+	const [kind, setKind] = useState(COSMETIC_AVATAR);
+
+	const buy = useCallback(async (item) => {
+		const result = await achievementsApi.buyShopItem(item.id);
+		if (result.outcome !== PURCHASE_BOUGHT) return result.message || $L('Could not buy that.');
+		setWorn((prev) => boughtCosmetic(prev, item.id, result.bankAfter));
+		onChanged();
+		return null;
+	}, [setWorn, onChanged]);
+
+	const {asking, busy, problem, ask, cancel, confirm, run} = useSpendConfirm(buy);
+
+	// Puts one on, or takes it off when it is already the one worn.
+	const changeWear = useCallback((item) => run(async () => {
+		const wearing = equippedCosmetic(worn, item.kind) === item.id;
+		const result = wearing
+			? await achievementsApi.unequipCosmetic(item.kind)
+			: await achievementsApi.equipCosmetic(item.id);
+
+		if (result.outcome !== COSMETIC_CHANGED) {
+			return result.message || $L('Could not change how the profile looks.');
+		}
+		setWorn((prev) => wearingCosmetic(prev, item.kind, wearing ? null : item.id));
+		onChanged();
+		return null;
+	}), [run, worn, setWorn, onChanged]);
+
+	if (loading) {
+		return (
+			<SettingsView spotlightId="achievements-appearance-view">
+				<Message>{$L('Loading...')}</Message>
+			</SettingsView>
+		);
+	}
+
+	if (!worn) {
+		return (
+			<SettingsView spotlightId="achievements-appearance-view">
+				<LoadFailed spotlightId="appearance-retry" onRetry={reload} />
+			</SettingsView>
+		);
+	}
+
+	if (cosmeticsAreEmpty(worn)) {
+		return (
+			<SettingsView spotlightId="achievements-appearance-view">
+				<Message>{$L('This server has no avatars or titles to wear.')}</Message>
+			</SettingsView>
+		);
+	}
+
+	return (
+		<SettingsView spotlightId="achievements-appearance-view">
+			<Tabs
+				ids={COSMETIC_KINDS}
+				labels={[$L('Avatars'), $L('Titles')]}
+				activeId={kind}
+				onSelect={setKind}
+				spotlightId="appearance-tabs"
+				expanded
+			/>
+			<ScoreBank bank={worn.bank} />
+			{cosmeticsOf(worn, kind).map((item) => (
+				<CosmeticRow
+					key={item.id}
+					item={item}
+					worn={worn}
+					busy={busy}
+					onWear={changeWear}
+					onBuy={ask}
+				/>
+			))}
+			{problem && <Message>{problem}</Message>}
+			<ConfirmSpendDialog
+				open={Boolean(asking)}
+				title={$L('Buy this?')}
+				body={$L('It comes straight out of your score bank.')}
 				onCancel={cancel}
 				onConfirm={confirm}
 			/>

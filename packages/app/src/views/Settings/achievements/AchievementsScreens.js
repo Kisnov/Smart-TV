@@ -5,7 +5,7 @@ import {
 	AchievementsView, AchievementsBadgesView, AchievementsBadgeView, AchievementsQuestsView,
 	AchievementsLeaderboardView, AchievementsRecapView, AchievementsLibraryView,
 	AchievementsLoadoutView, AchievementsShopView, AchievementsActivityView, AchievementsStatsView,
-	useLoadOnOpen
+	AchievementsAppearanceView, useLoadOnOpen
 } from './AchievementsViews';
 
 // Every achievement screen renders from here so the one load survives moving between them. Each
@@ -14,7 +14,7 @@ import {
 export const ACHIEVEMENT_VIEWS = [
 	'achievements', 'achievementsBadges', 'achievementsBadge', 'achievementsQuests',
 	'achievementsLeaderboard', 'achievementsRecap', 'achievementsLibrary', 'achievementsLoadout',
-	'achievementsShop', 'achievementsActivity', 'achievementsStats'
+	'achievementsShop', 'achievementsActivity', 'achievementsStats', 'achievementsAppearance'
 ];
 
 const AchievementsScreens = ({view, badgeId, onOpen, onSelectItem}) => {
@@ -57,6 +57,9 @@ const AchievementsScreens = ({view, badgeId, onOpen, onSelectItem}) => {
 	}
 	if (view === 'achievementsStats') {
 		return <AchievementsStatsView />;
+	}
+	if (view === 'achievementsAppearance') {
+		return <AchievementsAppearanceView onChanged={reload} />;
 	}
 	if (view === 'achievementsLibrary') {
 		return <AchievementsLibraryView completion={overview ? overview.libraryCompletion : {}} />;

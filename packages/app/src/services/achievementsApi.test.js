@@ -395,6 +395,95 @@ describe('loadout', () => {
 	});
 });
 
+describe('cosmetics', () => {
+	const CATALOG = {
+		PowerUps: [{Id: 'pu-xp-boost-1', Type: 'XpBoost', BundleSize: 1, PriceScore: 50}],
+		Cosmetics: [
+			{Id: 'avatar-medal', Kind: 'Avatar', DisplayName: 'Medal', PriceScore: 0, PreviewIcon: 'military_tech'},
+			{Id: 'avatar-crown', Kind: 'Avatar', DisplayName: 'Crown', PriceScore: 350, PreviewIcon: 'auto_awesome'}
+		]
+	};
+	const WORN = {Owned: ['avatar-medal'], EquippedAvatarId: 'avatar-medal', LifetimeScore: 0, ScoreBank: 225};
+
+	const serveCosmetics = () => {
+		platformFetch.mockImplementation((url, options) => {
+			const path = url.split('/Plugins/AchievementBadges/')[1];
+			if (path === 'shop/catalog') return Promise.resolve(ok(CATALOG));
+			if (path === 'users/user1/cosmetics') return Promise.resolve(ok(WORN));
+			if (path === 'users/user1/cosmetics/equip' && options.method === 'POST') {
+				return Promise.resolve(ok({Message: 'Equipped.'}));
+			}
+			if (path.indexOf('users/user1/cosmetics/unequip') === 0 && options.method === 'POST') {
+				return Promise.resolve(ok({Message: 'Slot cleared.'}));
+			}
+			return Promise.resolve(missing);
+		});
+	};
+
+	test('the catalogue and the profile state come back joined', async () => {
+		serveCosmetics();
+		const worn = await api.fetchCosmetics();
+
+		expect(worn.avatars).toHaveLength(2);
+		expect(worn.avatarId).toBe('avatar-medal');
+		expect(worn.bank).toBe(225);
+	});
+
+	test('the catalogue is read once and kept, since only a server release changes it', async () => {
+		serveCosmetics();
+		await api.fetchCosmetics();
+		await api.fetchCosmetics();
+		await api.fetchShopPowerUps();
+
+		expect(paths().filter((path) => path === 'shop/catalog')).toHaveLength(1);
+	});
+
+	test('a server with no catalogue leaves the profile with nothing to wear', async () => {
+		serve({'users/user1/cosmetics': WORN});
+		expect(await api.fetchCosmetics()).toBeNull();
+	});
+
+	test('equipping names the cosmetic in the body the plugin asks for', async () => {
+		serveCosmetics();
+		const result = await api.equipCosmetic('avatar-crown');
+
+		expect(result.outcome).toBe('changed');
+		const [, init] = platformFetch.mock.calls.find((call) => call[0].indexOf('cosmetics/equip') >= 0);
+		expect(JSON.parse(init.body)).toEqual({CosmeticId: 'avatar-crown'});
+	});
+
+	test('unequipping asks by kind and sends no body', async () => {
+		serveCosmetics();
+		const result = await api.unequipCosmetic('Avatar');
+
+		expect(result.outcome).toBe('changed');
+		const [url, init] = platformFetch.mock.calls.find((call) => call[0].indexOf('cosmetics/unequip') >= 0);
+		expect(url).toContain('cosmetics/unequip?kind=Avatar');
+		expect(init.body).toBeUndefined();
+	});
+
+	test("one the profile does not own is refused in the plugin's own wording", async () => {
+		platformFetch.mockResolvedValue({
+			ok: false,
+			status: 400,
+			text: () => Promise.resolve(JSON.stringify({Message: "You don't own that cosmetic."}))
+		});
+		const result = await api.equipCosmetic('avatar-crown');
+
+		expect(result.outcome).toBe('refused');
+		expect(result.message).toBe("You don't own that cosmetic.");
+	});
+
+	test('a session without a user changes nothing', async () => {
+		mockUserId = null;
+		serveCosmetics();
+
+		expect(await api.fetchCosmetics()).toBeNull();
+		expect((await api.equipCosmetic('avatar-crown')).outcome).toBe('failed');
+		expect(platformFetch).not.toHaveBeenCalled();
+	});
+});
+
 describe('stats', () => {
 	const STATS = {
 		'users/user1/records': {TotalItemsWatched: 5, BestWatchStreak: 1, LongestItemMinutes: 21},

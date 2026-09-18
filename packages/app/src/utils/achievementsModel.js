@@ -231,6 +231,127 @@ export const POWER_UP_USED = 'used';
 export const POWER_UP_REFUSED = 'refused';
 export const POWER_UP_FAILED = 'failed';
 
+// The plugin sells six kinds of cosmetic. These two are the ones whose entry carries an icon name
+// and a title, so they are the two that can be drawn here. The other four name CSS rules only the
+// plugin's own page ships, and selling those would equip something nobody could see.
+export const COSMETIC_AVATAR = 'Avatar';
+export const COSMETIC_RANK_TITLE = 'RankTitle';
+
+// Closer icons than the ones the catalogue carries. The plugin picks its icons for its own page
+// and gives several cosmetics the same one, so a crown, a unicorn and a tastemaker all arrive as
+// plain sparkles. An id absent from here keeps whatever the server sent, which is what anything
+// added in a later release will do.
+const CLOSER_ICONS = {
+	'avatar-clapper': 'movie_creation',
+	'avatar-crown': 'crown',
+	'avatar-dragon': 'whatshot',
+	'avatar-owl': 'owl',
+	'avatar-popcorn': 'fastfood',
+	'avatar-unicorn': 'auto_fix_high',
+	'title-archivist': 'archive',
+	'title-tastemaker': 'trending_up'
+};
+
+// One avatar or rank title a profile can wear. The name is English the way the catalogue writes
+// it, since a release can add more and there is nothing fixed here to translate against.
+const parseCosmetic = (json, kind) => {
+	const id = asString(json.Id);
+	// Lifetime score earns it instead of buying it, and is left out of everything only ever bought.
+	const milestoneScore = asInt(json.MilestoneScore);
+	const priceScore = asInt(json.PriceScore);
+
+	return {
+		id,
+		kind,
+		name: asString(json.DisplayName),
+		icon: CLOSER_ICONS[id] || asString(json.PreviewIcon),
+		priceScore,
+		milestoneScore,
+		isEarned: milestoneScore > 0,
+		// Free to everyone, so it is the slot's starting look rather than stock.
+		isDefault: priceScore === 0 && milestoneScore === 0
+	};
+};
+
+export const parseCosmeticCatalog = (json) => {
+	const entries = json && json.Cosmetics;
+	if (!Array.isArray(entries)) return [];
+	return entries
+		.filter(isObject)
+		.filter((entry) => entry.Kind === COSMETIC_AVATAR || entry.Kind === COSMETIC_RANK_TITLE)
+		.map((entry) => parseCosmetic(entry, entry.Kind));
+};
+
+// The server writes an empty string for a slot with nothing in it, and leaves the key out
+// entirely on a profile it has never filled.
+const nonEmpty = (value) => asString(value) || null;
+
+// Joins the catalogue to a profile's state, which is missing entirely until the plugin has a
+// profile to hold it.
+export const buildCosmeticLoadout = (catalog, state) => {
+	const held = state && state.Owned;
+	return {
+		avatars: catalog.filter((item) => item.kind === COSMETIC_AVATAR),
+		titles: catalog.filter((item) => item.kind === COSMETIC_RANK_TITLE),
+		// The plugin fills in the free ones and any milestone the score has passed, so this is the
+		// whole answer rather than a list to add the defaults to.
+		owned: Array.isArray(held) ? held.filter((id) => typeof id === 'string') : [],
+		avatarId: nonEmpty(state && state.EquippedAvatarId),
+		titleId: nonEmpty(state && state.EquippedCustomTitleId),
+		// What a milestone measures against, which is not the bank, only what is left unspent.
+		lifetimeScore: asInt(state && state.LifetimeScore),
+		bank: asInt(state && state.ScoreBank)
+	};
+};
+
+export const cosmeticsOf = (loadout, kind) =>
+	(kind === COSMETIC_AVATAR ? loadout.avatars : loadout.titles);
+
+export const equippedCosmetic = (loadout, kind) =>
+	(kind === COSMETIC_AVATAR ? loadout.avatarId : loadout.titleId);
+
+export const ownsCosmetic = (loadout, item) =>
+	item.isDefault || loadout.owned.indexOf(item.id) >= 0;
+
+const wornItem = (loadout, kind) => {
+	const id = equippedCosmetic(loadout, kind);
+	return id ? cosmeticsOf(loadout, kind).find((item) => item.id === id) : null;
+};
+
+// The icon the rank header draws, or nothing to keep the tier's own.
+export const wornAvatarIcon = (loadout) => {
+	const item = loadout && wornItem(loadout, COSMETIC_AVATAR);
+	return item ? item.icon : null;
+};
+
+// The name that stands in for the tier's, or nothing to keep it.
+export const wornTitle = (loadout) => {
+	const item = loadout && wornItem(loadout, COSMETIC_RANK_TITLE);
+	return item ? item.name : null;
+};
+
+export const cosmeticsAreEmpty = (loadout) =>
+	loadout.avatars.length === 0 && loadout.titles.length === 0;
+
+// The same loadout with one slot filled, or emptied by a null id.
+export const wearingCosmetic = (loadout, kind, id) => ({
+	...loadout,
+	avatarId: kind === COSMETIC_AVATAR ? id : loadout.avatarId,
+	titleId: kind === COSMETIC_RANK_TITLE ? id : loadout.titleId
+});
+
+// The same loadout holding one more, with what the bank has left after it.
+export const boughtCosmetic = (loadout, id, bankAfter) => ({
+	...loadout,
+	owned: loadout.owned.concat(id),
+	bank: bankAfter === null ? loadout.bank : bankAfter
+});
+
+// How a change to what the profile wears ended.
+export const COSMETIC_CHANGED = 'changed';
+export const COSMETIC_REFUSED = 'refused';
+export const COSMETIC_FAILED = 'failed';
+
 // Counters keyed the way the plugin names them, such as BestWatchStreak. Keeping the map rather
 // than naming all twenty-seven means a counter the plugin adds later needs a label and nothing
 // else.

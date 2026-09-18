@@ -4,8 +4,8 @@
 // Nothing here throws. A server without the plugin answers 404 on every route, and a panel that
 // asked for everything at once and got nothing back wants an empty screen rather than a pile of
 // errors, so a failed call reads as no answer. Nothing here polls, and the login ping, the quest
-// reroll, spending a power-up and buying one are the only things written, because they are the
-// only parts the plugin expects a client to drive.
+// reroll, spending a power-up, buying one and changing what the profile wears are the only things
+// written, because they are the only parts the plugin expects a client to drive.
 
 import {getServerUrl, getAuthHeader, getApiKey, getUserId, getServerType} from './jellyfinApi';
 import {legacyAuthHeader} from '../utils/serverRoutes';
@@ -15,6 +15,8 @@ import {
 	parseLeaderboardEntry, parseRecap, parseLibraryCompletion,
 	parsePowerUpState, parsePowerUpSlots, parseShopCatalog, parseActivityFeed,
 	parseCounters, parseWatchClock, parseServerStats,
+	parseCosmeticCatalog, buildCosmeticLoadout,
+	COSMETIC_CHANGED, COSMETIC_REFUSED, COSMETIC_FAILED,
 	REROLLED, REROLL_ALREADY_USED, REROLL_FAILED,
 	POWER_UP_USED, POWER_UP_REFUSED, POWER_UP_FAILED,
 	PURCHASE_BOUGHT, PURCHASE_REFUSED, PURCHASE_FAILED
@@ -34,6 +36,10 @@ let activityEnabled = true;
 
 // Set when the admin hides the whole server's figures from everyone.
 let privacyMode = false;
+
+// The catalogue lives in the plugin's own code, so it only changes when the server takes a new
+// release, which ends this session with it.
+let catalog = null;
 
 const base = () => (getServerUrl() || '').replace(/\/+$/, '');
 
@@ -107,6 +113,7 @@ export const reset = () => {
 	questsEnabled = true;
 	activityEnabled = true;
 	privacyMode = false;
+	catalog = null;
 };
 
 // Whether the plugin answered here. public-config needs no administrator, so an ordinary user
@@ -196,12 +203,57 @@ export const fetchActivity = async ({limit = 30} = {}) => {
 	return json ? parseActivityFeed(json) : [];
 };
 
+const fetchCatalog = async () => {
+	if (!catalog) catalog = await getMap('shop/catalog');
+	return catalog;
+};
+
 // What the shop sells, narrowed to the power-ups. The catalogue is the same for everyone, so this
 // route carries no user.
 export const fetchShopPowerUps = async () => {
-	const json = await getMap('shop/catalog');
+	const json = await fetchCatalog();
 	return json ? parseShopCatalog(json) : [];
 };
+
+// Without the catalogue an equipped id names nothing, so a server that answered without one
+// leaves the profile with nothing to wear.
+const readLoadout = (shop, worn) => {
+	if (!shop) return null;
+	const items = parseCosmeticCatalog(shop);
+	if (items.length === 0) return null;
+	return buildCosmeticLoadout(items, worn);
+};
+
+// What the profile owns and wears.
+export const fetchCosmetics = async () => {
+	const userId = getUserId();
+	if (!userId) return null;
+
+	const [shop, worn] = await Promise.all([
+		fetchCatalog(),
+		getMap(`users/${userId}/cosmetics`)
+	]);
+	return readLoadout(shop, worn);
+};
+
+const wear = async (path, body) => {
+	const userId = getUserId();
+	if (!userId) return {outcome: COSMETIC_FAILED};
+
+	const written = await post(`users/${userId}/${path}`, {refusedWith: 400, body});
+	if (written.refused) return {outcome: COSMETIC_REFUSED, message: written.message};
+	// Both routes answer with an object, so nothing back is a fault rather than a change that took.
+	if (!written.body) return {outcome: COSMETIC_FAILED};
+	return {outcome: COSMETIC_CHANGED};
+};
+
+// Wears one, which the plugin refuses with 400 when the profile does not own it.
+export const equipCosmetic = (id) => wear('cosmetics/equip', {CosmeticId: id});
+
+// Empties whatever the given kind fills. This one takes its kind on the query rather than in a
+// body, and sending one makes the plugin answer 415.
+export const unequipCosmetic = (kind) =>
+	wear(`cosmetics/unequip?kind=${encodeURIComponent(kind)}`);
 
 // Buys one thing from the shop. The plugin refuses with 400 when the bank is short or the slot is
 // already full, and its wording says which.
@@ -237,8 +289,8 @@ export const loadOverview = async () => {
 	const userId = getUserId();
 	if (!userId || !isJellyfin()) return null;
 
-	const [summary, rank, badgeRows, equippedRows, questRows, leaderboard, recap, completion] =
-		await Promise.all([
+	const [summary, rank, badgeRows, equippedRows, questRows, leaderboard, recap, completion,
+		shop, worn] = await Promise.all([
 			getMap(`users/${userId}/summary`),
 			getMap(`users/${userId}/rank`),
 			getList(`users/${userId}`),
@@ -246,7 +298,9 @@ export const loadOverview = async () => {
 			questsEnabled ? getMap(`users/${userId}/quests`) : Promise.resolve(null),
 			leaderboardEnabled ? fetchLeaderboard() : Promise.resolve([]),
 			getMap(`users/${userId}/recap?period=${DEFAULT_RECAP_PERIOD}`),
-			getMap(`users/${userId}/library-completion`)
+			getMap(`users/${userId}/library-completion`),
+			fetchCatalog(),
+			getMap(`users/${userId}/cosmetics`)
 		]);
 
 	const badges = parseBadges(badgeRows);
@@ -263,6 +317,7 @@ export const loadOverview = async () => {
 		leaderboard,
 		recap: parseRecap(recap),
 		libraryCompletion: parseLibraryCompletion(completion),
+		cosmetics: readLoadout(shop, worn),
 		leaderboardEnabled,
 		questsEnabled,
 		activityEnabled

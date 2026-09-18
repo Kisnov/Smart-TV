@@ -2,7 +2,10 @@ import {
 	groupBadges, leaderboardValue, parseBadge, parseLeaderboardEntry, parseLibraryCompletion,
 	parseBadgeChase, parseQuest, parseQuests, parseRank, parseRecap, parseRerolledQuests,
 	parseSummary, parsePowerUpState, parseShopCatalog, parseActivityFeed, parseCounters,
-	parseWatchClock, parseServerStats, statsAreEmpty, parseHexColor, rarityColor, scoreForRarity
+	parseWatchClock, parseServerStats, statsAreEmpty, parseCosmeticCatalog, buildCosmeticLoadout,
+	cosmeticsOf, equippedCosmetic, ownsCosmetic, wornAvatarIcon, wornTitle, cosmeticsAreEmpty,
+	wearingCosmetic, boughtCosmetic, COSMETIC_AVATAR, COSMETIC_RANK_TITLE,
+	parseHexColor, rarityColor, scoreForRarity
 } from './achievementsModel';
 
 const badge = (over) => parseBadge({
@@ -213,6 +216,106 @@ describe('parsePowerUpState', () => {
 
 	test('an empty answer is a bank of nothing', () => {
 		expect(parsePowerUpState({})).toEqual({bank: 0, slots: []});
+	});
+});
+
+describe('cosmetics', () => {
+	const CATALOG = {
+		Cosmetics: [
+			{Id: 'avatar-medal', Kind: 'Avatar', DisplayName: 'Medal', PriceScore: 0, PreviewIcon: 'military_tech'},
+			{Id: 'avatar-crown', Kind: 'Avatar', DisplayName: 'Crown', PriceScore: 350, PreviewIcon: 'auto_awesome'},
+			{Id: 'title-legend', Kind: 'RankTitle', DisplayName: 'Legend', PriceScore: 0, MilestoneScore: 7500, PreviewIcon: 'workspace_premium'},
+			{Id: 'theme-sunset', Kind: 'ProfileTheme', DisplayName: 'Sunset', PriceScore: 250}
+		]
+	};
+
+	const loadout = (state) => buildCosmeticLoadout(parseCosmeticCatalog(CATALOG), state);
+
+	test('only the kinds this panel can draw are read', () => {
+		const items = parseCosmeticCatalog(CATALOG);
+		expect(items.map((item) => item.id)).toEqual(['avatar-medal', 'avatar-crown', 'title-legend']);
+	});
+
+	test('an id with a closer icon takes it, and anything else keeps the server one', () => {
+		const items = parseCosmeticCatalog(CATALOG);
+		expect(items.find((item) => item.id === 'avatar-crown').icon).toBe('crown');
+		expect(items.find((item) => item.id === 'avatar-medal').icon).toBe('military_tech');
+	});
+
+	test('a free one is the starting look and a milestone one has to be earned', () => {
+		const items = parseCosmeticCatalog(CATALOG);
+		const medal = items.find((item) => item.id === 'avatar-medal');
+		const legend = items.find((item) => item.id === 'title-legend');
+
+		expect(medal.isDefault).toBe(true);
+		expect(medal.isEarned).toBe(false);
+		expect(legend.isEarned).toBe(true);
+		expect(legend.isDefault).toBe(false);
+	});
+
+	test('the profile state is joined to the catalogue', () => {
+		const worn = loadout({
+			Owned: ['avatar-medal', 'avatar-crown'],
+			EquippedAvatarId: 'avatar-crown',
+			LifetimeScore: 3000,
+			ScoreBank: 225
+		});
+
+		expect(cosmeticsOf(worn, COSMETIC_AVATAR)).toHaveLength(2);
+		expect(cosmeticsOf(worn, COSMETIC_RANK_TITLE)).toHaveLength(1);
+		expect(equippedCosmetic(worn, COSMETIC_AVATAR)).toBe('avatar-crown');
+		expect(equippedCosmetic(worn, COSMETIC_RANK_TITLE)).toBeNull();
+		expect(worn.lifetimeScore).toBe(3000);
+		expect(worn.bank).toBe(225);
+	});
+
+	test('the free one counts as owned even when the server leaves it off the list', () => {
+		const worn = loadout({Owned: []});
+		const [medal, crown] = cosmeticsOf(worn, COSMETIC_AVATAR);
+
+		expect(ownsCosmetic(worn, medal)).toBe(true);
+		expect(ownsCosmetic(worn, crown)).toBe(false);
+	});
+
+	test('the header wears what is equipped and keeps the tier otherwise', () => {
+		const dressed = loadout({EquippedAvatarId: 'avatar-crown', EquippedCustomTitleId: 'title-legend'});
+		expect(wornAvatarIcon(dressed)).toBe('crown');
+		expect(wornTitle(dressed)).toBe('Legend');
+
+		const bare = loadout({EquippedAvatarId: '', EquippedCustomTitleId: ''});
+		expect(wornAvatarIcon(bare)).toBeNull();
+		expect(wornTitle(bare)).toBeNull();
+	});
+
+	test('a profile the plugin has never held still reads', () => {
+		const worn = loadout(null);
+		expect(worn.owned).toEqual([]);
+		expect(worn.bank).toBe(0);
+		expect(cosmeticsAreEmpty(worn)).toBe(false);
+	});
+
+	test('a catalogue with none of these kinds has nothing to wear', () => {
+		const worn = buildCosmeticLoadout(parseCosmeticCatalog({Cosmetics: [{Id: 'bg-none', Kind: 'Background'}]}), null);
+		expect(cosmeticsAreEmpty(worn)).toBe(true);
+	});
+
+	test('wearing one fills only its own slot, and null empties it', () => {
+		const worn = loadout({EquippedAvatarId: 'avatar-medal', EquippedCustomTitleId: 'title-legend'});
+
+		const swapped = wearingCosmetic(worn, COSMETIC_AVATAR, 'avatar-crown');
+		expect(swapped.avatarId).toBe('avatar-crown');
+		expect(swapped.titleId).toBe('title-legend');
+
+		expect(wearingCosmetic(worn, COSMETIC_RANK_TITLE, null).titleId).toBeNull();
+		expect(wearingCosmetic(worn, COSMETIC_RANK_TITLE, null).avatarId).toBe('avatar-medal');
+	});
+
+	test('buying one is held straight away, and the bank stands when none came back', () => {
+		const worn = loadout({Owned: ['avatar-medal'], ScoreBank: 400});
+
+		expect(boughtCosmetic(worn, 'avatar-crown', 50).owned).toEqual(['avatar-medal', 'avatar-crown']);
+		expect(boughtCosmetic(worn, 'avatar-crown', 50).bank).toBe(50);
+		expect(boughtCosmetic(worn, 'avatar-crown', null).bank).toBe(400);
 	});
 });
 
