@@ -231,6 +231,18 @@ export const POWER_UP_USED = 'used';
 export const POWER_UP_REFUSED = 'refused';
 export const POWER_UP_FAILED = 'failed';
 
+// One badge someone on this server unlocked. The feed also pages, and says who and which badge by
+// id, none of which this screen needs.
+const parseActivityEntry = (json) => ({
+	at: asDate(json.At),
+	userName: asString(json.UserName),
+	badgeTitle: asString(json.Title),
+	rarity: asString(json.Rarity),
+	icon: asString(json.Icon)
+});
+
+export const parseActivityFeed = (json) => mapList(json.Entries, parseActivityEntry);
+
 // One thing the shop sells. The name and description the catalogue carries are English only, so
 // only the type, the pack size and the price are read.
 const parseShopPowerUp = (json) => ({

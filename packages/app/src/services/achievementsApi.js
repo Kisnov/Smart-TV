@@ -13,7 +13,7 @@ import {platformFetch} from './secureFetch';
 import {
 	isObject, parseBadgeChase, parseSummary, parseRank, parseBadges, parseQuests, parseRerolledQuests,
 	parseLeaderboardEntry, parseRecap, parseLibraryCompletion,
-	parsePowerUpState, parsePowerUpSlots, parseShopCatalog,
+	parsePowerUpState, parsePowerUpSlots, parseShopCatalog, parseActivityFeed,
 	REROLLED, REROLL_ALREADY_USED, REROLL_FAILED,
 	POWER_UP_USED, POWER_UP_REFUSED, POWER_UP_FAILED,
 	PURCHASE_BOUGHT, PURCHASE_REFUSED, PURCHASE_FAILED
@@ -25,10 +25,11 @@ const TIMEOUT_MS = 15000;
 // What the panel opens on, so the screen that can change it knows what it was handed.
 export const DEFAULT_RECAP_PERIOD = 'month';
 
-// What the admin left switched on, as the last probe found it. Both stay on until the server
+// What the admin left switched on, as the last probe found it. They stay on until the server
 // says otherwise, since a plugin too old to report them still serves them.
 let leaderboardEnabled = true;
 let questsEnabled = true;
+let activityEnabled = true;
 
 const base = () => (getServerUrl() || '').replace(/\/+$/, '');
 
@@ -93,13 +94,14 @@ const getList = async (path) => {
 	return Array.isArray(data) ? data.filter(isObject) : [];
 };
 
-export const getFlags = () => ({leaderboardEnabled, questsEnabled});
+export const getFlags = () => ({leaderboardEnabled, questsEnabled, activityEnabled});
 
 // Clears what the last server said, so a set switched to one without the plugin cannot keep
 // showing the entry.
 export const reset = () => {
 	leaderboardEnabled = true;
 	questsEnabled = true;
+	activityEnabled = true;
 };
 
 // Whether the plugin answered here. public-config needs no administrator, so an ordinary user
@@ -110,6 +112,7 @@ export const probe = async () => {
 	if (!config) return false;
 	leaderboardEnabled = config.LeaderboardEnabled !== false;
 	questsEnabled = config.QuestsEnabled !== false;
+	activityEnabled = config.ActivityFeedEnabled !== false;
 	return true;
 };
 
@@ -159,6 +162,14 @@ export const usePowerUp = async (type) => {
 	if (written.refused) return {outcome: POWER_UP_REFUSED, message: written.message};
 	if (!written.body) return {outcome: POWER_UP_FAILED};
 	return {outcome: POWER_UP_USED, slots: parsePowerUpSlots(written.body.Inventory)};
+};
+
+// What the server has unlocked lately, newest first. It can come back empty because the admin
+// switched the feed off, or because everyone on the server has opted out of appearing in it.
+export const fetchActivity = async ({limit = 30} = {}) => {
+	if (!activityEnabled) return [];
+	const json = await getMap(`activity-feed?page=1&pageSize=${limit}`);
+	return json ? parseActivityFeed(json) : [];
 };
 
 // What the shop sells, narrowed to the power-ups. The catalogue is the same for everyone, so this
@@ -229,6 +240,7 @@ export const loadOverview = async () => {
 		recap: parseRecap(recap),
 		libraryCompletion: parseLibraryCompletion(completion),
 		leaderboardEnabled,
-		questsEnabled
+		questsEnabled,
+		activityEnabled
 	};
 };

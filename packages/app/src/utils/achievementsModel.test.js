@@ -1,7 +1,8 @@
 import {
 	groupBadges, leaderboardValue, parseBadge, parseLeaderboardEntry, parseLibraryCompletion,
 	parseBadgeChase, parseQuest, parseQuests, parseRank, parseRecap, parseRerolledQuests,
-	parseSummary, parsePowerUpState, parseShopCatalog, parseHexColor, rarityColor, scoreForRarity
+	parseSummary, parsePowerUpState, parseShopCatalog, parseActivityFeed, parseHexColor, rarityColor,
+	scoreForRarity
 } from './achievementsModel';
 
 const badge = (over) => parseBadge({
@@ -212,6 +213,36 @@ describe('parsePowerUpState', () => {
 
 	test('an empty answer is a bank of nothing', () => {
 		expect(parsePowerUpState({})).toEqual({bank: 0, slots: []});
+	});
+});
+
+describe('parseActivityFeed', () => {
+	test('reads a row and leaves the paging and the ids behind', () => {
+		const entries = parseActivityFeed({
+			Page: 1,
+			TotalEntries: 14,
+			Entries: [{
+				At: '2026-09-18T05:01:48Z', UserId: 'u1', UserName: 'moonfin', BadgeId: 'media-explorer',
+				Title: 'Media Explorer', Rarity: 'Common', Icon: 'travel_explore', Category: 'Getting Started'
+			}]
+		});
+		expect(entries).toEqual([{
+			at: new Date('2026-09-18T05:01:48Z'),
+			userName: 'moonfin',
+			badgeTitle: 'Media Explorer',
+			rarity: 'Common',
+			icon: 'travel_explore'
+		}]);
+	});
+
+	test('a row without a timestamp still reads', () => {
+		const entries = parseActivityFeed({Entries: [{UserName: 'Ada', Title: 'First Contact'}]});
+		expect(entries[0].at).toBeNull();
+		expect(entries[0].userName).toBe('Ada');
+	});
+
+	test('a feed with nothing in it is nothing', () => {
+		expect(parseActivityFeed({})).toEqual([]);
 	});
 });
 

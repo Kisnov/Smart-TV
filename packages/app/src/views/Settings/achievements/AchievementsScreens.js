@@ -1,10 +1,10 @@
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback} from 'react';
 
 import * as achievementsApi from '../../../services/achievementsApi';
 import {
 	AchievementsView, AchievementsBadgesView, AchievementsBadgeView, AchievementsQuestsView,
 	AchievementsLeaderboardView, AchievementsRecapView, AchievementsLibraryView,
-	AchievementsLoadoutView, AchievementsShopView
+	AchievementsLoadoutView, AchievementsShopView, AchievementsActivityView, useLoadOnOpen
 } from './AchievementsViews';
 
 // Every achievement screen renders from here so the one load survives moving between them. Each
@@ -13,28 +13,11 @@ import {
 export const ACHIEVEMENT_VIEWS = [
 	'achievements', 'achievementsBadges', 'achievementsBadge', 'achievementsQuests',
 	'achievementsLeaderboard', 'achievementsRecap', 'achievementsLibrary', 'achievementsLoadout',
-	'achievementsShop'
+	'achievementsShop', 'achievementsActivity'
 ];
 
 const AchievementsScreens = ({view, badgeId, onOpen, onSelectItem}) => {
-	const [overview, setOverview] = useState(null);
-	const [loading, setLoading] = useState(true);
-	const [attempt, setAttempt] = useState(0);
-
-	useEffect(() => {
-		let cancelled = false;
-		setLoading(true);
-		achievementsApi.loadOverview().then((next) => {
-			if (cancelled) return;
-			setOverview(next);
-			setLoading(false);
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [attempt]);
-
-	const reload = useCallback(() => setAttempt((n) => n + 1), []);
+	const {data: overview, loading, reload} = useLoadOnOpen(achievementsApi.loadOverview);
 
 	const openBadge = useCallback(
 		(id) => onOpen('achievementsBadge', `achievement-badge-${id}`, id),
@@ -67,6 +50,9 @@ const AchievementsScreens = ({view, badgeId, onOpen, onSelectItem}) => {
 	}
 	if (view === 'achievementsShop') {
 		return <AchievementsShopView />;
+	}
+	if (view === 'achievementsActivity') {
+		return <AchievementsActivityView />;
 	}
 	if (view === 'achievementsLibrary') {
 		return <AchievementsLibraryView completion={overview ? overview.libraryCompletion : {}} />;

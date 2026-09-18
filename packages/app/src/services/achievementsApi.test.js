@@ -77,9 +77,9 @@ beforeEach(() => {
 
 describe('availability', () => {
 	test('a server running the plugin is available and reports what the admin left on', async () => {
-		serve({'public-config': {LeaderboardEnabled: true, QuestsEnabled: false}});
+		serve({'public-config': {LeaderboardEnabled: true, QuestsEnabled: false, ActivityFeedEnabled: false}});
 		expect(await api.probe()).toBe(true);
-		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: false});
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: false, activityEnabled: false});
 	});
 
 	// A plugin too old to report a flag still serves the section, so only a definite no turns
@@ -87,7 +87,7 @@ describe('availability', () => {
 	test('a flag the plugin never mentions is still on', async () => {
 		serve({'public-config': {}});
 		await api.probe();
-		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true});
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true, activityEnabled: true});
 	});
 
 	test('a server without the plugin is unavailable after one look', async () => {
@@ -112,10 +112,10 @@ describe('availability', () => {
 	});
 
 	test('reset puts the flags back, so they cannot survive a sign out', async () => {
-		serve({'public-config': {LeaderboardEnabled: false, QuestsEnabled: false}});
+		serve({'public-config': {LeaderboardEnabled: false, QuestsEnabled: false, ActivityFeedEnabled: false}});
 		await api.probe();
 		api.reset();
-		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true});
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true, activityEnabled: true});
 	});
 });
 
@@ -392,6 +392,57 @@ describe('loadout', () => {
 		expect((await api.usePowerUp('XpBoost')).outcome).toBe('failed');
 		expect(await api.fetchPowerUps()).toBeNull();
 		expect(platformFetch).not.toHaveBeenCalled();
+	});
+});
+
+describe('activity feed', () => {
+	const FEED = {
+		Page: 1,
+		PageSize: 30,
+		TotalEntries: 2,
+		Entries: [
+			{
+				At: '2026-09-18T05:01:48Z', UserId: 'u1', UserName: 'moonfin',
+				BadgeId: 'media-explorer', Title: 'Media Explorer', Rarity: 'Common',
+				Icon: 'travel_explore', Category: 'Getting Started'
+			},
+			{At: '2026-09-18T04:11:44Z', UserName: 'Ada', Title: 'First Contact', Rarity: 'Rare', Icon: 'play_circle'}
+		]
+	};
+
+	test('the feed comes back the way the server ordered it', async () => {
+		serve({'public-config': CONFIG, 'activity-feed': FEED});
+		await api.probe();
+		const entries = await api.fetchActivity();
+
+		expect(entries).toHaveLength(2);
+		expect(entries[0].userName).toBe('moonfin');
+		expect(entries[0].badgeTitle).toBe('Media Explorer');
+		expect(entries[0].rarity).toBe('Common');
+		expect(entries[0].at).toBeInstanceOf(Date);
+		expect(entries[1].userName).toBe('Ada');
+	});
+
+	test('the page size asked for is the limit given', async () => {
+		serve({'public-config': CONFIG, 'activity-feed': FEED});
+		await api.probe();
+		await api.fetchActivity({limit: 5});
+
+		expect(paths()).toContain('activity-feed?page=1&pageSize=5');
+	});
+
+	test('a feed the admin switched off is not even asked for', async () => {
+		serve({'public-config': {...CONFIG, ActivityFeedEnabled: false}, 'activity-feed': FEED});
+		await api.probe();
+
+		expect(await api.fetchActivity()).toEqual([]);
+		expect(paths().some((path) => path.indexOf('activity-feed') >= 0)).toBe(false);
+	});
+
+	test('a server that answers nothing has unlocked nothing', async () => {
+		serve({'public-config': CONFIG});
+		await api.probe();
+		expect(await api.fetchActivity()).toEqual([]);
 	});
 });
 

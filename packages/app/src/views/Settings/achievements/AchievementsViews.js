@@ -6,6 +6,7 @@ import {
 	BADGE_FILTERS, groupBadges, leaderboardValue, parseHexColor, rarityColor,
 	REROLLED, REROLL_FAILED, POWER_UP_USED, PURCHASE_BOUGHT
 } from '../../../utils/achievementsModel';
+import {relativeTimeLabel} from '../../../utils/relativeTime';
 import {achievementIconPath} from './achievementIcons';
 import ConfirmSpendDialog from './ConfirmSpendDialog';
 import DetailsTabBar from '../../../components/DetailsTabBar/DetailsTabBar';
@@ -93,6 +94,31 @@ const LoadFailed = ({spotlightId, onRetry}) => (
 		</div>
 	</>
 );
+
+// Every screen here reads once when it opens and shows the loading message until the answer
+// lands. read has to be a stable callback, since a new one means the screen is showing something
+// else and asks again.
+export const useLoadOnOpen = (read) => {
+	const [data, setData] = useState(null);
+	const [loading, setLoading] = useState(true);
+	const [attempt, setAttempt] = useState(0);
+
+	useEffect(() => {
+		let cancelled = false;
+		setLoading(true);
+		read().then((next) => {
+			if (cancelled) return;
+			setData(next);
+			setLoading(false);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [read, attempt]);
+
+	const reload = useCallback(() => setAttempt((n) => n + 1), []);
+	return {data, setData, loading, reload};
+};
 
 // A row takes focus even when it does nothing, because a list whose rows cannot be focused is a
 // list the remote cannot scroll.
@@ -248,6 +274,7 @@ const RankHeader = ({rank, summary}) => {
 	);
 };
 
+// Each badge takes focus so the remote can reach the ones past the right edge.
 const Showcase = ({badges}) => (
 	<>
 		<SectionTitle>{$L('Showcase')}</SectionTitle>
@@ -255,12 +282,16 @@ const Showcase = ({badges}) => (
 			{badges.map((badge) => {
 				const color = rarityColor(badge.rarity);
 				return (
-					<div key={badge.id} className={css.showcaseItem}>
+					<SpottableDiv
+						key={badge.id}
+						className={css.showcaseItem}
+						spotlightId={`achievement-showcase-${badge.id}`}
+					>
 						<div className={css.showcaseAvatar} style={shell(color)}>
 							<Icon name={badge.icon} className={css.showcaseIcon} />
 						</div>
 						<div className={css.showcaseTitle}>{badge.title}</div>
-					</div>
+					</SpottableDiv>
 				);
 			})}
 		</div>
@@ -306,6 +337,16 @@ export const AchievementsView = ({overview, loading, onReload, onOpen}) => {
 					desc={$L('{count} completed').replace('{count}', String(questCount))}
 					icon="task_alt"
 					view="achievementsQuests"
+					onOpen={onOpen}
+				/>
+			)}
+			{overview.activityEnabled && (
+				<OpenScreenRow
+					id="achievements-activity"
+					title={$L('Activity')}
+					desc={$L('What the server has unlocked lately')}
+					icon="bolt"
+					view="achievementsActivity"
 					onOpen={onOpen}
 				/>
 			)}
@@ -413,21 +454,8 @@ const ChaseRow = ({item, onSelectItem}) => {
 
 // One badge on its own, with what the plugin suggests watching for it.
 export const AchievementsBadgeView = ({badge, onSelectItem}) => {
-	const [chase, setChase] = useState(null);
-	const [loading, setLoading] = useState(true);
-
-	useEffect(() => {
-		let cancelled = false;
-		setLoading(true);
-		achievementsApi.fetchBadgeChase(badge.id).then((next) => {
-			if (cancelled) return;
-			setChase(next);
-			setLoading(false);
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [badge.id]);
+	const read = useCallback(() => achievementsApi.fetchBadgeChase(badge.id), [badge.id]);
+	const {data: chase, loading} = useLoadOnOpen(read);
 
 	if (loading) {
 		return (
@@ -545,24 +573,7 @@ const useSpendConfirm = (perform) => {
 
 // The score bank and the consumables it has bought.
 export const AchievementsLoadoutView = ({onOpen}) => {
-	const [state, setState] = useState(null);
-	const [loading, setLoading] = useState(true);
-	const [attempt, setAttempt] = useState(0);
-
-	useEffect(() => {
-		let cancelled = false;
-		setLoading(true);
-		achievementsApi.fetchPowerUps().then((next) => {
-			if (cancelled) return;
-			setState(next);
-			setLoading(false);
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [attempt]);
-
-	const reload = useCallback(() => setAttempt((n) => n + 1), []);
+	const {data: state, setData: setState, loading, reload} = useLoadOnOpen(achievementsApi.fetchPowerUps);
 
 	const spend = useCallback(async (slot) => {
 		const result = await achievementsApi.usePowerUp(slot.type);
@@ -570,7 +581,7 @@ export const AchievementsLoadoutView = ({onOpen}) => {
 		// Spending one costs no score, so only the inventory moves.
 		setState((prev) => ({bank: prev.bank, slots: result.slots}));
 		return null;
-	}, []);
+	}, [setState]);
 
 	const {asking, busy, problem, ask, cancel, confirm} = useSpendConfirm(spend);
 
@@ -617,36 +628,63 @@ export const AchievementsLoadoutView = ({onOpen}) => {
 	);
 };
 
+const ActivityRow = ({entry, spotlightId}) => (
+	<AchievementRow spotlightId={spotlightId}>
+		<TileIcon icon={entry.icon} color={rarityColor(entry.rarity)} />
+		<div className={settingsCss.listItemBody}>
+			<div className={settingsCss.listItemHeading}>
+				{$L('{user} unlocked {badge}')
+					.replace('{user}', entry.userName)
+					.replace('{badge}', entry.badgeTitle)}
+			</div>
+			{entry.at && <div className={css.progressText}>{relativeTimeLabel(entry.at)}</div>}
+		</div>
+	</AchievementRow>
+);
+
+// What everyone on the server has unlocked lately.
+export const AchievementsActivityView = () => {
+	const {data: entries, loading} = useLoadOnOpen(achievementsApi.fetchActivity);
+
+	if (loading) {
+		return (
+			<SettingsView spotlightId="achievements-activity-view">
+				<Message>{$L('Loading...')}</Message>
+			</SettingsView>
+		);
+	}
+
+	return (
+		<SettingsView spotlightId="achievements-activity-view">
+			{entries.length === 0
+				? <Message>{$L('Nothing here yet.')}</Message>
+				: entries.map((entry, index) => (
+					<ActivityRow key={index} entry={entry} spotlightId={`achievement-activity-${index}`} />
+				))}
+		</SettingsView>
+	);
+};
+
+// The catalogue carries no bank, so the two are read together.
+const readShop = async () => {
+	const [items, state] = await Promise.all([
+		achievementsApi.fetchShopPowerUps(),
+		achievementsApi.fetchPowerUps()
+	]);
+	return {items, bank: state ? state.bank : 0};
+};
+
 // What score can be spent on. Going back to the loadout mounts it afresh, so a purchase shows up
 // in both the bank and the inventory without either screen being told about it.
 export const AchievementsShopView = () => {
-	const [items, setItems] = useState([]);
-	const [bank, setBank] = useState(0);
-	const [loading, setLoading] = useState(true);
-
-	useEffect(() => {
-		let cancelled = false;
-		// The catalogue carries no bank, so the two are read together.
-		Promise.all([
-			achievementsApi.fetchShopPowerUps(),
-			achievementsApi.fetchPowerUps()
-		]).then(([catalog, state]) => {
-			if (cancelled) return;
-			setItems(catalog);
-			setBank(state ? state.bank : 0);
-			setLoading(false);
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, []);
+	const {data, setData, loading} = useLoadOnOpen(readShop);
 
 	const buy = useCallback(async (item) => {
 		const result = await achievementsApi.buyShopItem(item.id);
 		if (result.outcome !== PURCHASE_BOUGHT) return result.message || $L('Could not buy that.');
-		if (result.bankAfter !== null) setBank(result.bankAfter);
+		if (result.bankAfter !== null) setData((prev) => ({...prev, bank: result.bankAfter}));
 		return null;
-	}, []);
+	}, [setData]);
 
 	const {asking, busy, problem, ask, cancel, confirm} = useSpendConfirm(buy);
 
@@ -660,14 +698,14 @@ export const AchievementsShopView = () => {
 
 	return (
 		<SettingsView spotlightId="achievements-shop-view">
-			<ScoreBank bank={bank} />
-			{items.length === 0
+			<ScoreBank bank={data.bank} />
+			{data.items.length === 0
 				? <Message>{$L('Nothing for sale right now.')}</Message>
-				: items.map((item) => (
+				: data.items.map((item) => (
 					<ShopRow
 						key={item.id}
 						item={item}
-						affordable={item.priceScore <= bank && !busy}
+						affordable={item.priceScore <= data.bank && !busy}
 						onBuy={ask}
 					/>
 				))}
