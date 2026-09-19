@@ -105,6 +105,9 @@ const QUALITY_FILTERS = [
 // A tag list can run to thousands of entries, and each one costs a focusable
 // row, so a facet opens on this many and grows a page at a time.
 const FACET_PAGE = 50;
+// Under this a list is quicker to read down than to type at, so the box only
+// turns up where it earns the row it costs.
+const FACET_SEARCH_THRESHOLD = 15;
 
 // Sorting is what the panel is opened for most of the time, so it is the one section
 // standing open when the panel arrives.
@@ -220,6 +223,8 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const [facetValues, setFacetValues] = useState(null);
 	const [expandedSection, setExpandedSection] = useState(SORT_SECTION);
 	const [facetLimit, setFacetLimit] = useState(FACET_PAGE);
+	// What has been typed into each long facet's box, keyed by facet.
+	const [facetQueries, setFacetQueries] = useState({});
 	const [musicContentType, setMusicContentType] = useState('albums');
 	const [focusedItem, setFocusedItem] = useState(null);
 	const [musicGridView, setMusicGridView] = useState(null);
@@ -816,11 +821,21 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const handleSectionExpand = useCallback((ev) => {
 		const key = ev.currentTarget.dataset.sectionKey;
 		setFacetLimit(FACET_PAGE);
+		setFacetQueries({});
 		setExpandedSection(prev => (prev === key ? null : key));
 	}, []);
 
 	const handleFacetShowMore = useCallback(() => {
 		setFacetLimit(prev => prev + FACET_PAGE);
+	}, []);
+
+	const handleFacetSearchChange = useCallback((ev) => {
+		const key = ev.target.dataset.facetKey;
+		const value = ev.target.value;
+		setFacetQueries(prev => ({...prev, [key]: value}));
+		// A narrowed list starts from the top, so the page cap it was left on
+		// does not carry over and hide the first matches.
+		setFacetLimit(FACET_PAGE);
 	}, []);
 
 	const handleClearFilters = useCallback(() => {
@@ -847,6 +862,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		if (showSortPanel) return;
 		setExpandedSection(SORT_SECTION);
 		setFacetLimit(FACET_PAGE);
+		setFacetQueries({});
 	}, [showSortPanel]);
 
 	const handleCycleImageSize = useCallback(() => {
@@ -1078,18 +1094,45 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		// Tags and genres are whatever the library owner typed, and a spotlight
 		// id ends up in a CSS selector, so the position identifies the row.
 		const chosen = options.filter(o => selected.includes(o.value)).length;
+		// Hundreds of tags are quicker to type at than to scroll through. Folded
+		// so a tag answers to the accents it was typed with, or without.
+		const searchable = options.length > FACET_SEARCH_THRESHOLD;
+		const query = searchable ? foldForSearch((facetQueries[facetKey] || '').trim()) : '';
+		const matching = query
+			? options.filter(option => foldForSearch(option.name).includes(query))
+			: options;
 		// Anything already picked stays on screen however far down the list it
-		// sits, otherwise a page limit could hide the only way to clear it.
+		// sits, otherwise a page limit could hide the only way to clear it. A
+		// typed query is the viewer asking for less, so it narrows first.
 		let room = facetLimit;
-		const visible = options.filter(option => {
+		const visible = matching.filter(option => {
 			if (selected.includes(option.value)) return true;
 			if (room <= 0) return false;
 			room -= 1;
 			return true;
 		});
-		const remaining = options.length - visible.length;
+		const remaining = matching.length - visible.length;
 		return renderSection(facetKey, title, countLabel(chosen), () => (
 			<>
+				{searchable && (
+					<div className={css.facetSearchWrap}>
+						<SpottableInput
+							type="text"
+							className={css.facetSearchField}
+							placeholder={$L('Search {facet}').replace('{facet}', title)}
+							value={facetQueries[facetKey] || ''}
+							onChange={handleFacetSearchChange}
+							data-facet-key={facetKey}
+							spotlightId={`filter-${facetKey}-search`}
+							autoComplete="off"
+						/>
+					</div>
+				)}
+				{query && matching.length === 0 && (
+					<div className={css.facetSearchEmpty}>
+						{$L('No {facet} found').replace('{facet}', title)}
+					</div>
+				)}
 				{visible.map((option, index) => (
 					<SpottableButton
 						key={option.value}
