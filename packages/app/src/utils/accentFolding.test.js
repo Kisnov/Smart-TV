@@ -7,25 +7,34 @@ import {foldAccents, foldForSearch} from './accentFolding';
 import {filterByName, filterGames} from './searchGroups';
 
 describe('foldAccents', () => {
-	test('replaces accented letters with the letter behind them', () => {
+	test('drops the mark and keeps the letter under it', () => {
 		expect(foldForSearch('Cançó')).toBe('canco');
-		expect(foldForSearch('Pokémon')).toBe('pokemon');
+		expect(foldForSearch('Ángel')).toBe('angel');
 		expect(foldForSearch('Amélie')).toBe('amelie');
-		// The table folds the ligature to a single letter rather than spelling
-		// it out, which is what the game library has always matched on.
-		expect(foldForSearch('Æon Flux')).toBe('aon flux');
 	});
 
-	test('leaves letters it does not know alone', () => {
-		// Nothing folds these, so they still have to survive the pass intact.
+	test('reaches marks no hand written table would remember', () => {
+		// Decomposing covers the whole Latin range rather than the handful of
+		// letters someone thought to list.
+		expect(foldForSearch('Ǎ')).toBe('a');
+		expect(foldForSearch('Ḡ')).toBe('g');
+		expect(foldForSearch('Ữ')).toBe('u');
+	});
+
+	test('names the letters that carry no mark to strip', () => {
+		expect(foldForSearch('Øster')).toBe('oster');
+		expect(foldForSearch('Łódź')).toBe('lodz');
+	});
+
+	test('leaves anything outside the Latin alphabet alone', () => {
 		expect(foldForSearch('Волшебник')).toBe('волшебник');
 		expect(foldForSearch('東京')).toBe('東京');
 		expect(foldForSearch('Straße')).toBe('straße');
 	});
 
-	test('folded letters come back uppercase, so callers case fold after', () => {
-		expect(foldAccents('cançó')).toBe('canCO');
-		expect(foldForSearch('cançó')).toBe('canco');
+	test('keeps the case it was given', () => {
+		expect(foldAccents('Cançó')).toBe('Canco');
+		expect(foldAccents('cançó')).toBe('canco');
 	});
 
 	test('takes null and undefined without throwing', () => {
