@@ -630,15 +630,6 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		initialFocusDoneRef.current = false;
 	}, []);
 
-	useEffect(() => {
-		if (items.length > 0 && !isLoading && !initialFocusDoneRef.current) {
-			setTimeout(() => {
-				Spotlight.focus(groupedActive ? 'library-group-row-0' : 'library-grid');
-				initialFocusDoneRef.current = true;
-			}, 100);
-		}
-	}, [items.length, isLoading, groupedActive]);
-
 	const handleItemClick = useCallback((ev) => {
 		const itemIndex = ev.currentTarget?.dataset?.index;
 		if (itemIndex === undefined) return;
@@ -730,6 +721,21 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		onBack: handleBackBeyondPanels,
 		enabled: !isMusicBrowseHome
 	});
+	// The grid takes focus once the library has something to show. The reload
+	// this waits on also runs for every filter picked, and that reload clears
+	// the flag below, so a panel left open would be handed the grid out from
+	// under the viewer the moment their pick came back. A panel on screen is
+	// the viewer still choosing, so the grid waits for them to finish with it.
+	useEffect(() => {
+		if (showSortPanel || showSettingsPanel) return;
+		if (items.length > 0 && !isLoading && !initialFocusDoneRef.current) {
+			setTimeout(() => {
+				Spotlight.focus(groupedActive ? 'library-group-row-0' : 'library-grid');
+				initialFocusDoneRef.current = true;
+			}, 100);
+		}
+	}, [items.length, isLoading, groupedActive, showSortPanel, showSettingsPanel]);
+
 
 	// Choosing the sort already in use turns it around rather than doing nothing.
 	const handleSortSelect = useCallback((ev) => {
