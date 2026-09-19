@@ -829,13 +829,22 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		setFacetLimit(prev => prev + FACET_PAGE);
 	}, []);
 
-	const handleFacetSearchChange = useCallback((ev) => {
-		const key = ev.target.dataset.facetKey;
-		const value = ev.target.value;
-		setFacetQueries(prev => ({...prev, [key]: value}));
-		// A narrowed list starts from the top, so the page cap it was left on
-		// does not carry over and hide the first matches.
-		setFacetLimit(FACET_PAGE);
+	// The on screen keyboard reports what was typed as a plain object rather than
+	// a DOM event, so the facet has to travel in the closure: there is no element
+	// on the other side to hang a data attribute off. One handler is kept per
+	// facet so the prop holds its identity between renders.
+	const facetSearchHandlers = useRef({});
+	const facetSearchHandler = useCallback((facetKey) => {
+		const cached = facetSearchHandlers.current;
+		if (!cached[facetKey]) {
+			cached[facetKey] = (ev) => {
+				setFacetQueries(prev => ({...prev, [facetKey]: ev?.target?.value || ''}));
+				// A narrowed list starts from the top, so the page cap it was left
+				// on does not carry over and hide the first matches.
+				setFacetLimit(FACET_PAGE);
+			};
+		}
+		return cached[facetKey];
 	}, []);
 
 	const handleClearFilters = useCallback(() => {
@@ -1121,8 +1130,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							className={css.facetSearchField}
 							placeholder={$L('Search {facet}').replace('{facet}', title)}
 							value={facetQueries[facetKey] || ''}
-							onChange={handleFacetSearchChange}
-							data-facet-key={facetKey}
+							onChange={facetSearchHandler(facetKey)}
 							spotlightId={`filter-${facetKey}-search`}
 							autoComplete="off"
 						/>
