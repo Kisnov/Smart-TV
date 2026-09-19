@@ -33,8 +33,19 @@ const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
 const ToolbarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
 const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
-const SortPanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
-const SettingsPanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
+// A panel sits on top of the grid it was opened from, so a 5-way press at its
+// edge has to stay put rather than land on whatever is behind it. leaveFor is
+// what holds it: restrict never reaches the container, because
+// SpotlightContainerDecorator reads that from its spotlightRestrict prop and
+// not from this config, and the prop defaults to self-first.
+const PANEL_HOLDS_FOCUS = {
+	enterTo: 'last-focused',
+	restrict: 'self-only',
+	leaveFor: {left: '', right: '', up: '', down: ''}
+};
+
+const SortPanelContainer = SpotlightContainerDecorator(PANEL_HOLDS_FOCUS, 'div');
+const SettingsPanelContainer = SpotlightContainerDecorator(PANEL_HOLDS_FOCUS, 'div');
 
 // Every sort ends on SortName so items the server ranks equally keep a stable
 // order between pages, which a bare key leaves to whatever the database returns.
