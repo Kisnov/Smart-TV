@@ -244,6 +244,7 @@ export const getDetailScreenStyleOptions = () => [
 	{ value: 'v2', label: $L('Modern') },
 	{ value: 'v3', label: $L('Spotlight') },
 	{ value: 'v4', label: $L('Nouveau') },
+	{ value: 'v5', label: $L('Minimalist') },
 	{ value: 'v1', label: $L('Classic') }
 ];
 

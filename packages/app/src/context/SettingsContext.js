@@ -87,7 +87,8 @@ const normalizeDetailScreenStyle = (value) => {
 	if (value === 'modern') return 'v2';
 	if (value === 'spotlight') return 'v3';
 	if (value === 'nouveau') return 'v4';
-	return value === 'v1' || value === 'v2' || value === 'v3' || value === 'v4' ? value : 'v2';
+	if (value === 'minimalist') return 'v5';
+	return ['v1', 'v2', 'v3', 'v4', 'v5'].indexOf(value) >= 0 ? value : 'v2';
 };
 
 const normalizeGuid = (id) => {

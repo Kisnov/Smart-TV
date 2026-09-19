@@ -1,6 +1,6 @@
 import {
 	isKidsMode, kidsModeRows, kidsModeButtons, blockedPanels, allowedPanel,
-	KIDS_MODE_HIDDEN_BUTTONS, kidsModeNeedsPin
+	KIDS_MODE_BUTTONS, kidsModeNeedsPin, kidsModeSettings
 } from './kidsMode';
 
 const row = (id, enabled = true, order = 0) => ({id, name: id, enabled, order});
@@ -106,22 +106,30 @@ describe('home rows', () => {
 
 describe('details buttons', () => {
 	const buttons = [
-		{id: 'play'}, {id: 'watched'}, {id: 'favorite'}, {id: 'shuffle'}, {id: 'trailer'},
-		{id: 'playlist'}, {id: 'collection'}, {id: 'goToSeries'}, {id: 'subtitles'},
-		...KIDS_MODE_HIDDEN_BUTTONS.map((id) => ({id}))
+		{id: 'watched'}, {id: 'favorite'}, {id: 'shuffle'}, {id: 'trailer'}, {id: 'playlist'},
+		{id: 'collection'}, {id: 'goToSeries'}, {id: 'subtitles'}, {id: 'audio'}, {id: 'version'},
+		{id: 'admin'}, {id: 'artwork'}, {id: 'deleteFiles'}, {id: 'watchWithGroup'},
+		{id: 'seerrRequest'}, {id: 'seerrWatchlist'}, {id: 'seerrManage'}
 	];
 
-	test('takes away everything it hides elsewhere', () => {
-		const left = kidsModeButtons(buttons, true).map((b) => b.id);
-		KIDS_MODE_HIDDEN_BUTTONS.forEach((id) => expect(left).not.toContain(id));
+	// An allow list, so it is not only the risky ones that go.
+	test('offers only the few a child needs', () => {
+		expect(kidsModeButtons(buttons, true).map((b) => b.id)).toEqual(KIDS_MODE_BUTTONS);
 	});
 
-	test('leaves the buttons a child still needs alone', () => {
-		const left = kidsModeButtons(buttons, true).map((b) => b.id);
-		expect(left).toEqual([
-			'play', 'watched', 'favorite', 'shuffle', 'trailer',
-			'playlist', 'collection', 'goToSeries', 'subtitles'
-		]);
+	test('a button nobody thought about stays out', () => {
+		expect(kidsModeButtons([...buttons, {id: 'somethingNew'}], true).map((b) => b.id))
+			.toEqual(KIDS_MODE_BUTTONS);
+	});
+
+	// The allow list's own order wins, whatever order the row happened to offer them in.
+	test('the row reads in the order the mode sets', () => {
+		const backwards = [{id: 'favorite'}, {id: 'shuffle'}];
+		expect(kidsModeButtons(backwards, true).map((b) => b.id)).toEqual(['shuffle', 'favorite']);
+	});
+
+	test('one the row never offered is simply absent', () => {
+		expect(kidsModeButtons([{id: 'favorite'}], true).map((b) => b.id)).toEqual(['favorite']);
 	});
 
 	test('the mode being on is what takes them away', () => {
@@ -168,5 +176,47 @@ describe('the way out', () => {
 		expect(kidsModeNeedsPin({kidsModeEnabled: true, kidsPinHash: ''})).toBe(false);
 		expect(kidsModeNeedsPin({kidsModeEnabled: true})).toBe(false);
 		expect(kidsModeNeedsPin(undefined)).toBe(false);
+	});
+});
+
+describe('the details screen', () => {
+	const stored = {
+		detailScreenStyle: 'v4',
+		detailExpandedTabs: true,
+		detailShowTechnicalDetails: true,
+		hideDetailsMediaDescription: false,
+		detailUseSeriesThumbnails: true,
+		recommendationSystemSource: 'online'
+	};
+
+	test('is the minimalist one whatever style the user stored', () => {
+		expect(kidsModeSettings({...stored, kidsModeEnabled: true}).detailScreenStyle).toBe('v5');
+	});
+
+	test('the toggles go to their minimal state', () => {
+		const effective = kidsModeSettings({...stored, kidsModeEnabled: true});
+		expect(effective.detailExpandedTabs).toBe(false);
+		expect(effective.detailShowTechnicalDetails).toBe(false);
+		expect(effective.detailUseSeriesThumbnails).toBe(false);
+		expect(effective.recommendationSystemSource).toBe('local');
+	});
+
+	// The preference is named for hiding, so leaving the description out means forcing it on.
+	test('hiding the description means forcing its flag on, not off', () => {
+		expect(kidsModeSettings({...stored, kidsModeEnabled: true}).hideDetailsMediaDescription)
+			.toBe(true);
+	});
+
+	// Read never written, so the stored style still syncs as the user picked it.
+	test('leaves the stored settings alone', () => {
+		const settings = {...stored, kidsModeEnabled: true};
+		kidsModeSettings(settings);
+		expect(settings.detailScreenStyle).toBe('v4');
+		expect(settings.detailExpandedTabs).toBe(true);
+	});
+
+	test('leaves the settings as they are with the mode off', () => {
+		expect(kidsModeSettings(stored)).toBe(stored);
+		expect(kidsModeSettings({...stored, kidsModeEnabled: false}).detailScreenStyle).toBe('v4');
 	});
 });

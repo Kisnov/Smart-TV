@@ -11,6 +11,28 @@ export const isKidsMode = (settings) => settings?.kidsModeEnabled === true;
 // television, so the door opens rather than locking for good.
 export const kidsModeNeedsPin = (settings) => Boolean(settings?.kidsPinHash);
 
+// What the details screen is allowed to be while the mode is on.
+//
+// Applied on read rather than by rewriting the saved values, so turning the mode off gives the
+// user their own screen back untouched. That also keeps the mode out of the sync payload, since
+// the profile push reads the stored settings and would otherwise carry a forced value to the
+// parent's other devices.
+const KIDS_MODE_DETAILS = {
+	// The stripped back screen, which the mode always shows.
+	detailScreenStyle: 'v5',
+	detailExpandedTabs: false,
+	detailShowTechnicalDetails: false,
+	// Named for hiding, so the mode turns it on to leave the description out.
+	hideDetailsMediaDescription: true,
+	detailUseSeriesThumbnails: false,
+	// The online source is an outside catalogue no parental rating reaches, so recommendations stay
+	// inside the server's own library.
+	recommendationSystemSource: 'local'
+};
+
+export const kidsModeSettings = (settings) =>
+	(isKidsMode(settings) ? {...settings, ...KIDS_MODE_DETAILS} : settings);
+
 // The only rows the mode leaves standing: the way into the libraries, and what arrived in them
 // lately. An allow list rather than a block list, so a row added later stays hidden until someone
 // decides a child should see it. Everything else pulls from somewhere this mode cannot vouch for,
@@ -42,27 +64,19 @@ export const kidsModeRows = (rows, kidsMode) => {
 	return [{id: 'library-tiles', name: 'My Media', enabled: true, order: LEADING_ORDER}, ...kept];
 };
 
-// Buttons the mode takes away. A non-admin account never sees the admin ones anyway, so those
-// matter when the account handed over is a parent's own. The Seerr and SyncPlay buttons open
-// their own dialogs rather than moving to a panel, which puts them out of reach of the panel
-// guard and leaves this set as the only thing holding them back.
-export const KIDS_MODE_HIDDEN_BUTTONS = [
-	'admin',
-	'artwork',
-	'deleteFiles',
-	'seerrRequest',
-	'seerrRequest4k',
-	'seerrWatchlist',
-	'seerrReportIssue',
-	'seerrManage',
-	'watchWithGroup'
-];
+// The only buttons Kids Mode offers, alongside the play and restart every details screen puts in
+// front of them. An allow list rather than a block list, so a button added later stays out until
+// someone decides a child should have it. Keeping the row short is half the point, since anything
+// that does not fit folds into a menu, which hands back everything the mode meant to put away.
+export const KIDS_MODE_BUTTONS = ['shuffle', 'favorite'];
 
-// Filtered before the user's own button arrangement is applied, so reordering cannot bring one of
-// these back.
+// The order here is the order on screen. The saved arrangement belongs to the parent and is one of
+// the things the mode sets aside, so it is not consulted.
 export const kidsModeButtons = (buttons, kidsMode) => {
 	if (!kidsMode) return buttons;
-	return (buttons || []).filter((button) => KIDS_MODE_HIDDEN_BUTTONS.indexOf(button.id) < 0);
+	return KIDS_MODE_BUTTONS
+		.map((id) => (buttons || []).find((button) => button.id === id))
+		.filter(Boolean);
 };
 
 // Panels the mode refuses to open.

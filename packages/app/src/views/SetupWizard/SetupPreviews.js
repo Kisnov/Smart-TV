@@ -1459,10 +1459,65 @@ const NouveauDetail = ({items, t}) => {
 	);
 };
 
-const FallbackDetail = ({modern, t}) => {
+// Minimalist leaves the artwork alone and puts the title, one play button and the episodes along
+// the bottom, so the preview is mostly picture.
+const MinimalistDetail = ({items, t}) => {
+	const item = items[0];
+	const cardWidth = 118;
+	return (
+		<div style={{position: 'relative', width: '100%', height: '100%'}}>
+			<Artwork url={item.backdropUrl} position='right center' t={t} />
+			<div style={{...ABS_FILL, backgroundColor: 'rgba(0, 0, 0, 0.55)'}} />
+			<div style={{...ABS_FILL, padding: '0 28px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end'}}>
+				<LogoOrTitle item={item} width={220} height={52} fallbackStyle={{fontSize: 30, fontWeight: 700, color: t.onSurface}} />
+				<div style={{marginTop: 14, display: 'flex', alignItems: 'center'}}>
+					<div style={{height: 46, minWidth: 150, padding: '0 14px 0 10px', backgroundColor: t.accent, borderRadius: 23, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+						<MIcon name='play_arrow' size={22} color={t.onAccent} />
+						<div style={{marginLeft: 4, fontSize: 13, fontWeight: 700, color: t.onAccent}}>{$L('Play')}</div>
+					</div>
+					<CircleButton icon='shuffle' t={t} />
+					<CircleButton icon='favorite' t={t} />
+				</div>
+				<div style={{marginTop: 18, display: 'flex'}}>
+					{[0, 1, 2, 3].map((i) => (
+						<div
+							key={i}
+							style={{
+								width: cardWidth,
+								height: (cardWidth * 9) / 16,
+								marginLeft: i ? 10 : 0,
+								borderRadius: 7,
+								backgroundColor: t.onSurfaceA(0.16)
+							}}
+						/>
+					))}
+				</div>
+			</div>
+		</div>
+	);
+};
+
+const FallbackDetail = ({variant, t}) => {
 	const strong = t.onSurfaceA(0.78);
 	const weak = t.onSurfaceA(0.3);
-	if (!modern) {
+	if (variant === 'v5') {
+		return (
+			<div style={{width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 10px 10px'}}>
+				<FallBar width={58} height={9} color={strong} />
+				<div style={{marginTop: 6, display: 'flex'}}>
+					<FallBar width={40} height={11} color={strong} />
+					<FallBar width={11} height={11} color={weak} style={{marginLeft: 5}} />
+					<FallBar width={11} height={11} color={weak} style={{marginLeft: 5}} />
+				</div>
+				<div style={{marginTop: 8, display: 'flex'}}>
+					{[0, 1, 2].map((i) => (
+						<FallBar key={i} width={34} height={20} color={weak} style={i ? {marginLeft: 5} : undefined} />
+					))}
+				</div>
+			</div>
+		);
+	}
+	if (variant === 'v1') {
 		return (
 			<div style={{width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
 				<FallPoster width={30} t={t} />
@@ -1536,9 +1591,10 @@ export const DetailStylePreview = ({variant}) => {
 		if (variant === 'v1') return <ClassicDetail items={items} t={t} />;
 		if (variant === 'v3') return <SpotlightDetail items={items} t={t} />;
 		if (variant === 'v4') return <NouveauDetail items={items} t={t} />;
+		if (variant === 'v5') return <MinimalistDetail items={items} t={t} />;
 		return <ModernDetail items={items} t={t} />;
 	}, [variant, t]);
-	return <LivePreview render={render} fallback={<FallbackDetail modern={variant !== 'v1'} t={t} />} />;
+	return <LivePreview render={render} fallback={<FallbackDetail variant={variant} t={t} />} />;
 };
 
 export {MIcon as SetupIcon};

@@ -108,10 +108,12 @@ const ModernActionButtons = (props) => {
 
 	const offered = detailActionCatalogue(props);
 	const rowButtons = seerrOnly ? seerrOnlyRow(offered) : offered;
-	const customizable = arrange(
-		kidsModeButtons(rowButtons.filter((btn) => btn.when), isKidsMode(settings)),
-		{order: settings[DETAIL_ORDER_KEY], hidden: settings[DETAIL_HIDDEN_KEY]}
-	);
+	const offeredButtons = rowButtons.filter((btn) => btn.when);
+	// Kids Mode sets the saved arrangement aside rather than filtering it, since its own short row
+	// is the point and a reorder would otherwise put a hidden button back.
+	const customizable = isKidsMode(settings)
+		? kidsModeButtons(offeredButtons, true)
+		: arrange(offeredButtons, {order: settings[DETAIL_ORDER_KEY], hidden: settings[DETAIL_HIDDEN_KEY]});
 
 	// Resume and Restart both lead the row when there is somewhere to resume from, so the
 	// leading slots are counted rather than assumed to be one.
@@ -119,7 +121,10 @@ const ModernActionButtons = (props) => {
 	const showsPlay = !seerrOnly && (isBook ? isReadableBook : true);
 	const leading = (showsResume ? 1 : 0) + (showsPlay ? 1 : 0);
 
-	const prefLimit = settings?.detailButtonsMaxVisible ?? 0;
+	// Kids Mode's row is its own short allow list and always fits, so the viewer's cap is one more
+	// of the settings the mode sets aside. Reading it would fold a button the mode does allow behind
+	// a menu, which is the thing a short row exists to avoid.
+	const prefLimit = isKidsMode(settings) ? 0 : (settings?.detailButtonsMaxVisible ?? 0);
 	const {visibleCount, needsOverflow} = countSplit({
 		totalButtons: leading + customizable.length,
 		...applyButtonLimit(prefLimit, {

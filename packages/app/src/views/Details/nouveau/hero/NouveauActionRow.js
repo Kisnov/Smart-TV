@@ -98,10 +98,12 @@ const NouveauActionRow = (props) => {
 
 	const offered = detailActionCatalogue(props);
 	const rowButtons = seerrOnly ? seerrOnlyRow(offered) : offered;
-	const customizable = arrange(
-		kidsModeButtons(rowButtons.filter((btn) => btn.when), isKidsMode(settings)),
-		{order: settings[DETAIL_ORDER_KEY], hidden: settings[DETAIL_HIDDEN_KEY]}
-	);
+	const offeredButtons = rowButtons.filter((btn) => btn.when);
+	// Kids Mode sets the saved arrangement aside rather than filtering it, since its own short row
+	// is the point and a reorder would otherwise put a hidden button back.
+	const customizable = isKidsMode(settings)
+		? kidsModeButtons(offeredButtons, true)
+		: arrange(offeredButtons, {order: settings[DETAIL_ORDER_KEY], hidden: settings[DETAIL_HIDDEN_KEY]});
 
 	// A person has nothing to play, so their row is circles alone.
 	const showsResume = !seerrOnly && !isPerson && hasPlaybackPosition && !isBook;

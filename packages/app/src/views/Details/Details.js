@@ -1,5 +1,5 @@
 import {useState, useEffect, useCallback, useRef, useMemo} from 'react';
-import {isKidsMode} from '../../utils/kidsMode';
+import {isKidsMode, kidsModeSettings} from '../../utils/kidsMode';
 import $L from '@enact/i18n/$L';
 import Spotlight from '@enact/spotlight';
 
@@ -48,6 +48,7 @@ import {mergeCollectionWithMissing} from './seerrMissingCollectionItems';
 import ClassicDetailScreen from './ClassicDetailScreen';
 import SpotlightDetailContent from './spotlight/SpotlightDetailContent';
 import NouveauDetailContent from './nouveau/NouveauDetailContent';
+import MinimalistDetailContent from './minimalist/MinimalistDetailContent';
 import PersonScreen from './PersonScreen';
 import SeasonScreen from './SeasonScreen';
 import PlaylistScreen from './PlaylistScreen';
@@ -59,11 +60,15 @@ import css from './Details.module.less';
 
 // Every style past Classic takes the same contract, so the setting only decides which of them
 // draws the screen.
-const DETAIL_CONTENT = {v3: SpotlightDetailContent, v4: NouveauDetailContent};
+const DETAIL_CONTENT = {v3: SpotlightDetailContent, v4: NouveauDetailContent, v5: MinimalistDetailContent};
 
 const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelectPerson, onSelectStudio, onItemDeleted, seerrNav, backHandlerRef}) => {
 	const {api, serverUrl, user} = useAuth();
-	const {settings} = useSettings();
+	// Kids Mode has its say before anything on this screen reads a setting, and every piece below
+	// takes what it is handed rather than reaching for the context itself. Held steady across
+	// renders, or the effects and memos that depend on it would run again every time.
+	const {settings: storedSettings} = useSettings();
+	const settings = useMemo(() => kidsModeSettings(storedSettings), [storedSettings]);
 	const {pluginInfo, isEnabled: seerrEnabled} = useSeerr();
 	const recommendationsSupported = pluginInfo?.recommendationsSupported === true;
 	const {isInGroup: isSyncPlayInGroup} = useSyncPlay();
