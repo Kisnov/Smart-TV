@@ -8,6 +8,7 @@ import RatingsRow from '../../components/RatingsRow';
 import {KEYS} from '../../utils/keys';
 import useTrailerPreview from './useTrailerPreview';
 import css from './Browse.module.less';
+import {carouselIntervalMs} from '../../utils/carouselTiming';
 
 const FEATURED_GENRES_LIMIT = 3;
 const PRELOAD_ADJACENT_SLIDES = 2;
@@ -101,12 +102,12 @@ const FeaturedBanner = memo(({
 			carouselIntervalRef.current = null;
 		}
 
-		const autoAdvanceEnabled = settings.autoAdvance !== false;
-		const configuredInterval = Number(settings.autoAdvanceInterval);
-		const carouselSpeed = Number.isFinite(configuredInterval) && configuredInterval > 0
-			? configuredInterval * 1000
-			: (settings.carouselSpeed || 8000);
-		if (!autoAdvanceEnabled || !isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
+		const carouselSpeed = carouselIntervalMs(
+			settings.autoAdvance,
+			settings.autoAdvanceInterval,
+			settings.carouselSpeed
+		);
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
 
 		carouselIntervalRef.current = setInterval(() => {
 			setCurrentIndex((prev) => (prev + 1) % featuredItems.length);
@@ -114,12 +115,12 @@ const FeaturedBanner = memo(({
 	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerActive]);
 
 	useEffect(() => {
-		const autoAdvanceEnabled = settings.autoAdvance !== false;
-		const configuredInterval = Number(settings.autoAdvanceInterval);
-		const carouselSpeed = Number.isFinite(configuredInterval) && configuredInterval > 0
-			? configuredInterval * 1000
-			: (settings.carouselSpeed || 8000);
-		if (!autoAdvanceEnabled || !isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
+		const carouselSpeed = carouselIntervalMs(
+			settings.autoAdvance,
+			settings.autoAdvanceInterval,
+			settings.carouselSpeed
+		);
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
 		startCarouselTimer();
 		return () => {
 			if (carouselIntervalRef.current) {

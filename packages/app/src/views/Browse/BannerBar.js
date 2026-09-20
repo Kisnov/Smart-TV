@@ -6,6 +6,7 @@ import {getImageUrl, getBackdropId, formatDuration} from '../../utils/helpers';
 import RatingsRow from '../../components/RatingsRow';
 import {KEYS} from '../../utils/keys';
 import css from './Browse.module.less';
+import {carouselIntervalMs} from '../../utils/carouselTiming';
 
 const PRELOAD_ADJACENT_SLIDES = 2;
 const MAX_DOTS = 7;
@@ -76,12 +77,12 @@ const BannerBar = memo(({
 			carouselIntervalRef.current = null;
 		}
 
-		const autoAdvanceEnabled = settings.autoAdvance !== false;
-		const configuredInterval = Number(settings.autoAdvanceInterval);
-		const carouselSpeed = Number.isFinite(configuredInterval) && configuredInterval > 0
-			? configuredInterval * 1000
-			: (settings.carouselSpeed || 8000);
-		if (!autoAdvanceEnabled || !isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0) return;
+		const carouselSpeed = carouselIntervalMs(
+			settings.autoAdvance,
+			settings.autoAdvanceInterval,
+			settings.carouselSpeed
+		);
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0) return;
 
 		carouselIntervalRef.current = setInterval(() => {
 			setCurrentIndex((prev) => (prev + 1) % featuredItems.length);
