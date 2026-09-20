@@ -3,7 +3,7 @@ import {isMdblistEnabled} from '../../services/mdblistApi';
 import Spottable from '@enact/spotlight/Spottable';
 import $L from '@enact/i18n/$L';
 import RatingsRow from '../RatingsRow';
-import {getImageUrl} from '../../utils/helpers';
+import {getImageUrl, toAbsoluteImageUrl} from '../../utils/helpers';
 import {useSettings} from '../../context/SettingsContext';
 import {getPlatform} from '../../platform';
 import {isStaticLibraryCard, modernCardMetrics, getEpisodeLabels, getCardDisplayTitle} from './modernCardLayout';
@@ -14,15 +14,6 @@ import {AnimeCardPill} from '../AnimeMarkerPills';
 import css from './ModernMediaCard.module.less';
 
 const SpottableDiv = Spottable('div');
-
-const toAbsoluteImageUrl = (url, serverUrl) => {
-	if (!url || typeof url !== 'string') return null;
-	if (url.startsWith('http://') || url.startsWith('https://')) return url;
-	if (url.startsWith('//')) return `https:${url}`;
-	if (!serverUrl) return url;
-	if (url.startsWith('/')) return `${serverUrl}${url}`;
-	return `${serverUrl}/${url}`;
-};
 
 const formatRuntime = (ticks) => {
 	if (!Number.isFinite(ticks) || ticks <= 0) return '';

@@ -1,6 +1,6 @@
 import {memo, useCallback, useMemo, useRef, useEffect} from 'react';
 import Spottable from '@enact/spotlight/Spottable';
-import {getImageUrl} from '../../utils/helpers';
+import {getImageUrl, toAbsoluteImageUrl} from '../../utils/helpers';
 import {useSettings} from '../../context/SettingsContext';
 import {SeerrSeasonDot} from '../seerr/SeerrStatusBadge';
 import {showsWatchedCheck} from '../../utils/playedState';
@@ -13,15 +13,6 @@ const SpottableDiv = Spottable('div');
 
 const POSTER_SIZE_MULTIPLIERS = {small: 0.8, default: 1, large: 1.2, xlarge: 1.4};
 const BASE_SIZES = {portrait: [240, 360], landscape: [384, 216], square: [240, 240], banner: [1168, 216]};
-
-const toAbsoluteImageUrl = (url, serverUrl) => {
-	if (!url || typeof url !== 'string') return null;
-	if (url.startsWith('http://') || url.startsWith('https://')) return url;
-	if (url.startsWith('//')) return `https:${url}`;
-	if (!serverUrl) return url;
-	if (url.startsWith('/')) return `${serverUrl}${url}`;
-	return `${serverUrl}/${url}`;
-};
 
 // The wide artwork a row asked for, or null when the item carries none of it. Handing
 // back the url rather than a yes or no is what keeps the card shape and the picture it
