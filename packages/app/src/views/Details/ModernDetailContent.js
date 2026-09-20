@@ -13,6 +13,7 @@ import RatingsRow from '../../components/RatingsRow';
 import DetailsTabBar from '../../components/DetailsTabBar';
 import ModernActionButtons from './ModernActionButtons';
 import {getImageUrl, formatDuration} from '../../utils/helpers';
+import {formatPlaybackDuration} from '../../utils/playbackTimeLabels';
 import {castPhotoUrl, hidesMediaDescription} from './detailsMedia';
 import {studioCardsFor, studioLogoIndex} from './studioLogos';
 import ExpandableOverview from './ExpandableOverview';
@@ -402,7 +403,7 @@ const ModernDetailContent = (props) => {
 					<SpottableDiv key={i} className={css.chapterCard} data-start-ticks={chapter.StartPositionTicks} onClick={handleChapterSelect}>
 						<div className={css.chapterThumb}>
 							{thumb ? <img src={thumb} alt="" /> : <div className={css.chapterThumbPlaceholder} />}
-							<span className={css.chapterTime}>{formatDuration(chapter.StartPositionTicks)}</span>
+							<span className={css.chapterTime}>{formatPlaybackDuration(chapter.StartPositionTicks / 10000000)}</span>
 						</div>
 						<span className={css.chapterName}>{chapter.Name || `${$L('Chapter')} ${i + 1}`}</span>
 					</SpottableDiv>

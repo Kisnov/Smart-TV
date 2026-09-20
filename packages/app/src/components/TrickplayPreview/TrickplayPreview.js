@@ -1,7 +1,8 @@
-import {useState, useEffect, useCallback} from 'react';
+import {useState, useEffect} from 'react';
 import * as jellyfinApi from '../../services/jellyfinApi';
 
 import css from './TrickplayPreview.module.less';
+import {formatPlaybackDuration} from '../../utils/playbackTimeLabels';
 
 export const getTrickplayManifest = async (itemId, mediaSourceId) => {
     try {
@@ -104,17 +105,6 @@ const TrickplayPreview = ({
 		}
 	}, [positionTicks, manifest, selectedWidth, visible, itemId, mediaSourceId]);
 
-	const formatTime = useCallback((ticks) => {
-		const totalSeconds = Math.floor(ticks / 10000000);
-		const hours = Math.floor(totalSeconds / 3600);
-		const minutes = Math.floor((totalSeconds % 3600) / 60);
-		const seconds = totalSeconds % 60;
-
-		if (hours > 0) {
-			return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-		}
-		return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-	}, []);
 
 	if (!visible || !currentImage || !position) {
 		return null;
@@ -140,7 +130,7 @@ const TrickplayPreview = ({
 				/>
 			</div>
 			<div className={css.timeDisplay}>
-				{formatTime(positionTicks)}
+				{formatPlaybackDuration(positionTicks / 10000000)}
 			</div>
 		</div>
 	);
