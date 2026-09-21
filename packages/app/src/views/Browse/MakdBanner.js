@@ -43,7 +43,10 @@ const MakdBanner = memo(({
 		if (featuredItems.length > 1) setCurrentIndex((prev) => (prev + 1) % featuredItems.length);
 	}, [featuredItems.length]);
 
-	const {trailerActive, trailerContainerRef} = useTrailerPreview({
+	// The carousel holds on trailerPlaying rather than trailerActive: the trailer
+	// is already audible through the reveal delay, so waiting for the reveal
+	// leaves a gap where the interval can fire and cut it off.
+	const {trailerActive, trailerPlaying, trailerContainerRef} = useTrailerPreview({
 		currentItem: currentFeatured,
 		isVisible: isVisible && browseVisible,
 		enabled: settingsLoaded && settings.featuredTrailerPreview,
@@ -98,15 +101,15 @@ const MakdBanner = memo(({
 		}
 
 		const carouselSpeed = settings.carouselSpeed || 8000;
-		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed === 0 || trailerActive) return;
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed === 0 || trailerPlaying) return;
 
 		carouselIntervalRef.current = setInterval(() => {
 			setCurrentIndex((prev) => (prev + 1) % featuredItems.length);
 		}, carouselSpeed);
-	}, [isVisible, featuredItems.length, featuredFocused, settings.carouselSpeed, trailerActive]);
+	}, [isVisible, featuredItems.length, featuredFocused, settings.carouselSpeed, trailerPlaying]);
 
 	useEffect(() => {
-		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || settings.carouselSpeed === 0 || trailerActive) return;
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || settings.carouselSpeed === 0 || trailerPlaying) return;
 		startCarouselTimer();
 		return () => {
 			if (carouselIntervalRef.current) {
@@ -114,7 +117,7 @@ const MakdBanner = memo(({
 				carouselIntervalRef.current = null;
 			}
 		};
-	}, [isVisible, featuredItems.length, featuredFocused, settings.carouselSpeed, trailerActive, startCarouselTimer]);
+	}, [isVisible, featuredItems.length, featuredFocused, settings.carouselSpeed, trailerPlaying, startCarouselTimer]);
 
 	useEffect(() => {
 		return () => {

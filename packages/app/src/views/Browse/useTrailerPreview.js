@@ -16,6 +16,11 @@ const LOCAL_TRAILER_STREAM_PARAMS = {
 // the caller renders, and reveals it after a short delay.
 export default function useTrailerPreview({currentItem, isVisible, enabled, preferMuted, showCaptions = false, captionLanguage = '', api, getItemServerUrl, onEnded}) {
 	const [trailerActive, setTrailerActive] = useState(false);
+	// trailerActive only flips at the reveal, TRAILER_REVEAL_MS into playback.
+	// The banners have to hold their carousel from the moment the trailer starts
+	// making noise instead, or a slow start at boot lets the interval fire inside
+	// that gap and the bar jumps off the item just as its trailer appears.
+	const [trailerPlaying, setTrailerPlaying] = useState(false);
 	const [screensaverActive, setScreensaverActive] = useState(false);
 
 	// Mirrored so a new handler each render cant restart the trailer, since
@@ -66,6 +71,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 			trailerSkipIntervalRef.current = null;
 		}
 		setTrailerActive(false);
+		setTrailerPlaying(false);
 		const video = trailerVideoRef.current;
 		if (video) {
 			try { video.pause(); } catch (e) { /* ignore */ }
@@ -200,12 +206,13 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		if (directUrl) attempts.push({url: directUrl});
 		if (videoId) attempts.push({id: videoId});
 
-		// Giving up has to clear trailerActive as well as the class, because the
-		// banner holds its carousel timer while that flag is set.
+		// Giving up has to clear both flags as well as the class, because the
+		// banner holds its carousel timer while either one is set.
 		const markUnavailable = () => {
 			trailerStateRef.current = 'unavailable';
 			video.classList.remove(css.trailerVisible);
 			setTrailerActive(false);
+			setTrailerPlaying(false);
 		};
 
 		const tryAttempt = async (index) => {
@@ -276,6 +283,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 			video.onplaying = () => {
 				if (trailerStateRef.current === 'resolving' && trailerVideoIdRef.current === requestId) {
 					trailerStateRef.current = 'playing';
+					setTrailerPlaying(true);
 					// A seek past a sponsor segment can fire this again, so the pending
 					// reveal is dropped rather than left to run after the trailer stops.
 					if (trailerRevealTimerRef.current) clearTimeout(trailerRevealTimerRef.current);
@@ -411,5 +419,5 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		return () => stopTrailer();
 	}, [stopTrailer]);
 
-	return {trailerActive, trailerContainerRef};
+	return {trailerActive, trailerPlaying, trailerContainerRef};
 }

@@ -54,7 +54,10 @@ const AyaBanner = memo(({
 		if (featuredItems.length > 1) setActiveIndex((prev) => (prev + 1) % featuredItems.length);
 	}, [featuredItems.length]);
 
-	const {trailerContainerRef, trailerActive} = useTrailerPreview({
+	// The carousel holds on trailerPlaying rather than trailerActive: the trailer
+	// is already audible through the reveal delay, so waiting for the reveal
+	// leaves a gap where the interval can fire and cut it off.
+	const {trailerContainerRef, trailerPlaying} = useTrailerPreview({
 		currentItem: currentFeatured,
 		isVisible: isVisible && browseVisible,
 		enabled: settingsLoaded && settings.featuredTrailerPreview,
@@ -126,11 +129,11 @@ const AyaBanner = memo(({
 		const carouselSpeed = Number.isFinite(configuredInterval) && configuredInterval > 0
 			? configuredInterval * 1000
 			: (settings.carouselSpeed || 8000);
-		if (!autoAdvanceEnabled || !isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
+		if (!autoAdvanceEnabled || !isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerPlaying) return;
 		carouselIntervalRef.current = setInterval(() => {
 			setActiveIndex((prev) => (prev + 1) % featuredItems.length);
 		}, carouselSpeed);
-	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerActive]);
+	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerPlaying]);
 
 	useEffect(() => {
 		startCarouselTimer();

@@ -112,12 +112,16 @@
 			}
 		]
 	},
-	"//jest": "npm workspaces hoists ilib to the repo root, where enact's own jest config doesn't look for it. Any test that reaches $L fails to resolve ilib without this.",
+	"//jest": "npm workspaces hoists ilib to the repo root, where enact's own jest config doesn't look for it. Any test that reaches $L fails to resolve ilib without this. transformIgnorePatterns re-adds @babel/runtime, whose esm helpers enact's default skips: a module using dynamic import() pulls one in and jest then chokes on the untransformed import statement.",
 	"jest": {
 		"moduleNameMapper": {
 			"^ilib[/](.*)$": "<rootDir>/../../node_modules/ilib/$1",
 			"^@enact[/]i18n[/]ilib[/](.*)$": "<rootDir>/../../node_modules/ilib/$1"
-		}
+		},
+		"transformIgnorePatterns": [
+			"[/\\\\]node_modules[/\\\\](?!@enact|@babel[/\\\\]runtime).+\\.(js|jsx|mjs|cjs|ts|tsx)$",
+			"^.+\\.module\\.(css|less|sass|scss)$"
+		]
 	},
 	"eslintIgnore": [
 		"node_modules/*",
