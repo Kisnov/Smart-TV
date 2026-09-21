@@ -2734,6 +2734,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}
 				if (key === 'Enter' || e.keyCode === 13) {
 					e.preventDefault();
+					// The controls are only hidden by a class, so whichever of them
+					// last had focus still holds it and still answers this keydown.
+					// Without stopping here it would toggle a second time and carry
+					// on playing.
+					e.stopPropagation();
 					handlePlayPause();
 					return;
 				}
