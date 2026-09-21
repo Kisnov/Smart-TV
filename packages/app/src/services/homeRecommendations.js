@@ -556,14 +556,24 @@ export async function getOnlineRecommendations(settings, seed) {
 	return results.filter((item) => item && item.id).slice(0, 15).map(normalizeMediaItem);
 }
 
+// How many items a query matched, whether or not the server sent a total back.
+const matchCount = (res) => (res && typeof res.TotalRecordCount === 'number'
+	? res.TotalRecordCount
+	: (((res && res.Items) || []).length));
+
+// The unplayed count a list query already carried, or null when the server left it off.
+const reportedUnplayed = (item) => {
+	const userData = item.UserData || {};
+	if (typeof item.UnplayedItemCount === 'number') return item.UnplayedItemCount;
+	if (typeof userData.UnplayedItemCount === 'number') return userData.UnplayedItemCount;
+	return null;
+};
+
 // A series counts as fully watched only when nothing is left unplayed.
 async function verifyFullyWatchedSeries(api, series) {
-	const userData = series.UserData || {};
-	const played = userData.Played === true;
-	const unplayed = typeof series.UnplayedItemCount === 'number'
-		? series.UnplayedItemCount
-		: (typeof userData.UnplayedItemCount === 'number' ? userData.UnplayedItemCount : 0);
-	if (!played || unplayed > 0) return null;
+	const played = (series.UserData || {}).Played === true;
+	const unplayed = reportedUnplayed(series);
+	if (!played || (unplayed !== null && unplayed > 0)) return null;
 
 	try {
 		const res = await api.getItems({
@@ -573,36 +583,57 @@ async function verifyFullyWatchedSeries(api, series) {
 			Filters: 'IsUnplayed',
 			Limit: 1
 		});
-		const count = res && (typeof res.TotalRecordCount === 'number'
-			? res.TotalRecordCount
-			: ((res.Items || []).length));
-		return count === 0 ? series : null;
+		return matchCount(res) === 0 ? series : null;
 	} catch (_error) {
 		return series;
 	}
 }
 
 // A collection counts as fully watched only when every child is played.
+//
+// This runs once per candidate collection, so it is the one place on the home screen where a
+// per-item fan-out also pulled an unbounded response: every child of a box set, recursively,
+// each carrying UserData. Fifty franchise box sets answered at once is megabytes of JSON for
+// a TV to parse on the main thread during startup, which is the stall that keeps the media
+// bar's first trailer from reaching its playing event. It asks for counts instead, the way
+// verifyFullyWatchedSeries above already does.
 async function verifyFullyWatchedCollection(api, col) {
+	const notWatched = {col, isPlayed: false, lastPlayed: ''};
+
+	// The box set list query carries UserData already, so a server that tracks an unplayed
+	// count settles most collections here without another request. Only a definite count rules
+	// one out: a server that omits the field is still asked, exactly as before.
+	const unplayed = reportedUnplayed(col);
+	if (unplayed !== null && unplayed > 0) return notWatched;
+
 	try {
-		const res = await api.getItems({
+		const unplayedRes = await api.getItems({
 			ParentId: col.Id,
 			Recursive: true,
+			Filters: 'IsUnplayed',
+			Limit: 1
+		});
+		if (matchCount(unplayedRes) !== 0) return notWatched;
+
+		// The most recently played child both dates the collection for the sort and proves it
+		// is not simply empty, which has no unplayed children either.
+		const playedRes = await api.getItems({
+			ParentId: col.Id,
+			Recursive: true,
+			Filters: 'IsPlayed',
+			SortBy: 'DatePlayed',
+			SortOrder: 'Descending',
+			Limit: 1,
 			Fields: 'UserData'
 		});
-		const children = (res && res.Items) || [];
-		if (children.length > 0 && children.every((c) => c.UserData && c.UserData.Played === true)) {
-			let lastPlayed = '';
-			for (const child of children) {
-				const lp = (child.UserData && child.UserData.LastPlayedDate) || '';
-				if (lp > lastPlayed) lastPlayed = lp;
-			}
-			return {col, isPlayed: true, lastPlayed};
-		}
+		const newest = (((playedRes && playedRes.Items) || [])[0]) || null;
+		if (!newest) return notWatched;
+
+		return {col, isPlayed: true, lastPlayed: (newest.UserData && newest.UserData.LastPlayedDate) || ''};
 	} catch (_error) {
 		// Treat as not fully watched.
 	}
-	return {col, isPlayed: false, lastPlayed: ''};
+	return notWatched;
 }
 
 // A series card should open its first episode when selected.

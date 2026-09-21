@@ -3,7 +3,7 @@ jest.mock('./jellyfinApi', () => ({
 	HOME_ROW_ITEM_FIELDS: 'Id,Name,Type'
 }));
 
-import {canScoreSeedLocally, loadSinceYouWatchedRows, mergeRecommendations, RECOMMENDATION_FETCH_LIMIT, scoreCandidate} from './homeRecommendations';
+import {canScoreSeedLocally, loadRewatchItems, loadSinceYouWatchedRows, mergeRecommendations, RECOMMENDATION_FETCH_LIMIT, scoreCandidate} from './homeRecommendations';
 import {
 	getSinceYouWatchedSourceOptions,
 	getRecommendationSystemSourceOptions
@@ -429,5 +429,109 @@ describe('scoreCandidate (200.0 pt model)', () => {
 		expect(scoreCandidate({Name: 'Aliens'}, ctx)).toBe(25.0);
 		expect(scoreCandidate({Name: 'Alien 3'}, ctx)).toBe(25.0);
 		expect(scoreCandidate({Name: 'The Alienist'}, ctx)).toBe(0.0);
+	});
+});
+
+
+describe('loadRewatchItems collections', () => {
+	// Only the collection branch, so every request the mock sees belongs to it.
+	const settings = {
+		rewatchIncludeMovies: false,
+		rewatchIncludeShows: false,
+		rewatchIncludeCollections: true
+	};
+
+	// A bare api: without getUserConfiguration/getLibraries the library scope stays null and
+	// scopedGetItems passes straight through to getItems, one call per query.
+	const apiFor = (handler) => ({getItems: jest.fn().mockImplementation(handler)});
+
+	const boxSets = (...items) => ({Items: items, TotalRecordCount: items.length});
+
+	test('never opens a collection the server already reports as part watched', async () => {
+		const api = apiFor((params) => {
+			if (params.IncludeItemTypes === 'BoxSet') {
+				return Promise.resolve(boxSets(
+					{Id: 'c1', Name: 'Half Seen', Type: 'BoxSet', UserData: {UnplayedItemCount: 3}},
+					{Id: 'c2', Name: 'One Left', Type: 'BoxSet', UnplayedItemCount: 1}
+				));
+			}
+			throw new Error(`unexpected request for ${params.ParentId}`);
+		});
+
+		expect(await loadRewatchItems(api, settings)).toBeNull();
+		// The list query and nothing else: the fan-out never happens.
+		expect(api.getItems).toHaveBeenCalledTimes(1);
+	});
+
+	test('confirms a watched collection with counts rather than pulling every child', async () => {
+		const api = apiFor((params) => {
+			if (params.IncludeItemTypes === 'BoxSet') {
+				return Promise.resolve(boxSets({Id: 'c1', Name: 'Trilogy', Type: 'BoxSet', UserData: {UnplayedItemCount: 0}}));
+			}
+			if (params.Filters === 'IsUnplayed') return Promise.resolve({Items: [], TotalRecordCount: 0});
+			if (params.Filters === 'IsPlayed') {
+				return Promise.resolve({
+					Items: [{Id: 'm3', Type: 'Movie', UserData: {LastPlayedDate: '2026-02-01T00:00:00Z'}}],
+					TotalRecordCount: 3
+				});
+			}
+			throw new Error('unexpected request');
+		});
+
+		const items = await loadRewatchItems(api, settings);
+
+		expect(items.map((item) => item.Id)).toEqual(['c1']);
+		// Both probes ask for one row; neither asks the server for the whole box set.
+		const children = api.getItems.mock.calls.map(([params]) => params).filter((params) => params.ParentId === 'c1');
+		expect(children).toHaveLength(2);
+		children.forEach((params) => expect(params.Limit).toBe(1));
+	});
+
+	test('an empty collection has no unplayed children either, and is not offered', async () => {
+		const api = apiFor((params) => {
+			if (params.IncludeItemTypes === 'BoxSet') {
+				return Promise.resolve(boxSets({Id: 'c1', Name: 'Empty', Type: 'BoxSet'}));
+			}
+			return Promise.resolve({Items: [], TotalRecordCount: 0});
+		});
+
+		expect(await loadRewatchItems(api, settings)).toBeNull();
+	});
+
+	test('a server that omits the count is still asked, and a part watched set is dropped', async () => {
+		const api = apiFor((params) => {
+			if (params.IncludeItemTypes === 'BoxSet') {
+				return Promise.resolve(boxSets({Id: 'c1', Name: 'No Counts', Type: 'BoxSet'}));
+			}
+			if (params.Filters === 'IsUnplayed') return Promise.resolve({Items: [{Id: 'm2'}], TotalRecordCount: 1});
+			throw new Error('should not ask for played children once one is unplayed');
+		});
+
+		expect(await loadRewatchItems(api, settings)).toBeNull();
+		expect(api.getItems).toHaveBeenCalledTimes(2);
+	});
+
+	test('sorts collections by the date their newest child was played', async () => {
+		const played = {
+			c1: '2026-01-05T00:00:00Z',
+			c2: '2026-03-09T00:00:00Z'
+		};
+		const api = apiFor((params) => {
+			if (params.IncludeItemTypes === 'BoxSet') {
+				return Promise.resolve(boxSets(
+					{Id: 'c1', Name: 'Older', Type: 'BoxSet', UserData: {UnplayedItemCount: 0}},
+					{Id: 'c2', Name: 'Newer', Type: 'BoxSet', UserData: {UnplayedItemCount: 0}}
+				));
+			}
+			if (params.Filters === 'IsUnplayed') return Promise.resolve({Items: [], TotalRecordCount: 0});
+			return Promise.resolve({
+				Items: [{Id: `${params.ParentId}-last`, Type: 'Movie', UserData: {LastPlayedDate: played[params.ParentId]}}],
+				TotalRecordCount: 2
+			});
+		});
+
+		const items = await loadRewatchItems(api, {...settings, rewatchSortBy: 'recentlyWatched'});
+
+		expect(items.map((item) => item.Id)).toEqual(['c2', 'c1']);
 	});
 });
