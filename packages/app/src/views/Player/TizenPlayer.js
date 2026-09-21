@@ -2747,6 +2747,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}
 				if (key === 'ArrowLeft' || e.keyCode === 37 || key === 'ArrowRight' || e.keyCode === 39) {
 					e.preventDefault();
+					// Same reason as the Enter branch above: the hidden controls still
+					// hold focus, and letting this reach the progress bar would seek a
+					// second time off the step this one just scheduled.
+					e.stopPropagation();
 					if (isLiveTV) { showControls(); return; }
 					showControls();
 					setFocusRow('progress');
