@@ -207,7 +207,9 @@ export const fetchRatings = async (serverUrl, item, options = {}) => {
 		const ratingsArr = data.ratings || data.Ratings;
 		const success = data.success ?? data.Success;
 		if (data && success !== false && ratingsArr) {
-			const ratings = ratingsArr.map(r => {
+			const ratings = [];
+			const seen = new Set();
+			for (const r of ratingsArr) {
 				let source = r.Source || r.source;
 				// MDBList returns the RT audience score under `popcorn`; normalize
 				// to the shared `tomatoes_audience` key used by the server and the
@@ -215,14 +217,19 @@ export const fetchRatings = async (serverUrl, item, options = {}) => {
 				if (typeof source === 'string' && source.toLowerCase() === 'popcorn') {
 					source = 'tomatoes_audience';
 				}
-				return {
+				// A profile holding one source under two spellings (myAnimeList and
+				// myanimelist) gets that rating back twice from older plugins.
+				const key = typeof source === 'string' ? source.toLowerCase() : source;
+				if (seen.has(key)) continue;
+				seen.add(key);
+				ratings.push({
 					source,
 					value: r.Value ?? r.value,
 					score: r.Score ?? r.score,
 					votes: r.Votes ?? r.votes,
 					url: r.Url || r.url
-				};
-			});
+				});
+			}
 			cache[cacheKey] = {ratings, fetchedAt: Date.now()};
 			return ratings;
 		}
