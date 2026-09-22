@@ -21,9 +21,11 @@ export const memoryCache = {
 	// Which shape of the recent rows these were built for, since a cache of per
 	// library rows says nothing about the merged ones and the other way round.
 	rowConfigKey: null,
-	// Which media bar settings these featured items were drawn for. A set drawn
-	// for other settings is not a refresh of this one, it is a different bar, and
-	// has to replace what is on screen rather than wait for the next visit.
+	// Which media bar settings the featured items the bar is showing were drawn
+	// for. A set drawn for other settings is not a refresh of this one, it is a
+	// different bar, and has to replace what is on screen rather than wait for the
+	// next visit. Cleared with the rest, so an account change or an explicit
+	// refresh always redraws.
 	featuredConfigKey: null,
 	// Whose rows these are. Kept so a fresh mount can tell an account change, which has to
 	// throw the rows away, apart from an ordinary return to the home screen, which is the

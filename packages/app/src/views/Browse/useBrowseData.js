@@ -43,12 +43,16 @@ const useBrowseData = ({
 	const settingsRef = useRef(settings);
 	settingsRef.current = settings;
 
-	const fetchFreshFeaturedItems = useCallback(async (fallbackItems = null, {preserveCurrent = false} = {}) => {
+	const fetchFreshFeaturedItems = useCallback(async (fallbackItems = null) => {
 		const s = settingsRef.current;
 		const configKey = featuredConfigKey(s);
-		// A refresh behind a bar the viewer is already turning through only feeds the
-		// cache. Dispatching would send them back to the first slide, on a different
-		// item, and cut off whatever trailer was coming up.
+		// A draw that matches what the bar is already showing is only a reshuffle of
+		// the same items, so it feeds the cache and waits for the next visit.
+		// Dispatching would send the viewer back to the first slide, on an item they
+		// have not reached, and cut off whatever trailer was coming up. A draw made
+		// for other settings is a different bar and has to land now.
+		const preserveCurrent = memoryCache.featuredItems?.length > 0 &&
+			memoryCache.featuredConfigKey === configKey;
 		const publish = (items) => {
 			memoryCache.featuredItems = items;
 			memoryCache.featuredConfigKey = configKey;
@@ -210,12 +214,12 @@ const useBrowseData = ({
 		// nothing remembered there is still nothing to show until the request answers.
 		const primeFeaturedItems = async (remembered, rememberedConfigKey) => {
 			if (remembered?.length) {
+				// Recorded as what the bar is showing, so the draw behind it can tell a
+				// reshuffle of these items from a set drawn for other settings.
+				memoryCache.featuredItems = remembered;
+				memoryCache.featuredConfigKey = rememberedConfigKey;
 				dispatch({type: 'SET_FEATURED_ITEMS', items: remembered});
-				// A draw under the same settings is only a reshuffle of the same bar, so
-				// it refreshes the cache and waits for the next visit. Under different
-				// settings it is a different bar and has to land now.
-				const isRefresh = rememberedConfigKey === featuredConfigKey(settingsRef.current);
-				fetchFreshFeaturedItems(remembered, {preserveCurrent: isRefresh});
+				fetchFreshFeaturedItems(remembered);
 				return;
 			}
 			await fetchFreshFeaturedItems(remembered);
