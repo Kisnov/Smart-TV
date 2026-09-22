@@ -46,17 +46,19 @@ const useBrowseData = ({
 	const fetchFreshFeaturedItems = useCallback(async (fallbackItems = null) => {
 		const s = settingsRef.current;
 		const configKey = featuredConfigKey(s);
-		// A draw that matches what the bar is already showing is only a reshuffle of
-		// the same items, so it feeds the cache and waits for the next visit.
-		// Dispatching would send the viewer back to the first slide, on an item they
-		// have not reached, and cut off whatever trailer was coming up. A draw made
-		// for other settings is a different bar and has to land now.
-		const preserveCurrent = memoryCache.featuredItems?.length > 0 &&
-			memoryCache.featuredConfigKey === configKey;
+		// The bar is already holding a set made for these settings, and both draws are
+		// random, so another one would only reshuffle it. Not drawing at all is the
+		// point: a set drawn and kept back still reaches the viewer, because the home
+		// screen is built again every time it is returned to and reads the cache on
+		// the way in. They would leave an item, come back, and find a bar they have
+		// never seen. Only an empty bar, or one made for other settings, draws.
+		if (memoryCache.featuredItems?.length > 0 && memoryCache.featuredConfigKey === configKey) {
+			return null;
+		}
 		const publish = (items) => {
 			memoryCache.featuredItems = items;
 			memoryCache.featuredConfigKey = configKey;
-			if (!preserveCurrent) dispatch({type: 'SET_FEATURED_ITEMS', items});
+			dispatch({type: 'SET_FEATURED_ITEMS', items});
 		};
 		const sourceType = s.mediaBarSourceType || 'library';
 		// The saved picks can name a library access has since been revoked for, so what the policy
@@ -192,8 +194,10 @@ const useBrowseData = ({
 	}, [accessToken]);
 
 	useEffect(() => {
-		const handleBrowseRefresh = () => {
-			clearMemoryCache();
+		// detail.featured marks the callers that changed what the bar may hold, which
+		// today is a library being hidden or shown. The rest only want the rows back.
+		const handleBrowseRefresh = (e) => {
+			clearMemoryCache({keepFeatured: !e?.detail?.featured});
 		};
 
 		window.addEventListener('moonfin:browseRefresh', handleBrowseRefresh);
@@ -214,8 +218,10 @@ const useBrowseData = ({
 		// nothing remembered there is still nothing to show until the request answers.
 		const primeFeaturedItems = async (remembered, rememberedConfigKey) => {
 			if (remembered?.length) {
-				// Recorded as what the bar is showing, so the draw behind it can tell a
-				// reshuffle of these items from a set drawn for other settings.
+				// Recorded as what the bar is holding, so the draw behind it can tell a
+				// reshuffle of these items from a set made for other settings. Under the
+				// same settings it finds nothing to do, which is what keeps the bar the
+				// same one on the way back in.
 				memoryCache.featuredItems = remembered;
 				memoryCache.featuredConfigKey = rememberedConfigKey;
 				dispatch({type: 'SET_FEATURED_ITEMS', items: remembered});

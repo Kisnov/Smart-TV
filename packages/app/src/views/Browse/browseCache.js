@@ -34,12 +34,18 @@ export const memoryCache = {
 	owner: null
 };
 
-export const clearMemoryCache = () => {
+// Most things that ask for a refresh are asking about the rows: playback ended,
+// something was marked watched, the home screen was returned to. None of that
+// changes which items the media bar may hold, and throwing the bar away would
+// hand the viewer a different one every time. Only a caller that says so, or one
+// clearing up after another account, takes the bar with it.
+export const clearMemoryCache = ({keepFeatured = false} = {}) => {
 	memoryCache.rowData = null;
 	memoryCache.libraries = null;
-	memoryCache.featuredItems = null;
 	memoryCache.timestamp = null;
 	memoryCache.rowConfigKey = null;
+	if (keepFeatured) return;
+	memoryCache.featuredItems = null;
 	memoryCache.featuredConfigKey = null;
 };
 
