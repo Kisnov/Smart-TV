@@ -12,6 +12,7 @@ import {BROWSE_ROW_LOADERS, buildLoaderContext} from './browseRowLoaders';
 import {genericCollectionLabel, mergeRecentRows} from '../../utils/mergeRecentRows';
 import {normalizeLatestMediaItems} from '../../utils/latestMediaRowNormalizer';
 import {EXCLUDED_COLLECTION_TYPES, filterItemsByExcludedGenres} from './browseFilters';
+import {featuredConfigKey} from './featuredConfig';
 import {
 	CACHE_TTL_LIBRARIES, CACHE_TTL_VOLATILE, VOLATILE_REFRESH_COOLDOWN_MS,
 	cancelPendingCacheSave, clearMemoryCache, isCacheValid, loadBrowseCache, memoryCache, saveBrowseCache
@@ -42,8 +43,17 @@ const useBrowseData = ({
 	const settingsRef = useRef(settings);
 	settingsRef.current = settings;
 
-	const fetchFreshFeaturedItems = useCallback(async (fallbackItems = null) => {
+	const fetchFreshFeaturedItems = useCallback(async (fallbackItems = null, {preserveCurrent = false} = {}) => {
 		const s = settingsRef.current;
+		const configKey = featuredConfigKey(s);
+		// A refresh behind a bar the viewer is already turning through only feeds the
+		// cache. Dispatching would send them back to the first slide, on a different
+		// item, and cut off whatever trailer was coming up.
+		const publish = (items) => {
+			memoryCache.featuredItems = items;
+			memoryCache.featuredConfigKey = configKey;
+			if (!preserveCurrent) dispatch({type: 'SET_FEATURED_ITEMS', items});
+		};
 		const sourceType = s.mediaBarSourceType || 'library';
 		// The saved picks can name a library access has since been revoked for, so what the policy
 		// no longer allows is dropped before they are trusted.
@@ -97,19 +107,16 @@ const useBrowseData = ({
 					...item,
 					LogoUrl: getLogoUrl(getItemServerUrl(item), item, {maxWidth: 800, quality: 90})
 				}));
-				dispatch({type: 'SET_FEATURED_ITEMS', items: featuredWithLogos});
-				memoryCache.featuredItems = featuredWithLogos;
+				publish(featuredWithLogos);
 				return featuredWithLogos;
 			} else if (fallbackItems && !hasSourceFilter) {
-				dispatch({type: 'SET_FEATURED_ITEMS', items: fallbackItems});
-				memoryCache.featuredItems = fallbackItems;
+				publish(fallbackItems);
 				return fallbackItems;
 			}
 		} catch (e) {
 			console.warn('[Browse] Failed to fetch fresh featured items:', e);
 			if (fallbackItems && !hasSourceFilter) {
-				dispatch({type: 'SET_FEATURED_ITEMS', items: fallbackItems});
-				memoryCache.featuredItems = fallbackItems;
+				publish(fallbackItems);
 				return fallbackItems;
 			}
 		}
@@ -201,10 +208,14 @@ const useBrowseData = ({
 		// and the fresh ones then arrive in their own time, so coming back to the home
 		// screen no longer waits on a request whose answer is already in hand. With
 		// nothing remembered there is still nothing to show until the request answers.
-		const primeFeaturedItems = async (remembered) => {
+		const primeFeaturedItems = async (remembered, rememberedConfigKey) => {
 			if (remembered?.length) {
 				dispatch({type: 'SET_FEATURED_ITEMS', items: remembered});
-				fetchFreshFeaturedItems(remembered);
+				// A draw under the same settings is only a reshuffle of the same bar, so
+				// it refreshes the cache and waits for the next visit. Under different
+				// settings it is a different bar and has to land now.
+				const isRefresh = rememberedConfigKey === featuredConfigKey(settingsRef.current);
+				fetchFreshFeaturedItems(remembered, {preserveCurrent: isRefresh});
 				return;
 			}
 			await fetchFreshFeaturedItems(remembered);
@@ -241,7 +252,7 @@ const useBrowseData = ({
 
 			if (memoryCache.rowConfigKey === rowConfigKey && memoryCache.rowData && memoryCache.libraries && memoryCache.featuredItems && isCacheValid(memoryCache.timestamp, CACHE_TTL_VOLATILE)) {
 				dispatch({type: 'SET_ROW_DATA', rowData: memoryCache.rowData});
-				await primeFeaturedItems(memoryCache.featuredItems);
+				await primeFeaturedItems(memoryCache.featuredItems, memoryCache.featuredConfigKey);
 				dispatch({type: 'SET_LOADING', value: false});
 				return;
 			}
@@ -255,7 +266,7 @@ const useBrowseData = ({
 
 			if (hasValidPersistedCache) {
 				dispatch({type: 'SET_ROW_DATA', rowData: persistedCache.rowData});
-				await primeFeaturedItems(persistedCache.featuredItems);
+				await primeFeaturedItems(persistedCache.featuredItems, persistedCache.featuredConfigKey);
 				memoryCache.libraries = persistedCache.libraries;
 				memoryCache.rowData = persistedCache.rowData;
 				memoryCache.timestamp = persistedCache.timestamp;
@@ -391,7 +402,7 @@ const useBrowseData = ({
 				// a setting are rebuilt on every visit rather than read back, but the bar
 				// can still open on what it last held while the fresh set is on its way.
 				if (settingsRef.current.featuredBarStyle !== 'off') {
-					await primeFeaturedItems(memoryCache.featuredItems);
+					await primeFeaturedItems(memoryCache.featuredItems, memoryCache.featuredConfigKey);
 				} else {
 					fetchFreshFeaturedItems();
 				}
