@@ -382,13 +382,21 @@ const Browse = ({
 	}, [browseMode, focusedItemForBackdrop, isLegacy, settings.showHomeBackdrop, getItemServerUrl, settings.featuredBarStyle]);
 
 	const rememberFocus = useCallback(() => {
+		// lastFocusedRowRef holds the last row that took focus and is never cleared
+		// when focus goes back up to the media bar, so selecting from the bar would
+		// remember a row the viewer left some time ago and send them there on the way
+		// back. A negative index is the place the restore already reads as the bar.
+		if (browseMode === 'featured') {
+			lastFocusState = {rowIndex: -1, cardIndex: -1};
+			return;
+		}
 		const rowIndex = lastFocusedRowRef.current;
 		if (rowIndex === null) return;
 		lastFocusState = {
 			rowIndex,
 			cardIndex: focusedCardIndex(`row-${rowIndex}`, document.activeElement)
 		};
-	}, []);
+	}, [browseMode]);
 
 	const handleSelectItem = useCallback((item) => {
 		onBlurItemThemeMusic?.();
