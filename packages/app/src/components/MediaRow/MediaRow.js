@@ -4,6 +4,7 @@ import Spotlight from '@enact/spotlight';
 import Spottable from '@enact/spotlight/Spottable';
 import MediaCard from '../MediaCard';
 import {KEYS} from '../../utils/keys';
+import {sameCardUserData} from '../../utils/playedState';
 import {useSettings} from '../../context/SettingsContext';
 
 import css from './MediaRow.module.less';
@@ -208,8 +209,7 @@ const areRowPropsEqual = (prev, next) => {
 	if (prev.items?.length !== next.items?.length) return false;
 	for (let i = 0; i < prev.items.length; i++) {
 		if (prev.items[i].Id !== next.items[i].Id) return false;
-		if (prev.items[i].UserData?.PlayedPercentage !== next.items[i].UserData?.PlayedPercentage) return false;
-		if (prev.items[i].UserData?.Played !== next.items[i].UserData?.Played) return false;
+		if (!sameCardUserData(prev.items[i], next.items[i])) return false;
 	}
 	return true;
 };

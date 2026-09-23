@@ -7,6 +7,8 @@ import {clearImageCache} from '../services/imageProxy';
 import {clearAnimeMarkerCache} from '../services/animeMarkersApi';
 import {resetLibraryScope} from '../services/libraryScope';
 import {resetBlockedContentGate} from '../services/blockedContentGate';
+import * as serverSocket from '../services/serverSocket';
+import * as userDataSync from '../services/userDataSync';
 
 import {clearProxiedImageCache} from '../hooks/useProxiedImage';
 import {parseUrl} from '../utils/urlCompat';
@@ -510,6 +512,18 @@ export const AuthProvider = ({children}) => {
 			}
 		}
 	}, [isAuthenticated]);
+
+	// The session socket, and the watched state it keeps in step, belong to whoever is signed in,
+	// so both start over when the account or the server changes.
+	useEffect(() => {
+		if (!isAuthenticated) return undefined;
+		serverSocket.connect();
+		userDataSync.bindTo(serverSocket.onMessage, jellyfinApi.getUserId());
+		return () => {
+			userDataSync.reset();
+			serverSocket.disconnect();
+		};
+	}, [isAuthenticated, serverUrl, accessToken]);
 
 	// Nothing else moves the state off disconnected, so the banner would sit there
 	// until someone pressed Retry. Probe in the background instead and drop it as

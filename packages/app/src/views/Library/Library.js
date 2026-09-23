@@ -16,16 +16,18 @@ import {isMdblistEnabled} from '../../services/mdblistApi';
 import {withoutBlockedItems} from '../../services/parentalControls';
 import MediaRow from '../../components/MediaRow';
 import {LIBRARY_GROUP_OPTIONS, groupLibraryItems} from '../../utils/libraryGroupBy';
-import {groupPlaylists, playlistCategoryFromItems, playlistNeedsItemCheck} from '../../utils/playlistGrouping';
+import {PLAYLIST_SAMPLE_SIZE, groupPlaylists, playlistCategoryFromItems, playlistNeedsItemCheck, playlistSummaryCategory} from '../../utils/playlistGrouping';
 import {isScrolledAway} from '../../utils/quickReturn';
 import RatingsRow from '../../components/RatingsRow';
 import SpottableInput from '../../components/SpottableInput/SpottableInput';
 import {useStorage} from '../../hooks/useStorage';
 import {buildFilterParams} from '../../utils/libraryFilters';
+import {foldForSearch} from '../../utils/accentFolding';
 import {keepFocusInView} from '../../utils/focusScroll';
 import {KEYS} from '../../utils/keys';
 import useSortSettingsPanels from '../../hooks/useSortSettingsPanels';
 import useStartLetter from '../../hooks/useStartLetter';
+import {useUserDataList} from '../../hooks/useUserDataSync';
 import {GRID_DIRECTIONS, IMAGE_SIZES, IMAGE_TYPES, LETTERS, capitalize, createGridKeyDown, createToolbarKeyDown, cycleValue, focusOverhang, horizontalCellPad, stopPropagation} from '../../utils/gridChrome';
 
 import css from './Library.module.less';
@@ -269,14 +271,27 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const playlistGrouped = isPlaylistLibrary && playlistGroupingOn && !isFolderView;
 	const groupedActive = (canGroup && groupBy !== 'none') || playlistGrouped;
 
+	// The watched state can move while the grid is up, so it draws from the items
+	// with what's known now laid over them.
+	const syncedItems = useUserDataList(allItems);
+
 	// The header search narrows the items already loaded. It reads the sort name
 	// the server orders by, so a title held as "Matrix, The" still answers to
-	// "matrix".
+	// "matrix". The server folds accents for the searches it answers, so this
+	// does too, and the folded names are kept per set of loaded items rather
+	// than worked out again on each keystroke. Laying the watched state over the
+	// items keeps their order, so the names still line up with them.
+	const foldedNamesRef = useRef({source: null, names: []});
 	const searchedItems = useMemo(() => {
-		const query = searchQuery.trim().toLowerCase();
-		if (!query) return allItems;
-		return allItems.filter((item) => (item.SortName || item.Name || '').toLowerCase().indexOf(query) !== -1);
-	}, [allItems, searchQuery]);
+		const query = foldForSearch(searchQuery.trim());
+		if (!query) return syncedItems;
+		const folded = foldedNamesRef.current;
+		if (folded.source !== allItems) {
+			folded.names = allItems.map((item) => foldForSearch(item.SortName || item.Name || ''));
+			folded.source = allItems;
+		}
+		return syncedItems.filter((item, index) => folded.names[index].indexOf(query) !== -1);
+	}, [allItems, syncedItems, searchQuery]);
 
 	const {startLetter, handleLetterSelect, items} = useStartLetter({
 		allItems: searchedItems,
@@ -523,8 +538,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		}
 	}, [groupedActive, isLoading, totalCount, allItems.length]);
 
-	// The summary cant tell music from audiobooks, so those playlists are read
-	// once and remembered. A small batch at a time keeps the requests gentle.
+	// The summary cant tell music from audiobooks or music videos from movies, so
+	// those playlists are read once and remembered. A small batch at a time keeps
+	// the requests gentle.
 	useEffect(() => {
 		if (!playlistGrouped || isLoading) return undefined;
 		const pending = allItems.filter((item) => playlistNeedsItemCheck(item) && !playlistResolveRef.current[item.Id]);
@@ -536,10 +552,10 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				const resolved = await Promise.all(chunk.map(async (item) => {
 					playlistResolveRef.current[item.Id] = true;
 					try {
-						const res = await effectiveApi.getPlaylistItems(item.Id);
+						const res = await effectiveApi.getPlaylistItems(item.Id, PLAYLIST_SAMPLE_SIZE);
 						return [item.Id, playlistCategoryFromItems(res?.Items)];
 					} catch {
-						return [item.Id, 'Mixed'];
+						return [item.Id, playlistSummaryCategory(item)];
 					}
 				}));
 				if (cancelled) return;

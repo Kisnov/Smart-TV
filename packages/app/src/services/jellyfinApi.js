@@ -6,6 +6,7 @@ import {mediaServerQueue} from '../utils/requestQueue';
 import {platformFetch} from './secureFetch';
 import {isTizen} from '../platform';
 import {makeUserRoutes, trimQuerySeparator, legacyAuthHeader, buildUserImageUrl} from '../utils/serverRoutes';
+import * as userDataSync from './userDataSync';
 const APP_VERSION = packageJson.version;
 
 const APP_NAME = isTizen() ? 'Moonfin for Tizen' : 'Moonfin for webOS';
@@ -352,6 +353,17 @@ const refreshItemVia = (send) => (itemId, {recursive, replaceAllMetadata, replac
 	return send(`/Items/${itemId}/Refresh${params.length ? `?${params.join('&')}` : ''}`, {method: 'POST'});
 };
 
+// What a change the server has taken does to the item's user data, published so every screen
+// still holding the item can repaint it.
+const publishUserData = (itemId, patch) => (response) => {
+	userDataSync.publish(itemId, patch);
+	return response;
+};
+
+// Either way the server drops the resume point, so this says so too rather than leave a
+// progress bar under a watched mark.
+const playedUserData = (played) => ({Played: played, PlayedPercentage: null, PlaybackPositionTicks: 0});
+
 export const api = {
 	getPublicInfo: () => request('/System/Info/Public'),
 
@@ -574,27 +586,27 @@ export const api = {
 
 	setFavorite: (itemId, isFavorite) => request(userRoutes.favorite(itemId), {
 		method: isFavorite ? 'POST' : 'DELETE'
-	}),
+	}).then(publishUserData(itemId, {IsFavorite: isFavorite})),
 
 	setWatched: (itemId, watched) => request(userRoutes.played(itemId), {
 		method: watched ? 'POST' : 'DELETE'
-	}),
+	}).then(publishUserData(itemId, playedUserData(watched))),
 
 	// A thumb rating goes through the dedicated endpoint, which stores the liked
 	// flag and a score of its own choosing.
 	setRating: (itemId, likes) => request(`/UserItems/${itemId}/Rating?Likes=${likes}`, {
 		method: 'POST'
-	}),
+	}).then(publishUserData(itemId, {Likes: likes})),
 
 	// A score is written straight into the user data, on its scale of ten.
 	setNumericRating: (itemId, rating) => request(`/UserItems/${itemId}/UserData`, {
 		method: 'POST',
 		body: {Rating: rating}
-	}),
+	}).then(publishUserData(itemId, {Rating: rating})),
 
 	clearRating: (itemId) => request(`/UserItems/${itemId}/Rating`, {
 		method: 'DELETE'
-	}),
+	}).then(publishUserData(itemId, {Rating: null, Likes: null})),
 
 	getIntros: (itemId) =>
 		request(userRoutes.extras(itemId, 'Intros')),
@@ -1056,24 +1068,24 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 
 		setFavorite: (itemId, isFavorite) => serverRequest(serverUserRoutes.favorite(itemId), {
 			method: isFavorite ? 'POST' : 'DELETE'
-		}),
+		}).then(publishUserData(itemId, {IsFavorite: isFavorite})),
 
 		setWatched: (itemId, watched) => serverRequest(serverUserRoutes.played(itemId), {
 			method: watched ? 'POST' : 'DELETE'
-		}),
+		}).then(publishUserData(itemId, playedUserData(watched))),
 
 		setRating: (itemId, likes) => serverRequest(`/UserItems/${itemId}/Rating?Likes=${likes}`, {
 			method: 'POST'
-		}),
+		}).then(publishUserData(itemId, {Likes: likes})),
 
 		setNumericRating: (itemId, rating) => serverRequest(`/UserItems/${itemId}/UserData`, {
 			method: 'POST',
 			body: {Rating: rating}
-		}),
+		}).then(publishUserData(itemId, {Rating: rating})),
 
 		clearRating: (itemId) => serverRequest(`/UserItems/${itemId}/Rating`, {
 			method: 'DELETE'
-		}),
+		}).then(publishUserData(itemId, {Rating: null, Likes: null})),
 
 		// Music API methods
 		getAlbumArtists: (params = {}) => {

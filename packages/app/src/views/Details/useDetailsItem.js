@@ -1,4 +1,4 @@
-import {useState, useEffect, useCallback, useRef} from 'react';
+import {useState, useEffect, useCallback, useMemo, useRef} from 'react';
 import $L from '@enact/i18n/$L';
 
 import * as playback from '../../services/playback';
@@ -11,6 +11,8 @@ import {fetchMissingCollectionItems} from './seerrMissingCollectionItems';
 import {buildCollectionIndex, fetchCollectionPage} from './collectionPlaylist';
 import {isBlocked as isContentBlocked, isBlockedNow, observeItem} from '../../services/blockedContentGate';
 import {getActiveParentalFilter, withoutBlockedItems} from '../../services/parentalControls';
+import * as userDataSync from '../../services/userDataSync';
+import {useUserDataVersion} from '../../hooks/useUserDataSync';
 
 // Everything the screen shows about one item. The item itself is fetched first and rendered
 // on its own, then the rows that hang off it fill in behind, because waiting for all of them
@@ -511,29 +513,37 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		}
 	}, [effectiveApi, itemId, tagWithServerInfo]);
 
+	// Everything here was fetched once, and the watched state can move under it on this set or
+	// another one, so the screen draws from it with what's known now laid over it.
+	const userDataVersion = useUserDataVersion();
+	const synced = useMemo(() => ({
+		item: userDataSync.apply(item),
+		seasons: userDataSync.applyAll(seasons),
+		episodes: userDataSync.applyAll(episodes),
+		seriesEpisodes: userDataSync.applyAll(seriesEpisodes),
+		similar: userDataSync.applyAll(similar),
+		extras: userDataSync.applyAll(extras),
+		nextUp: userDataSync.applyAll(nextUp),
+		nextEpisode: userDataSync.apply(nextEpisode),
+		collectionItems: userDataSync.applyAll(collectionItems),
+		parentCollections: userDataSync.applyToRows(parentCollections),
+		albumTracks: userDataSync.applyAll(albumTracks),
+		artistAlbums: userDataSync.applyAll(artistAlbums),
+		playlistItems: userDataSync.applyAll(playlistItems)
+	}), [item, seasons, episodes, seriesEpisodes, similar, extras, nextUp, nextEpisode, collectionItems, // eslint-disable-line react-hooks/exhaustive-deps
+		parentCollections, albumTracks, artistAlbums, playlistItems, userDataVersion]);
+
 	return {
-		item,
+		...synced,
 		setItem,
 		isSeed,
 		isLoading,
 		isBlocked,
-		seasons,
-		episodes,
-		seriesEpisodes,
-		similar,
-		extras,
 		cast,
-		nextUp,
-		nextEpisode,
-		collectionItems,
 		missingCollectionItems,
-		parentCollections,
 		similarSource,
 		similarLoaded,
 		loadMoreCollectionItems,
-		albumTracks,
-		artistAlbums,
-		playlistItems,
 		setPlaylistItems,
 		episodeRatings,
 		selectedVersionIndex,

@@ -1,17 +1,15 @@
-import {getServerUrl, getAuthHeader, getApiKey, getDeviceId} from './jellyfinApi';
+import {getServerUrl, getAuthHeader} from './jellyfinApi';
+import * as serverSocket from './serverSocket';
 import {expectedPositionTicks} from '../utils/syncDrift';
 import {syncLog} from '../utils/syncLog';
 
-let ws = null;
 let syncReference = null;
 let currentGroup = null;
 let serverTimeOffset = 0;
 let lastPing = 500;
 let pingInterval = null;
-let keepAliveInterval = null;
-let reconnectTimeout = null;
 let listeners = [];
-let isConnecting = false;
+let socketListeners = [];
 let currentPlaylistItemId = null;
 // A Buffering report went out, so the server is holding the group for this
 // set and is owed a Ready. Outside that, and outside the Waiting state, it is
@@ -33,13 +31,6 @@ const MAX_TIME_SYNC_RTT_MS = 5000;
 // How far a late command is allowed to skip ahead to catch up.
 const MAX_LATE_CATCH_UP_MS = 15000;
 const HANDSHAKE_RETRY_DELAY_MS = 1200;
-// The server drops a socket that has not sent it a KeepAlive message within
-// this long. It says so in the ForceKeepAlive it sends on connect and again
-// once a reply is overdue; the fallback only covers a message with no timeout.
-const DEFAULT_KEEP_ALIVE_TIMEOUT_S = 60;
-// Reply every half timeout, as jellyfin-web does, so one lost message does not
-// cost the socket.
-const KEEP_ALIVE_FACTOR = 0.5;
 const MAX_HANDSHAKE_ATTEMPTS = 3;
 
 // Buffering fired this soon after executing a SyncPlay command is the seek
@@ -270,7 +261,7 @@ const startTimeSync = async () => {
 	try {
 		for (let i = 0; i < TIME_SYNC_BURST_COUNT; i++) {
 			await measureTimeSync();
-			if (!ws) return;
+			if (!socketListeners.length || !serverSocket.isConnected()) return;
 			await new Promise(resolve => setTimeout(resolve, TIME_SYNC_BURST_SPACING_MS));
 		}
 	} finally {
@@ -330,108 +321,36 @@ export const setShuffleMode = (mode) =>
 export const setIgnoreWait = (ignoreWait) =>
 	request('POST', 'SetIgnoreWait', {IgnoreWait: ignoreWait}).catch(() => {});
 
-// A socket the server counts as lost is disposed, which ends the session and
-// with it its place in the group. Only a KeepAlive message from this side
-// refreshes its timer; nothing else sent on the socket or over HTTP counts.
-const sendKeepAlive = () => {
-	if (!ws || ws.readyState !== 1) return;
-	try {
-		ws.send(JSON.stringify({MessageType: 'KeepAlive'}));
-	} catch {
-		// ignore
-	}
+const onSocketOpen = () => {
+	if (pingInterval) clearInterval(pingInterval);
+	pingInterval = setInterval(sendPingRequest, 10000);
+	sendPingRequest();
+	startTimeSync();
 };
 
-const stopKeepAlive = () => {
-	if (keepAliveInterval) {
-		clearInterval(keepAliveInterval);
-		keepAliveInterval = null;
-	}
-};
-
-const scheduleKeepAlive = (timeoutSeconds) => {
-	stopKeepAlive();
-	const seconds = Number(timeoutSeconds) > 0 ? Number(timeoutSeconds) : DEFAULT_KEEP_ALIVE_TIMEOUT_S;
-	keepAliveInterval = setInterval(sendKeepAlive, seconds * 1000 * KEEP_ALIVE_FACTOR);
-};
-
-export const connectWebSocket = () => {
-	if (ws || isConnecting) return;
-
-	const serverUrl = getServerUrl();
-	if (!serverUrl) return;
-
-	isConnecting = true;
-
-	const wsProto = serverUrl.startsWith('https') ? 'wss' : 'ws';
-	const host = serverUrl.replace(/^https?:\/\//, '');
-	const wsUrl = `${wsProto}://${host}/socket?ApiKey=${encodeURIComponent(getApiKey())}&deviceId=${encodeURIComponent(getDeviceId())}`;
-
-	try {
-		ws = new WebSocket(wsUrl);
-	} catch {
-		isConnecting = false;
-		scheduleReconnect(); // eslint-disable-line no-use-before-define
-		return;
-	}
-
-	ws.onopen = () => {
-		isConnecting = false;
-		if (pingInterval) clearInterval(pingInterval);
-		pingInterval = setInterval(sendPingRequest, 10000);
-		sendPingRequest();
-		startTimeSync();
-	};
-
-	ws.onmessage = (event) => {
-		try {
-			const msg = JSON.parse(event.data);
-			handleWebSocketMessage(msg); // eslint-disable-line no-use-before-define
-		} catch {
-			// ignore
-		}
-	};
-
-	ws.onerror = () => {};
-
-	ws.onclose = () => {
-		ws = null;
-		isConnecting = false;
-		if (pingInterval) {
-			clearInterval(pingInterval);
-			pingInterval = null;
-		}
-		stopKeepAlive();
-		stopTimeSync();
-		scheduleReconnect(); // eslint-disable-line no-use-before-define
-	};
-};
-
-const scheduleReconnect = () => {
-	if (reconnectTimeout) return;
-	reconnectTimeout = setTimeout(() => {
-		reconnectTimeout = null;
-		connectWebSocket();
-	}, 5000);
-};
-
-export const disconnectWebSocket = () => {
-	if (reconnectTimeout) {
-		clearTimeout(reconnectTimeout);
-		reconnectTimeout = null;
-	}
+const onSocketClosed = () => {
 	if (pingInterval) {
 		clearInterval(pingInterval);
 		pingInterval = null;
 	}
-	stopKeepAlive();
 	stopTimeSync();
-	if (ws) {
-		ws.onclose = null;
-		ws.close();
-		ws = null;
-	}
-	isConnecting = false;
+};
+
+// SyncPlay rides the session socket, and keeps its ping and the server's clock going only while
+// it's switched on.
+export const start = () => {
+	if (socketListeners.length) return;
+	socketListeners = [
+		serverSocket.onMessage(handleWebSocketMessage), // eslint-disable-line no-use-before-define
+		serverSocket.onConnectionChange((open) => (open ? onSocketOpen() : onSocketClosed()))
+	];
+	if (serverSocket.isConnected()) onSocketOpen();
+};
+
+export const stop = () => {
+	socketListeners.forEach((unsubscribe) => unsubscribe());
+	socketListeners = [];
+	onSocketClosed();
 };
 
 const handleWebSocketMessage = (msg) => {
@@ -446,10 +365,6 @@ const handleWebSocketMessage = (msg) => {
 			break;
 		case 'GeneralCommand':
 			handleGeneralCommand(Data); // eslint-disable-line no-use-before-define
-			break;
-		case 'ForceKeepAlive':
-			sendKeepAlive();
-			scheduleKeepAlive(Data);
 			break;
 		default:
 			break;

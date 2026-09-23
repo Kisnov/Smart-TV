@@ -2,6 +2,7 @@ import {useState, useEffect, useCallback, useRef, useMemo} from 'react';
 import {isKidsMode, kidsModeRows, mergesContinueWatchingNextUp} from '../../utils/kidsMode';
 import {withoutBlocked} from '../../utils/parentalFilter';
 import useParentalFilter from '../../hooks/useParentalFilter';
+import {useUserDataRows} from '../../hooks/useUserDataSync';
 import Spotlight from '@enact/spotlight';
 import $L from '@enact/i18n/$L';
 import {useAuth} from '../../context/AuthContext';
@@ -197,7 +198,7 @@ const Browse = ({
 		settings.imdbTop250MoviesEnabled, settings.imdbTop250TvShowsEnabled, settings.imdbMostPopularMoviesEnabled,
 		settings.imdbMostPopularTvShowsEnabled, settings.imdbLowestRatedMoviesEnabled, settings.imdbTopEnglishMoviesEnabled]);
 
-	const filteredRows = useMemo(() => {
+	const builtRows = useMemo(() => {
 		const result = buildBrowseRows({
 			allRowData,
 			seerrRows,
@@ -211,6 +212,9 @@ const Browse = ({
 		prevFilteredRowsRef.current = result;
 		return result;
 	}, [allRowData, seerrRows, externalRows, homeRowsConfig, pluginSectionsConfig, rowBuildSettings]);
+	// The rows can come back from a cache built before the watched state last moved, so what's
+	// known now is laid over them rather than fetched again.
+	const filteredRows = useUserDataRows(builtRows);
 
 	const focusRow = useCallback((rowIndex, cardIndex) => {
 		const card = cardToRestore(`row-${rowIndex}`, cardIndex);
