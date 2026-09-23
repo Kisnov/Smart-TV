@@ -3,6 +3,9 @@ import {useCallback, useEffect, useRef} from 'react';
 import {useItemMenu} from '../components/ItemContextMenu';
 import {LONG_PRESS_MS, isSelectKey} from '../utils/longPress';
 
+// How long after a pointer lets go of a hold its click can still arrive.
+const RELEASE_CLICK_MS = 100;
+
 // Where in its list the card a press landed on sits, for lists whose cards carry a data-index.
 export const cardIndexOf = (target) => {
 	const card = target.closest('[data-index]');
@@ -16,71 +19,83 @@ export const itemWithIdAt = (items, attribute, target) => {
 	return (id && items.find((entry) => entry.Id === id)) || null;
 };
 
+// A pointer clicks whatever it lets go over, the card or the menu that opened on top of it, so the
+// click after a hold is stopped before anything below the window sees it. Spotlight hands a key's
+// click straight to the card rather than through the page, so only a pointer's is ever caught.
+const swallowReleaseClick = () => {
+	const swallow = (e) => {
+		e.stopPropagation();
+		e.preventDefault();
+		window.removeEventListener('click', swallow, true);
+	};
+	window.addEventListener('click', swallow, true);
+	setTimeout(() => window.removeEventListener('click', swallow, true), RELEASE_CLICK_MS);
+};
+
 // Holding OK on a card opens its menu rather than the card. Spread the returned props on the card,
 // or on the list around a run of cards with `itemAt` finding the card's item from the element the
 // press landed on.
 //
-// A pointer lets go over the card and clicks it, so the hold leaves a mark and that click is
-// swallowed on its way down.
+// A remote may repeat its keydown while OK is held, and the menu takes focus before it's let go, so
+// the release can land on the menu as easily as the card. A press is followed from its first
+// keydown to its release on the window, the repeats in between are ignored, and a release that
+// ends a hold is marked handled so Spotlight doesn't turn it into a click. The handlers run in the
+// capture phase, so a list around the cards sees the press before a card acts on it.
 const useItemMenuHold = (itemAt, options) => {
 	const menu = useItemMenu();
-	const timerRef = useRef(null);
-	const heldRef = useRef(false);
-	// Held down rather than timing, because the browsers on the oldest sets don't report
-	// KeyboardEvent.repeat and every repeat would otherwise read as a fresh press.
-	const pressedRef = useRef(false);
+	const pressRef = useRef(null);
 
-	const release = useCallback(() => {
-		pressedRef.current = false;
-		if (timerRef.current) {
-			clearTimeout(timerRef.current);
-			timerRef.current = null;
-		}
+	const cancel = useCallback(() => {
+		pressRef.current?.end();
 	}, []);
 
-	useEffect(() => release, [release]);
+	useEffect(() => cancel, [cancel]);
 
-	// Spotlight raises a mousedown of its own from the keydown handler, so this runs twice for one
-	// press and the flag is what settles it.
 	const start = useCallback((target) => {
-		heldRef.current = false;
-		if (pressedRef.current || !menu) return;
+		if (pressRef.current || !menu) return;
 		const item = itemAt(target);
 		if (!item || !menu.canOpen(item, options)) return;
-		pressedRef.current = true;
-		timerRef.current = setTimeout(() => {
-			timerRef.current = null;
-			// The menu takes focus, so the release lands on it rather than here.
-			pressedRef.current = false;
-			heldRef.current = true;
+
+		const press = {held: false};
+		press.end = () => {
+			clearTimeout(press.timer);
+			window.removeEventListener('keyup', press.onRelease, true);
+			window.removeEventListener('mouseup', press.onRelease, true);
+			pressRef.current = null;
+		};
+		press.onRelease = (e) => {
+			if (e.type === 'keyup' && !isSelectKey(e)) return;
+			press.end();
+			if (!press.held) return;
+			e.preventDefault();
+			swallowReleaseClick();
+		};
+		press.timer = setTimeout(() => {
+			press.held = true;
 			menu.open(item, options);
 		}, LONG_PRESS_MS);
+
+		window.addEventListener('keyup', press.onRelease, true);
+		window.addEventListener('mouseup', press.onRelease, true);
+		pressRef.current = press;
 	}, [menu, itemAt, options]);
 
-	const handleKeyDown = useCallback((e) => {
+	const handleKeyDownCapture = useCallback((e) => {
 		if (isSelectKey(e)) start(e.target);
 	}, [start]);
 
-	const handleKeyUp = useCallback((e) => {
-		if (isSelectKey(e)) release();
-	}, [release]);
+	const handleMouseDownCapture = useCallback((e) => start(e.target), [start]);
 
-	const handleMouseDown = useCallback((e) => start(e.target), [start]);
-
-	const handleClickCapture = useCallback((e) => {
-		release();
-		if (!heldRef.current) return;
-		heldRef.current = false;
-		e.stopPropagation();
-	}, [release]);
+	// Leaving the card calls off a hold still counting down. Once the menu is up it sits under the
+	// pointer, so leaving then is only the menu arriving.
+	const handleMouseLeave = useCallback(() => {
+		if (pressRef.current && !pressRef.current.held) cancel();
+	}, [cancel]);
 
 	return {
-		onKeyDown: handleKeyDown,
-		onKeyUp: handleKeyUp,
-		onMouseDown: handleMouseDown,
-		onMouseUp: release,
-		onMouseLeave: release,
-		onClickCapture: handleClickCapture
+		onKeyDownCapture: handleKeyDownCapture,
+		onMouseDownCapture: handleMouseDownCapture,
+		onMouseLeave: handleMouseLeave
 	};
 };
 

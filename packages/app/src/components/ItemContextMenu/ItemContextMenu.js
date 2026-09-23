@@ -19,7 +19,10 @@ import {itemMenuActions} from './itemMenuActions';
 import css from './ItemContextMenu.module.less';
 
 const SpottableDiv = Spottable('div');
-const MenuContainer = SpotlightContainerDecorator({enterTo: 'default-element', restrict: 'self-only'}, 'div');
+const MenuContainer = SpotlightContainerDecorator({
+	enterTo: 'default-element',
+	leaveFor: {left: '', right: '', up: '', down: ''}
+}, 'div');
 
 const MENU_ID = 'item-context-menu';
 
