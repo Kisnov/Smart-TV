@@ -47,6 +47,8 @@ export const defaultSettings = {
 	mediaSegmentAutoHide: 'off',
 	cinemaModeEpisodesEnabled: false,
 	trickPlayEnabled: true,
+	trickPlayPauseWhileScrubbing: true,
+	showChapterMarkers: false,
 	assDirectPlay: true,
 	audioPassthroughMode: 'auto',
 	maxAudioChannels: 0,

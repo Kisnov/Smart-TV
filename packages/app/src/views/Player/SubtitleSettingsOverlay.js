@@ -7,7 +7,10 @@ import {useCallback, useEffect} from 'react';
 import $L from '@enact/i18n/$L';
 import {useSettings} from '../../context/SettingsContext';
 import {isBackKey} from '../../utils/keys';
-import {resolveSubtitleStyleSettings, subtitleStyleKey} from '../../utils/subtitleConstants';
+import {
+	getSubtitleBackgroundColorOptions, getSubtitleColorOptions, getSubtitleShadowColorOptions,
+	resolveSubtitleStyleSettings, subtitleStyleKey
+} from '../../utils/subtitleConstants';
 
 import css from './Player.module.less';
 
@@ -27,41 +30,12 @@ const getSubtitleSizeOptions = () => [
 	{value: 'xlarge', label: $L('Extra Large')}
 ];
 
-const getSubtitleColorOptions = () => [
-	{value: '#ffffff', label: $L('White')},
-	{value: '#ffff00', label: $L('Yellow')},
-	{value: '#00ffff', label: $L('Cyan')},
-	{value: '#ff00ff', label: $L('Magenta')},
-	{value: '#00ff00', label: $L('Green')},
-	{value: '#ff0000', label: $L('Red')},
-	{value: '#808080', label: $L('Grey')},
-	{value: '#404040', label: $L('Dark Grey')}
-];
-
 const getSubtitlePositionOptions = () => [
 	{value: 'bottom', label: $L('Bottom')},
 	{value: 'lower', label: $L('Lower')},
 	{value: 'middle', label: $L('Middle')},
 	{value: 'higher', label: $L('Higher')},
 	{value: 'absolute', label: $L('Absolute')}
-];
-
-const getSubtitleShadowColorOptions = () => [
-	{value: '#000000', label: $L('Black')},
-	{value: '#ffffff', label: $L('White')},
-	{value: '#808080', label: $L('Grey')},
-	{value: '#404040', label: $L('Dark Grey')},
-	{value: '#ff0000', label: $L('Red')},
-	{value: '#00ff00', label: $L('Green')},
-	{value: '#0000ff', label: $L('Blue')}
-];
-
-const getSubtitleBackgroundColorOptions = () => [
-	{value: '#000000', label: $L('Black')},
-	{value: '#ffffff', label: $L('White')},
-	{value: '#808080', label: $L('Grey')},
-	{value: '#404040', label: $L('Dark Grey')},
-	{value: '#000080', label: $L('Navy')}
 ];
 
 const cycleOption = (options, currentValue, updateSetting, settingKey) => {

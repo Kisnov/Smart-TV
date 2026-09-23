@@ -244,7 +244,7 @@ export const SYNCABLE_KEYS = [
 	'audioLanguage', 'fallbackAudioLanguage', 'preferDefaultAudioTrack', 'preferAudioDescription',
 	'subtitleLanguage', 'fallbackSubtitleLanguage', 'preferSdhSubtitles', 'subtitleMode',
 	'assDirectPlay',
-	'resumeSubtractDuration', 'unpauseRewind', 'skipBackLength', 'skipForwardLength',
+	'resumeSubtractDuration', 'unpauseRewind', 'skipBackLength', 'skipForwardLength', 'showChapterMarkers',
 	'maxVideoResolution', 'playerZoomMode', 'mediaSegmentAutoHide',
 	'exitConfirmation',
 	'diagnosticLoggingEnabled',
