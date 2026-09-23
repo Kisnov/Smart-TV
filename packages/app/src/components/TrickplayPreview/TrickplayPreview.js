@@ -3,6 +3,7 @@ import * as jellyfinApi from '../../services/jellyfinApi';
 import {planSeekSheetIndexes, trickplayTile} from '../../utils/trickplaySheets';
 
 import css from './TrickplayPreview.module.less';
+import {formatPlaybackDuration} from '../../utils/playbackTimeLabels';
 
 export const getTrickplayManifest = async (itemId, mediaSourceId) => {
     try {
@@ -88,18 +89,6 @@ const pickWidth = (manifest, preferredWidth) => {
 
 const sheetUrl = (itemId, mediaSourceId, width, imageIndex) =>
 	`${jellyfinApi.getServerUrl()}/Videos/${itemId}/Trickplay/${width}/${imageIndex}.jpg?MediaSourceId=${mediaSourceId}&ApiKey=${jellyfinApi.getApiKey()}`;
-
-const formatTime = (ticks) => {
-	const totalSeconds = Math.floor(ticks / 10000000);
-	const hours = Math.floor(totalSeconds / 3600);
-	const minutes = Math.floor((totalSeconds % 3600) / 60);
-	const seconds = totalSeconds % 60;
-
-	if (hours > 0) {
-		return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-	}
-	return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-};
 
 // The scrub preview. It stays mounted while the controls are up so the sheets the next scrub
 // steps need are already loading when the viewer starts moving (warm), and it shows only while
@@ -198,7 +187,7 @@ const TrickplayPreview = ({
 				)}
 			</div>
 			<div className={css.timeDisplay}>
-				{formatTime(positionTicks)}
+				{formatPlaybackDuration(positionTicks / 10000000)}
 			</div>
 		</div>
 	);

@@ -4,7 +4,8 @@ import $L from '@enact/i18n/$L';
 import MediaCard from '../../../components/MediaCard';
 import DetailTrackList from '../../../components/DetailTrackList';
 import {SeerrChips, SeerrFacts, SeerrCollectionBanner} from '../../../components/seerr/SeerrSections';
-import {getImageUrl, formatDuration} from '../../../utils/helpers';
+import {getImageUrl} from '../../../utils/helpers';
+import {formatPlaybackDuration} from '../../../utils/playbackTimeLabels';
 import {castPhotoUrl} from '../detailsMedia';
 import {SpottableDiv, RowContainer} from '../detailsSpottables';
 import {DETAIL_ICON_PATHS} from '../detailIcons';
@@ -136,7 +137,7 @@ const ChaptersGrid = ({item, serverUrl, onSelect, firstSpotlightId}) => {
 					>
 						<div className={css.chapterThumb}>
 							{thumb ? <img src={thumb} alt="" /> : <div className={css.chapterThumbEmpty} />}
-							<span className={css.chapterTime}>{formatDuration(chapter.StartPositionTicks)}</span>
+							<span className={css.chapterTime}>{formatPlaybackDuration(chapter.StartPositionTicks / 10000000)}</span>
 						</div>
 						<span className={css.chapterName}>{chapter.Name || `${$L('Chapter')} ${index + 1}`}</span>
 					</SpottableDiv>
