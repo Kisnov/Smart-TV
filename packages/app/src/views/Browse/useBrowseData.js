@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useReducer, useRef} from 'react';
 import {retainPermitted} from '../../services/libraryScope';
-import {isKidsMode} from '../../utils/kidsMode';
+import {isKidsMode, mergesContinueWatchingNextUp} from '../../utils/kidsMode';
 import {isLiveTvLibrary, librariesForNav} from '../../utils/liveTvLibrary';
 import $L from '@enact/i18n/$L';
 
@@ -295,7 +295,7 @@ const useBrowseData = ({
 						api.getResumeItems().catch(() => ({Items: []})),
 						api.getNextUp(24, null, settings.nextUpMaxDays).catch(() => ({Items: []})),
 						api.getUserConfiguration().catch(() => null),
-						settings.mergeContinueWatchingNextUp ? api.getItems({
+						mergesContinueWatchingNextUp(settings) ? api.getItems({
 							IncludeItemTypes: 'Episode',
 							Filters: 'IsPlayed',
 							Recursive: true,
@@ -528,6 +528,7 @@ const useBrowseData = ({
 		settings.pluginSections,
 		settings.mergeRecentRowsByType,
 		settings.mergeContinueWatchingNextUp,
+		settings.kidsModeEnabled,
 		settings.nextUpMaxDays,
 		settings.sinceYouWatchedSource,
 		settings.sinceYouWatchedSourceItem,

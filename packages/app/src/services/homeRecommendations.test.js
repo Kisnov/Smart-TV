@@ -1,4 +1,9 @@
 jest.mock('@enact/i18n/$L', () => ({__esModule: true, default: (str) => str}));
+// The blocked ratings store reads storage, which pulls in platform code a unit test can't parse.
+jest.mock('./storage', () => ({
+	getFromStorage: () => Promise.resolve(null),
+	saveToStorage: () => Promise.resolve()
+}));
 jest.mock('./jellyfinApi', () => ({
 	HOME_ROW_ITEM_FIELDS: 'Id,Name,Type'
 }));

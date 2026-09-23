@@ -1,5 +1,7 @@
 import {useState, useEffect, useCallback, useRef, useMemo} from 'react';
-import {isKidsMode, kidsModeRows} from '../../utils/kidsMode';
+import {isKidsMode, kidsModeRows, mergesContinueWatchingNextUp} from '../../utils/kidsMode';
+import {withoutBlocked} from '../../utils/parentalFilter';
+import useParentalFilter from '../../hooks/useParentalFilter';
 import Spotlight from '@enact/spotlight';
 import $L from '@enact/i18n/$L';
 import {useAuth} from '../../context/AuthContext';
@@ -142,7 +144,7 @@ const Browse = ({
 		: Math.max(0, settings.classicHomeRowsPadding ?? 30);
 
 	const {
-		isLoading, browseMode, allRowData, featuredItems,
+		isLoading, browseMode, allRowData, featuredItems: loadedFeaturedItems,
 		setBrowseMode, fetchFreshFeaturedItems, refreshVolatileData
 	} = useBrowseData({
 		api,
@@ -158,10 +160,20 @@ const Browse = ({
 		homeRowsConfig
 	});
 
+	// Filtered here rather than where the bar loads, so slides cached before a rating was blocked
+	// drop out too.
+	const {parentalFilter} = useParentalFilter();
+	const featuredItems = useMemo(
+		() => withoutBlocked(loadedFeaturedItems, parentalFilter),
+		[loadedFeaturedItems, parentalFilter]
+	);
+
+	const mergeContinueWatchingNextUp = mergesContinueWatchingNextUp(settings);
+
 	// Only the settings the row list is built from, so a change to any other one doesn't
 	// rebuild every row.
 	const rowBuildSettings = useMemo(() => ({
-		mergeContinueWatchingNextUp: settings.mergeContinueWatchingNextUp,
+		mergeContinueWatchingNextUp,
 		hiddenContinueWatchingItems: settings.hiddenContinueWatchingItems,
 		hiddenNextUpSeries: settings.hiddenNextUpSeries,
 		displayFavoritesRows: settings.displayFavoritesRows,
@@ -177,14 +189,13 @@ const Browse = ({
 		imdbMostPopularTvShowsEnabled: settings.imdbMostPopularTvShowsEnabled,
 		imdbLowestRatedMoviesEnabled: settings.imdbLowestRatedMoviesEnabled,
 		imdbTopEnglishMoviesEnabled: settings.imdbTopEnglishMoviesEnabled,
-		blockedRatings: settings.blockedRatings,
+		parentalFilter,
 		kidsModeEnabled: settings.kidsModeEnabled
-	}), [settings.kidsModeEnabled, settings.mergeContinueWatchingNextUp, settings.hiddenContinueWatchingItems, settings.hiddenNextUpSeries,
+	}), [settings.kidsModeEnabled, parentalFilter, mergeContinueWatchingNextUp, settings.hiddenContinueWatchingItems, settings.hiddenNextUpSeries,
 		settings.displayFavoritesRows, settings.displayCollectionsRows, settings.displayGenresRows, settings.displayPlaylistsRows,
 		settings.displayAudioRows, settings.displayStudiosRows, settings.displayRewatchRow,
 		settings.imdbTop250MoviesEnabled, settings.imdbTop250TvShowsEnabled, settings.imdbMostPopularMoviesEnabled,
-		settings.imdbMostPopularTvShowsEnabled, settings.imdbLowestRatedMoviesEnabled, settings.imdbTopEnglishMoviesEnabled,
-		settings.blockedRatings]);
+		settings.imdbMostPopularTvShowsEnabled, settings.imdbLowestRatedMoviesEnabled, settings.imdbTopEnglishMoviesEnabled]);
 
 	const filteredRows = useMemo(() => {
 		const result = buildBrowseRows({

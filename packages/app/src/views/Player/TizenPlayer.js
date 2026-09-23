@@ -32,6 +32,8 @@ import {resolveInitialSubtitle} from './initialSubtitle';
 import {api as jellyfinApi, createApiForServer, getServerUrl} from '../../services/jellyfinApi';
 import PlayerControls, {usePlayerButtons} from './PlayerControls';
 import useLiveProgram from './useLiveProgram';
+import useChannelCarousel from './useChannelCarousel';
+import ChannelCarousel from './ChannelCarousel';
 import useSleepTimer from './useSleepTimer';
 import useSyncPlayCommands from './useSyncPlayCommands';
 import AudioMode from './audio/AudioMode';
@@ -90,7 +92,7 @@ const getRootFontSizePx = () => {
  * playback. AVPlay renders on a platform multimedia layer BEHIND the web engine;
  * the web layer must be transparent in the video area for the content to show through.
  */
-const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialSubtitleIndex, initialStartPositionTicks, initialQuality, forceTranscode, onEnded, onBack, onGuide, onPlayNext, onSelectPerson, audioPlaylist, videoQueue, onPausedChange}) => {
+const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialSubtitleIndex, initialStartPositionTicks, initialQuality, forceTranscode, onEnded, onBack, onGuide, onPlayNext, onSelectPerson, audioPlaylist, videoQueue, liveTvChannels, onPausedChange}) => {
 	const {settings, updateSetting} = useSettings();
 	const {isInGroup, lastCommand} = useSyncPlay();
 	const syncPlayCommandRef = useRef(false);
@@ -1651,6 +1653,17 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		onPlayNext(episode);
 	}, [onPlayNext, stopTimeUpdatePolling, item.Id]);
 
+	const {carouselOpenRef, openCarousel, markChannelPlaying, carouselProps} = useChannelCarousel({
+		item, isLiveTV, liveTvChannels, sortBy: settings.liveTvChannelSortBy,
+		error, controlsVisible, showControls, hideControls, setFocusRow,
+		onSwitchChannel: onPlayNextWithCleanup
+	});
+
+	// AVPlay has buffered and started by the time a load finishes without an error.
+	useEffect(() => {
+		if (!isLoading && !error) markChannelPlaying();
+	}, [isLoading, error, markChannelPlaying]);
+
 	const seekToSegmentTarget = useCallback((target) => {
 		avplaySeek(Math.floor(target / 10000)).catch(e => console.warn('[Player] Seek failed:', e));
 	}, []);
@@ -2328,6 +2341,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			case 'zoom': handleToggleZoom(); break;
 			case 'sleep': openModal('sleep'); break;
 			case 'info': openModal('info'); break;
+			case 'channels': openCarousel(); break;
 			case 'guide': handleOpenGuide(); break;
 			case 'next': handlePlayNextNow(); break;
 			case 'nextTrack': handleNextTrack(); break;
@@ -2337,7 +2351,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			case 'favorite': handleToggleFavorite(); break;
 			default: break;
 		}
-	}, [showControls, handlePlayPause, handleRewind, handleForward, openModal, handleOpenCast, handleToggleZoom, handleOpenGuide, handlePlayNextNow, handleNextTrack, handlePrevTrack, handleToggleShuffle, handleToggleRepeat, handleToggleFavorite]);
+	}, [showControls, handlePlayPause, handleRewind, handleForward, openModal, handleOpenCast, handleToggleZoom, handleOpenGuide, openCarousel, handlePlayNextNow, handleNextTrack, handlePrevTrack, handleToggleShuffle, handleToggleRepeat, handleToggleFavorite]);
 
 	const handleControlButtonClick = useCallback((e) => {
 		const action = e.currentTarget.dataset.action;
@@ -2660,6 +2674,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	useEffect(() => {
 		const handleKeyDown = (e) => {
 			const key = e.key || e.keyCode;
+			// The channel carousel takes every key while it's up.
+			if (carouselOpenRef.current) return;
 
 			// Media playback keys (Tizen remote)
 			if (e.keyCode === KEYS.PLAY) {
@@ -2710,6 +2726,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			}
 
 			if (handlePopupKeyDown(e)) return;
+
+			// Up during live playback opens the channel carousel, over the OSD or not.
+			if (isLiveTV && !activeModal && (key === 'ArrowUp' || e.keyCode === 38)) {
+				e.preventDefault();
+				e.stopPropagation();
+				openCarousel();
+				return;
+			}
 
 			// Back button
 			if (isBackKey(e) || key === 'GoBack' || key === 'Backspace') {
@@ -2810,7 +2834,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, pausePlayback, resumePlayback, handleForward, handleRewind, currentTime, duration, settings.seekStep, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, scheduleDeferredSeek, skipSegment, showSkipCredits, showNextEpisode, isLiveTV]);
+	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, pausePlayback, resumePlayback, handleForward, handleRewind, currentTime, duration, settings.seekStep, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, scheduleDeferredSeek, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, isInGroup, verifyResumeHealthy, carouselOpenRef, openCarousel]);
 
 	// Calculate progress - use seekPosition when actively seeking for smooth scrubbing
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;
@@ -2834,10 +2858,20 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Render
 	// ==============================
 
+	// First in every layout below, so it stays up while a channel switch loads or fails.
+	const channelCarousel = carouselProps && (
+		<ChannelCarousel
+			{...carouselProps}
+			serverUrl={getServerUrl()}
+			clockDisplay={settings.clockDisplay}
+		/>
+	);
+
 	// Render loading
 	if (isLoading) {
 		return (
 			<div className={css.container}>
+				{channelCarousel}
 				<div className={css.loadingIndicator}>
 					<div className={css.spinner} />
 					<p>{$L('Loading...')}</p>
@@ -2850,6 +2884,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	if (error) {
 		return (
 			<div className={css.container}>
+				{channelCarousel}
 				<div className={css.error}>
 					<h2>{$L('Playback Error')}</h2>
 					<p>{error}</p>
@@ -2861,6 +2896,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 	return (
 		<div className={css.container} ref={playerContainerRef} onClick={showControls}>
+			{channelCarousel}
 			{/*
 			 * No <video> element - AVPlay renders on the platform multimedia layer
 			 * behind the web engine. The container is transparent so video shows through.

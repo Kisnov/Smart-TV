@@ -1,5 +1,6 @@
 import {HOME_ROW_ITEM_FIELDS} from './jellyfinApi';
 import {scopedGetItems, searchLibraries, visibleLibraryIds} from './libraryScope';
+import {getActiveParentalFilter} from './parentalControls';
 import {byLastPlayedDesc} from '../utils/libraryScopeRules';
 import seerrApi from './seerrApi';
 import {normalizeMediaItem} from '../utils/seerrHomeRows';
@@ -245,11 +246,13 @@ export async function getRecommendations(api, seed, {includeWatched, candidateIt
 	}
 	await Promise.all(queries);
 
+	const parentalFilter = getActiveParentalFilter();
 	const scored = [];
 	for (const candidate of candidatesMap.values()) {
 		const id = candidate.Id ? String(candidate.Id) : '';
 		if (!id || id === baseId) continue;
 		if (!includeWatched && isPlayed(candidate)) continue;
+		if (parentalFilter.isBlockedRaw(candidate)) continue;
 		scored.push({item: candidate, score: scoreCandidate(candidate, ctx)});
 	}
 
@@ -269,6 +272,7 @@ export async function getRecommendations(api, seed, {includeWatched, candidateIt
 				const id = item && item.Id ? String(item.Id) : '';
 				if (!id || candidatesMap.has(id) || id === baseId) continue;
 				if (!includeWatched && isPlayed(item)) continue;
+				if (parentalFilter.isBlockedRaw(item)) continue;
 				candidatesMap.set(id, item);
 				scored.push({item, score: scoreCandidate(item, ctx)});
 				if (scored.length >= 30) break;
@@ -413,9 +417,11 @@ async function loadSeeds(api, sourceItem, sourceType) {
 }
 
 function filterRecommendedItems(items, includeWatched) {
+	const parentalFilter = getActiveParentalFilter();
 	return (items || []).filter((item) => {
 		if (!item || !item.Id) return false;
 		if (!includeWatched && isPlayed(item)) return false;
+		if (parentalFilter.isBlockedRaw(item)) return false;
 		return true;
 	});
 }

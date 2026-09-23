@@ -9,6 +9,8 @@ import {findParentCollections} from './parentCollection';
 import {canScoreSeedLocally, getOnlineRecommendations, getRecommendations, mergeRecommendations} from '../../services/homeRecommendations';
 import {fetchMissingCollectionItems} from './seerrMissingCollectionItems';
 import {buildCollectionIndex, fetchCollectionPage} from './collectionPlaylist';
+import {isBlocked as isContentBlocked, isBlockedNow, observeItem} from '../../services/blockedContentGate';
+import {getActiveParentalFilter, withoutBlockedItems} from '../../services/parentalControls';
 
 // Everything the screen shows about one item. The item itself is fetched first and rendered
 // on its own, then the rows that hang off it fill in behind, because waiting for all of them
@@ -18,6 +20,16 @@ import {buildCollectionIndex, fetchCollectionPage} from './collectionPlaylist';
 // once and the full record fill the rest in behind, rather than leaving it blank for as
 // long as the request takes.
 const seedFrom = (candidate, id) => (candidate && candidate.Id === id ? candidate : null);
+
+// An unrated episode is judged by its series, which may need a lookup, so while any rating is
+// blocked its row copy waits for the check rather than flashing a title that's about to go.
+const seedIsDecided = (seed) => !getActiveParentalFilter().isActive || !seed.SeriesId ||
+	Boolean(seed.OfficialRating && String(seed.OfficialRating).trim());
+
+const seedToShow = (candidate, id) => {
+	const seed = seedFrom(candidate, id);
+	return seed && !isBlockedNow(seed) && seedIsDecided(seed) ? seed : null;
+};
 
 // The More Like This row draws everything it is given, so this is how many cards
 // it ends up with.
@@ -44,10 +56,11 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 	const collectionLoadingRef = useRef(false);
 	seerrEnabledRef.current = seerrEnabled;
 
-	const [item, setItem] = useState(() => seedFrom(initialItem, itemId));
+	const [item, setItem] = useState(() => seedToShow(initialItem, itemId));
 	// Whether what is on screen is still the row it was opened from rather than the record
 	// the server holds, which is what the buttons are properly built from.
-	const [isSeed, setIsSeed] = useState(() => Boolean(seedFrom(initialItem, itemId)));
+	const [isSeed, setIsSeed] = useState(() => Boolean(seedToShow(initialItem, itemId)));
+	const [isBlocked, setIsBlocked] = useState(false);
 	const [seasons, setSeasons] = useState([]);
 	const [episodes, setEpisodes] = useState([]);
 	const [seriesEpisodes, setSeriesEpisodes] = useState([]);
@@ -64,7 +77,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 	const [albumTracks, setAlbumTracks] = useState([]);
 	const [artistAlbums, setArtistAlbums] = useState([]);
 	const [playlistItems, setPlaylistItems] = useState([]);
-	const [isLoading, setIsLoading] = useState(() => !seedFrom(initialItem, itemId));
+	const [isLoading, setIsLoading] = useState(() => !seedToShow(initialItem, itemId));
 	const [episodeRatings, setEpisodeRatings] = useState({});
 
 	const [selectedVersionIndex, setSelectedVersionIndex] = useState(0);
@@ -78,7 +91,8 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 			const page = await fetchCollectionPage(effectiveApi, collectionIndexRef.current, collectionFetchedRef.current);
 			collectionFetchedRef.current = page.fetchedCount;
 			collectionHasMoreRef.current = page.hasMore;
-			if (page.items.length) setPlaylistItems((prev) => [...prev, ...tagWithServerInfo(page.items)]);
+			const visible = withoutBlockedItems(page.items);
+			if (visible.length) setPlaylistItems((prev) => [...prev, ...tagWithServerInfo(visible)]);
 		} catch {
 			collectionHasMoreRef.current = false;
 		}
@@ -107,6 +121,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		setAlbumTracks([]);
 		setArtistAlbums([]);
 		setPlaylistItems([]);
+		setIsBlocked(false);
 
 		// A Seerr title has no id the server would recognise, so asking for one would only 404
 		// and leave the screen spinning.
@@ -119,8 +134,20 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		// on, so its answer is dropped when the screen already shows something else.
 		let cancelled = false;
 
+		const refuse = () => {
+			setItem(null);
+			setIsSeed(false);
+			setIsBlocked(true);
+			setIsLoading(false);
+		};
+
 		const loadItem = async () => {
-			const seed = seedFrom(seedRef.current, itemId);
+			const rowCopy = seedFrom(seedRef.current, itemId);
+			if (rowCopy && isBlockedNow(rowCopy)) {
+				refuse();
+				return;
+			}
+			const seed = rowCopy && seedIsDecided(rowCopy) ? rowCopy : null;
 			if (seed) {
 				setItem(tagWithServerInfo(seed));
 				setIsSeed(true);
@@ -139,6 +166,16 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 				setIsLoading(false);
 				return;
 			}
+
+			// Checked before the record is published, so nothing downstream reads the title or goes
+			// off fetching rows for a page that won't be shown.
+			const blocked = await isContentBlocked(tagWithServerInfo(data));
+			if (cancelled) return;
+			if (blocked) {
+				refuse();
+				return;
+			}
+			observeItem(data);
 
 			setItem(tagWithServerInfo(data));
 			setIsSeed(false);
@@ -207,6 +244,10 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 
 			setIsLoading(false);
 
+			// What an unrated season or episode is judged by, so blocking a series takes its
+			// episodes with it.
+			const fallbackRating = data.OfficialRating;
+
 			const bg = async () => {
 				if (data.Type === 'Series') {
 					// Nouveau and Minimalist show one season's episodes at a time behind a selector.
@@ -219,14 +260,14 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 						effectiveApi.getNextUp(1, itemId).catch(() => null),
 						wantsEpisodes ? effectiveApi.getEpisodes(itemId).catch(() => null) : null
 					]);
-					if (seasonsData) setSeasons(tagWithServerInfo(seasonsData.Items || []));
+					if (seasonsData) setSeasons(tagWithServerInfo(withoutBlockedItems(seasonsData.Items || [], fallbackRating)));
 					if (nextUpData?.Items?.length > 0) setNextUp(tagWithServerInfo(nextUpData.Items));
-					if (episodesData) setSeriesEpisodes(tagWithServerInfo(episodesData.Items || []));
+					if (episodesData) setSeriesEpisodes(tagWithServerInfo(withoutBlockedItems(episodesData.Items || [], fallbackRating)));
 				}
 
 				if (data.Type === 'Season') {
 					const episodesData = await effectiveApi.getEpisodes(data.SeriesId, data.Id).catch(() => null);
-					if (episodesData) setEpisodes(tagWithServerInfo(episodesData.Items || []));
+					if (episodesData) setEpisodes(tagWithServerInfo(withoutBlockedItems(episodesData.Items || [], fallbackRating)));
 				}
 
 				if (data.Type === 'Episode') {
@@ -243,8 +284,8 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 							: null,
 						wantsWholeSeries ? effectiveApi.getEpisodes(data.SeriesId).catch(() => null) : null
 					]);
-					if (seasonData) setEpisodes(tagWithServerInfo(seasonData.Items || []));
-					if (seriesData) setSeriesEpisodes(tagWithServerInfo(seriesData.Items || []));
+					if (seasonData) setEpisodes(tagWithServerInfo(withoutBlockedItems(seasonData.Items || [], fallbackRating)));
+					if (seriesData) setSeriesEpisodes(tagWithServerInfo(withoutBlockedItems(seriesData.Items || [], fallbackRating)));
 				}
 
 				if (data.Type === 'BoxSet') {
@@ -255,7 +296,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 						Fields: 'PrimaryImageAspectRatio,ProductionYear,ProviderIds'
 					}).catch(() => null);
 					if (collectionData) {
-						const tagged = tagWithServerInfo(collectionData.Items || []);
+						const tagged = tagWithServerInfo(withoutBlockedItems(collectionData.Items || []));
 						setCollectionItems(tagged);
 						if (tagged.length > 0 && seerrEnabledRef.current) {
 							fetchMissingCollectionItems({
@@ -275,8 +316,8 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 						effectiveApi.getAlbumTracks(data.Id).catch(() => null),
 						effectiveApi.getSimilar(itemId).catch(() => null)
 					]);
-					if (tracksData) setAlbumTracks(tagWithServerInfo(tracksData.Items || []));
-					if (albumSimilarData) setSimilar(tagWithServerInfo(albumSimilarData.Items || []));
+					if (tracksData) setAlbumTracks(tagWithServerInfo(withoutBlockedItems(tracksData.Items || [])));
+					if (albumSimilarData) setSimilar(tagWithServerInfo(withoutBlockedItems(albumSimilarData.Items || [])));
 				}
 
 				if (data.Type === 'MusicArtist') {
@@ -284,13 +325,13 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 						effectiveApi.getAlbumsByArtist(data.Id).catch(() => null),
 						effectiveApi.getSimilar(itemId).catch(() => null)
 					]);
-					if (albumsData) setArtistAlbums(tagWithServerInfo(albumsData.Items || []));
-					if (artistSimilarData) setSimilar(tagWithServerInfo(artistSimilarData.Items || []));
+					if (albumsData) setArtistAlbums(tagWithServerInfo(withoutBlockedItems(albumsData.Items || [])));
+					if (artistSimilarData) setSimilar(tagWithServerInfo(withoutBlockedItems(artistSimilarData.Items || [])));
 				}
 
 				if (data.Type === 'Playlist') {
 					const playlistData = await effectiveApi.getPlaylistItems(data.Id).catch(() => null);
-					if (playlistData) setPlaylistItems(tagWithServerInfo(playlistData.Items || []));
+					if (playlistData) setPlaylistItems(tagWithServerInfo(withoutBlockedItems(playlistData.Items || [])));
 				}
 
 				const needsSimilar = data.Type !== 'Person' && data.Type !== 'BoxSet' &&
@@ -349,13 +390,13 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 				]);
 
 				if (similarResult?.data) {
-					setSimilar(tagWithServerInfo(similarResult.data.Items || []));
+					setSimilar(tagWithServerInfo(withoutBlockedItems(similarResult.data.Items || [])));
 					setSimilarSource(similarResult.source);
 				}
 				// Recorded whether or not anything came back, so a section that holds its place
 				// while the answer is out knows when to stop holding it.
 				setSimilarLoaded(true);
-				if (extrasData) setExtras(tagWithServerInfo(extrasData.filter(e => e.Id !== itemId)));
+				if (extrasData) setExtras(tagWithServerInfo(withoutBlockedItems(extrasData.filter(e => e.Id !== itemId))));
 				for (const boxSet of collections) {
 					const colData = await effectiveApi.getItems({
 						ParentId: boxSet.Id,
@@ -366,7 +407,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 						Fields: 'PrimaryImageAspectRatio,ProductionYear,ProviderIds,People'
 					}).catch(() => null);
 					// A collection holding nothing but the title being looked at says nothing.
-					const members = colData?.Items || [];
+					const members = withoutBlockedItems(colData?.Items || []);
 					if (members.length <= 1) continue;
 
 					const tagged = tagWithServerInfo(members);
@@ -404,12 +445,12 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 					if (cancelled) return;
 					collectionFetchedRef.current = page.fetchedCount;
 					collectionHasMoreRef.current = page.hasMore;
-					setPlaylistItems(tagWithServerInfo(page.items));
+					setPlaylistItems(tagWithServerInfo(withoutBlockedItems(page.items)));
 				}
 
 				if (data.Type === 'Person') {
 					const filmography = await effectiveApi.getItemsByPerson(itemId, 50).catch(() => null);
-					if (filmography) setSimilar(tagWithServerInfo(filmography.Items || []));
+					if (filmography) setSimilar(tagWithServerInfo(withoutBlockedItems(filmography.Items || [])));
 				}
 			};
 
@@ -475,6 +516,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		setItem,
 		isSeed,
 		isLoading,
+		isBlocked,
 		seasons,
 		episodes,
 		seriesEpisodes,

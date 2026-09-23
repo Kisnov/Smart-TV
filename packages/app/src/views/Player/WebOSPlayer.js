@@ -37,6 +37,8 @@ import {resolveSeriesAudio} from './initialAudio';
 import {resolveInitialSubtitle} from './initialSubtitle';
 import PlayerControls, {usePlayerButtons} from './PlayerControls';
 import useLiveProgram from './useLiveProgram';
+import useChannelCarousel from './useChannelCarousel';
+import ChannelCarousel from './ChannelCarousel';
 import NextUpOverlay from './NextUpOverlay';
 import SkipSegmentOverlay from './SkipSegmentOverlay';
 import StillWatchingDialog from './StillWatchingDialog';
@@ -89,7 +91,7 @@ const getWebOSFullscreenRect = () => {
 // request puts the whole group through a round of buffering.
 const GROUP_SEEK_DEBOUNCE_MS = 600;
 
-const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialSubtitleIndex, initialStartPositionTicks, initialQuality, forceTranscode, onEnded, onBack, onGuide, onPlayNext, onSelectPerson, audioPlaylist, videoQueue, onPausedChange}) => {
+const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialSubtitleIndex, initialStartPositionTicks, initialQuality, forceTranscode, onEnded, onBack, onGuide, onPlayNext, onSelectPerson, audioPlaylist, videoQueue, liveTvChannels, onPausedChange}) => {
 	const {settings, updateSetting} = useSettings();
 	const {isInGroup, lastCommand} = useSyncPlay();
 	const syncPlayCommandRef = useRef(false);
@@ -1524,6 +1526,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		onPlayNext(episode);
 	}, [onPlayNext, item.Id]);
 
+	const {carouselOpenRef, openCarousel, markChannelPlaying, carouselProps} = useChannelCarousel({
+		item, isLiveTV, liveTvChannels, sortBy: settings.liveTvChannelSortBy,
+		error, controlsVisible, showControls, hideControls, setFocusRow,
+		onSwitchChannel: onPlayNextWithCleanup
+	});
+
 	const onSeekToSegmentEnd = useCallback((endTicks) => {
 		if (!endTicks || !videoRef.current) return;
 		// Skipping inside a group skips the segment for everyone.
@@ -1657,6 +1665,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	}, []);
 
 	const handlePlaying = useCallback(() => {
+		markChannelPlaying();
 		setIsBuffering(false);
 		stalledRef.current = false;
 		syncLog('[Player] playing at', videoRef.current?.currentTime);
@@ -1671,7 +1680,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (isInGroup && !groupHoldRef.current) {
 			skipGovernorRef.current.onStart({nowMs: Date.now(), fromMs: positionRef.current / 10000});
 		}
-	}, [holdForGroup, isInGroup]);
+	}, [holdForGroup, isInGroup, markChannelPlaying]);
 
 	const handleEnded = useCallback(async () => {
 		if (sourceTransitionRef.current) {
@@ -2389,6 +2398,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			case 'zoom': handleToggleZoom(); break;
 			case 'sleep': openModal('sleep'); break;
 			case 'info': openModal('info'); break;
+			case 'channels': openCarousel(); break;
 			case 'guide': handleOpenGuide(); break;
 			case 'next': handlePlayNextNow(); break;
 			case 'nextTrack': handleNextTrack(); break;
@@ -2398,7 +2408,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			case 'favorite': handleToggleFavorite(); break;
 			default: break;
 		}
-	}, [showControls, handlePlayPause, handleRewind, handleForward, openModal, handleOpenCast, handleToggleZoom, handleOpenGuide, handlePlayNextNow, handleNextTrack, handlePrevTrack, handleToggleShuffle, handleToggleRepeat, handleToggleFavorite]);
+	}, [showControls, handlePlayPause, handleRewind, handleForward, openModal, handleOpenCast, handleToggleZoom, handleOpenGuide, openCarousel, handlePlayNextNow, handleNextTrack, handlePrevTrack, handleToggleShuffle, handleToggleRepeat, handleToggleFavorite]);
 
 	const handleControlButtonClick = useCallback((e) => {
 		const action = e.currentTarget.dataset.action;
@@ -2603,6 +2613,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	useEffect(() => {
 		const handleKeyDown = (e) => {
 			const key = e.key || e.keyCode;
+			// The channel carousel takes every key while it's up.
+			if (carouselOpenRef.current) return;
 
 			if (handlePopupKeyDown(e)) return;
 
@@ -2654,6 +2666,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				e.preventDefault();
 				e.stopPropagation();
 				handleBack();
+				return;
+			}
+
+			// Up during live playback opens the channel carousel, over the OSD or not.
+			if (isLiveTV && !activeModal && (key === 'ArrowUp' || e.keyCode === 38)) {
+				e.preventDefault();
+				e.stopPropagation();
+				openCarousel();
 				return;
 			}
 
@@ -2748,7 +2768,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, resumePlayback, handleForward, handleRewind, currentTime, settings.seekStep, seekByOffset, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, isInGroup]);
+	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, resumePlayback, handleForward, handleRewind, currentTime, settings.seekStep, seekByOffset, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, isInGroup, carouselOpenRef, openCarousel]);
 
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;
 	const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
@@ -2888,6 +2908,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					countdownStyle={settings.nextUpCountdownStyle ?? 'both'}
 					onSkip={handleSkipSegment}
 					spotlightId="skip-segment-btn"
+				/>
+			)}
+
+			{carouselProps && (
+				<ChannelCarousel
+					{...carouselProps}
+					serverUrl={getServerUrl()}
+					clockDisplay={settings.clockDisplay}
 				/>
 			)}
 
