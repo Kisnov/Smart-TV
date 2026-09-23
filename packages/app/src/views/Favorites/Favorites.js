@@ -8,6 +8,7 @@ import useQuickReturnGrid from '../../hooks/useQuickReturnGrid';
 import {useAuth} from '../../context/AuthContext';
 import {useSettings} from '../../context/SettingsContext';
 import * as connectionPool from '../../services/connectionPool';
+import {withoutBlockedItems} from '../../services/parentalControls';
 import BackdropLayer from '../../components/BackdropLayer';
 import DetailsTabBar from '../../components/DetailsTabBar';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -203,11 +204,13 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 				};
 
 				const result = await api.getItems(params);
-				const newItems = result.Items || [];
+				const fetched = result.Items || [];
+				const newItems = withoutBlockedItems(fetched);
 
+				// Paged by what the server sent, since a page thinned by the filter would rewind it.
 				apiFetchIndexRef.current = append
-					? apiFetchIndexRef.current + newItems.length
-					: newItems.length;
+					? apiFetchIndexRef.current + fetched.length
+					: fetched.length;
 				setAllItems(prev => append ? [...prev, ...newItems] : newItems);
 				setTotalCount(result.TotalRecordCount || 0);
 			}

@@ -12,6 +12,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import ModernDetailContent from './ModernDetailContent';
 import {formatDuration, getImageUrl, getBackdropId, getLogoUrl} from '../../utils/helpers';
 import {KEYS} from '../../utils/keys';
+import {MATERIAL_ICON_PATHS} from '../Settings/materialIconMap';
 import {fetchPrerolls} from '../../utils/cinemaMode';
 import {
 	toSubtitleLanguage,
@@ -139,7 +140,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		skip: seerrOnly
 	});
 	const {
-		setItem, isLoading: libraryLoading, isSeed, seasons, episodes, seriesEpisodes, similar, extras, cast, nextUp, nextEpisode,
+		setItem, isLoading: libraryLoading, isBlocked: blockedByRating, isSeed, seasons, episodes, seriesEpisodes, similar, extras, cast, nextUp, nextEpisode,
 		collectionItems, missingCollectionItems, parentCollections, similarSource, similarLoaded, loadMoreCollectionItems, albumTracks, artistAlbums,
 		playlistItems, setPlaylistItems, episodeRatings, refreshItem,
 		selectedVersionIndex, setSelectedVersionIndex,
@@ -793,6 +794,20 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	const handlePageScrollTo = useCallback((fn) => {
 		pageScrollToRef.current = fn;
 	}, []);
+
+	// No artwork, name or retry on purpose, since a retry would read as an invitation.
+	if (!seerrOnly && blockedByRating) {
+		return (
+			<div className={css.page}>
+				<div className={css.blocked}>
+					<svg className={css.blockedIcon} viewBox='0 -960 960 960' fill='currentColor' aria-hidden='true' focusable='false'>
+						<path d={MATERIAL_ICON_PATHS.lock} />
+					</svg>
+					<div className={css.blockedText}>{$L("This isn't available")}</div>
+				</div>
+			</div>
+		);
+	}
 
 	if (isLoading || !item) {
 		return (

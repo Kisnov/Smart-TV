@@ -8,6 +8,8 @@ import Button from '@enact/sandstone/Button';
 import {useAuth} from '../../context/AuthContext';
 import {useSettings} from '../../context/SettingsContext';
 import * as connectionPool from '../../services/connectionPool';
+import useParentalFilter from '../../hooks/useParentalFilter';
+import {withoutBlocked} from '../../utils/parentalFilter';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import {getImageUrl, getBackdropId, getPrimaryImageId} from '../../utils/helpers';
 
@@ -57,6 +59,14 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 	const itemsRef = useRef([]);
 	const loadedRangesRef = useRef([]);
 	const currentIndexRef = useRef(0);
+
+	// The grid normally keeps each item at its server position so it can jump anywhere and let go
+	// of what scrolled away. With ratings blocked, pages come back with gaps, so it holds only what
+	// survived and reads on from how far into the server's list it has got.
+	const {parentalFilter} = useParentalFilter();
+	const compact = parentalFilter.isActive;
+	const rawFetchedRef = useRef(0);
+	const [blockedCount, setBlockedCount] = useState(0);
 
 	const isRangeLoaded = useCallback((start, end) => {
 		return loadedRangesRef.current.some(range =>
@@ -118,7 +128,7 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 				EnableTotalRecordCount: true,
 				CollapseBoxSetItems: groupCollections,
 				ExcludeItemTypes: 'Playlist,Episode,Season,Folder',
-				Fields: 'ProductionYear,ImageTags,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesId,SeriesPrimaryImageTag,UserData'
+				Fields: 'ProductionYear,ImageTags,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesId,SeriesPrimaryImageTag,UserData,OfficialRating'
 			};
 
 			if (libraryId) {
@@ -170,7 +180,15 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 
 			setServerTotalCount(result.TotalRecordCount || 0);
 
-			if (isReset) {
+			let shownItems = newItems;
+			if (compact) {
+				shownItems = withoutBlocked(newItems, parentalFilter);
+				rawFetchedRef.current = startIndex + newItems.length;
+				itemsRef.current = isReset ? shownItems : [...itemsRef.current, ...shownItems];
+				setBlockedCount((prev) => (isReset ? 0 : prev) + newItems.length - shownItems.length);
+				setItems(itemsRef.current);
+				setItemsVersion(v => v + 1);
+			} else if (isReset) {
 				const sparseArray = new Array(result.TotalRecordCount || 0).fill(null);
 				newItems.forEach((item, i) => {
 					sparseArray[startIndex + i] = item;
@@ -188,8 +206,8 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 				setItemsVersion(v => v + 1);
 			}
 
-			if (isReset && newItems.length > 0 && !backdropSetRef.current) {
-				const firstItemWithBackdrop = newItems.find(item => getBackdropId(item));
+			if (isReset && shownItems.length > 0 && !backdropSetRef.current) {
+				const firstItemWithBackdrop = shownItems.find(item => getBackdropId(item));
 				if (firstItemWithBackdrop) {
 					const itemServerUrl = firstItemWithBackdrop._serverUrl || serverUrl;
 					const url = getImageUrl(itemServerUrl, getBackdropId(firstItemWithBackdrop), 'Backdrop', {maxWidth: 1920, quality: 100});
@@ -205,7 +223,7 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 				setIsLoading(false);
 			}
 		}
-	}, [api, genre, libraryId, sortBy, filterType, startLetter, serverUrl, isRangeLoaded, settings.groupItemsIntoCollections]);
+	}, [api, genre, libraryId, sortBy, filterType, startLetter, serverUrl, isRangeLoaded, settings.groupItemsIntoCollections, compact, parentalFilter]);
 
 	useEffect(() => {
 		if (genre) {
@@ -214,6 +232,8 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 			setServerTotalCount(0);
 			itemsRef.current = [];
 			loadedRangesRef.current = [];
+			rawFetchedRef.current = 0;
+			setBlockedCount(0);
 			pendingBatchesRef.current = new Set();
 			currentIndexRef.current = 0;
 			backdropSetRef.current = false;
@@ -315,15 +335,22 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 
 		currentIndexRef.current = index;
 
-		if (!item) {
+		if (!item && compact) {
+			// The one placeholder past the end stands for the rest of the list.
+			const next = rawFetchedRef.current;
+			if (next < serverTotalCount && !pendingBatchesRef.current.has(next)) {
+				loadItems(next, false);
+			}
+		} else if (!item) {
 			const batchStart = Math.floor(index / 100) * 100;
 			if (!isRangeLoaded(batchStart, batchStart + 99) && !pendingBatchesRef.current.has(batchStart)) {
 				loadItems(batchStart, false);
 			}
 		}
 
-		// Periodically unload distant items to free memory (less frequently)
-		if (index % 500 === 0 && pendingBatchesRef.current.size === 0) {
+		// Periodically unload distant items to free memory (less frequently). A compact grid keeps
+		// everything, since it can't load a stretch back by position.
+		if (!compact && index % 500 === 0 && pendingBatchesRef.current.size === 0) {
 			unloadDistantItems(index);
 		}
 
@@ -376,7 +403,7 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 				</div>
 			</SpottableDiv>
 		);
-	}, [serverUrl, handleItemClick, updateBackdrop, loadItems, isRangeLoaded, unloadDistantItems, itemsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [serverUrl, handleItemClick, updateBackdrop, loadItems, isRangeLoaded, unloadDistantItems, itemsVersion, compact, serverTotalCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const currentSort = SORT_OPTIONS.find(o => o.key === sortBy);
 	const currentFilter = FILTER_OPTIONS.find(o => o.key === filterType);
@@ -388,6 +415,8 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 			</div>
 		);
 	}
+
+	const compactHasMore = compact && rawFetchedRef.current < serverTotalCount;
 
 	return (
 		<div className={css.page}>
@@ -414,7 +443,7 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 							{startLetter && ` • ${$L('Starting with "{letter}"').replace('{letter}', startLetter)}`}
 						</div>
 					</div>
-					<div className={css.counter}>{serverTotalCount} {$L('items')}</div>
+					<div className={css.counter}>{Math.max(0, serverTotalCount - blockedCount)} {$L('items')}</div>
 				</div>
 
 				<ToolbarContainer className={css.toolbar} spotlightId="genre-toolbar">
@@ -457,13 +486,13 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 						<div className={css.loading}>
 							<LoadingSpinner />
 						</div>
-					) : items.length === 0 ? (
+					) : items.length === 0 && !compactHasMore ? (
 						<div className={css.empty}>{$L('No items found')}</div>
 					) : (
 						<div className={css.gridWrapper}>
 						<VirtualGridList
 							className={css.grid}
-							dataSize={serverTotalCount}
+							dataSize={compact ? items.length + (compactHasMore ? 1 : 0) : serverTotalCount}
 							itemRenderer={renderItem}
 							itemSize={{minWidth: 180, minHeight: 340}}
 							spacing={20}

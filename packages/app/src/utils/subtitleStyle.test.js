@@ -4,6 +4,9 @@ import {
 	resolveSubtitleStyleSettings,
 	subtitleStyleKey,
 	getSubtitleTextStyle,
+	getSubtitleColorOptions,
+	getSubtitleShadowColorOptions,
+	getSubtitleBackgroundColorOptions,
 	SUBTITLE_STYLE_KEYS
 } from './subtitleConstants';
 
@@ -89,5 +92,38 @@ describe('getSubtitleTextStyle through the resolver', () => {
 		const on = {...settings, subtitleHdrSeparate: true};
 
 		expect(getSubtitleTextStyle(resolveSubtitleStyleSettings(on, true)).fontSize).toBe('52px');
+	});
+});
+
+describe('the subtitle palette', () => {
+	it('offers all fifteen colors for the stroke and the background', () => {
+		expect(getSubtitleShadowColorOptions()).toHaveLength(15);
+		expect(getSubtitleBackgroundColorOptions()).toHaveLength(15);
+	});
+
+	it('leaves Transparent out of the text fill, which would hide the text', () => {
+		const fill = getSubtitleColorOptions();
+		expect(fill).toHaveLength(14);
+		expect(fill.some((option) => option.value === '#00000000')).toBe(false);
+	});
+});
+
+describe('getSubtitleTextStyle colors', () => {
+	it('keeps an opaque color as hex', () => {
+		expect(getSubtitleTextStyle(settings).color).toBe('#ffffff');
+	});
+
+	it('applies the opacity slider as rgba, which older engines can read', () => {
+		expect(getSubtitleTextStyle({...settings, subtitleBackground: 50}).backgroundColor).toBe('rgba(0, 0, 0, 0.5)');
+	});
+
+	it('carries a see-through color\'s own alpha under the slider', () => {
+		const style = getSubtitleTextStyle({...settings, subtitleBackgroundColor: '#ffffff80', subtitleBackground: 100, subtitleColor: '#00000080'});
+		expect(style.backgroundColor).toBe('rgba(255, 255, 255, 0.502)');
+		expect(style.color).toBe('rgba(0, 0, 0, 0.502)');
+	});
+
+	it('draws Transparent as nothing at all', () => {
+		expect(getSubtitleTextStyle({...settings, subtitleBackgroundColor: '#00000000', subtitleBackground: 100}).backgroundColor).toBe('rgba(0, 0, 0, 0)');
 	});
 });
