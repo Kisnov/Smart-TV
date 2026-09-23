@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useReducer, useRef} from 'react';
 import {retainPermitted} from '../../services/libraryScope';
-import {isKidsMode} from '../../utils/kidsMode';
+import {isKidsMode, mergesContinueWatchingNextUp} from '../../utils/kidsMode';
 import {isLiveTvLibrary, librariesForNav} from '../../utils/liveTvLibrary';
 import $L from '@enact/i18n/$L';
 
@@ -16,6 +16,13 @@ import {
 	CACHE_TTL_LIBRARIES, CACHE_TTL_VOLATILE, VOLATILE_REFRESH_COOLDOWN_MS,
 	cancelPendingCacheSave, clearMemoryCache, isCacheValid, loadBrowseCache, memoryCache, saveBrowseCache
 } from './browseCache';
+
+// A row that quietly loses its source looks the same as a server with nothing to offer, so the
+// failure is logged before the row carries on empty.
+const emptyRowAfter = (label, err) => {
+	console.warn(`[Browse] Failed to load ${label}:`, err);
+	return {Items: []};
+};
 
 // Everything the home screen shows and how it gets there. Rows come from three places, the
 // in memory cache, the stored cache and the server, and each one dispatches as it arrives so
@@ -211,6 +218,7 @@ const useBrowseData = ({
 		};
 
 		const loadData = async () => {
+			dispatch({type: 'SET_PENDING_SECTIONS', sections: []});
 			// Recommendation rows are only built by fetchAllData, so treat an enabled one
 			// as dynamic config. Otherwise enabling it shows nothing until the cache expires.
 			const hasEnabledRecommendationRow = homeRowsConfig.some(
@@ -292,10 +300,10 @@ const useBrowseData = ({
 				} else {
 					const results = await Promise.all([
 						api.getLibraries().catch(() => ({Items: []})),
-						api.getResumeItems().catch(() => ({Items: []})),
-						api.getNextUp(24, null, settings.nextUpMaxDays).catch(() => ({Items: []})),
+						api.getResumeItems().catch((err) => emptyRowAfter('resume', err)),
+						api.getNextUp(24, null, settings.nextUpMaxDays).catch((err) => emptyRowAfter('next up', err)),
 						api.getUserConfiguration().catch(() => null),
-						settings.mergeContinueWatchingNextUp ? api.getItems({
+						mergesContinueWatchingNextUp(settings) ? api.getItems({
 							IncludeItemTypes: 'Episode',
 							Filters: 'IsPlayed',
 							Recursive: true,
@@ -473,19 +481,28 @@ const useBrowseData = ({
 					}
 				};
 
+				const loaderContext = buildLoaderContext({
+					api,
+					settings,
+					homeRowsConfig,
+					eligibleLibraries,
+					seerrEnabled,
+					seerrAuthenticated,
+					recommendationsSupported,
+					appendRows
+				});
+				const loaderSections = BROWSE_ROW_LOADERS.map(({sections}) => sections(loaderContext));
+				if (!cancelled) {
+					dispatch({type: 'SET_PENDING_SECTIONS', sections: [].concat(...loaderSections)});
+				}
 				dispatch({type: 'SET_LOADING', value: false});
 				if (!cancelled) {
-					const loaderContext = buildLoaderContext({
-						api,
-						settings,
-						homeRowsConfig,
-						eligibleLibraries,
-						seerrEnabled,
-						seerrAuthenticated,
-						recommendationsSupported,
-						appendRows
+					BROWSE_ROW_LOADERS.forEach(({load}, index) => {
+						const done = () => {
+							if (!cancelled) dispatch({type: 'SECTIONS_DONE', sections: loaderSections[index]});
+						};
+						Promise.resolve(load(loaderContext)).then(done, done);
 					});
-					BROWSE_ROW_LOADERS.forEach((loader) => loader(loaderContext));
 				}
 
 			} catch (err) {
@@ -528,6 +545,7 @@ const useBrowseData = ({
 		settings.pluginSections,
 		settings.mergeRecentRowsByType,
 		settings.mergeContinueWatchingNextUp,
+		settings.kidsModeEnabled,
 		settings.nextUpMaxDays,
 		settings.sinceYouWatchedSource,
 		settings.sinceYouWatchedSourceItem,
@@ -556,6 +574,7 @@ const useBrowseData = ({
 		browseMode: state.browseMode,
 		allRowData: state.allRowData,
 		featuredItems: state.featuredItems,
+		pendingSections: state.pendingSections,
 		setBrowseMode,
 		fetchFreshFeaturedItems,
 		refreshVolatileData

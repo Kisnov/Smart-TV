@@ -79,3 +79,19 @@ describe('browseReducer', () => {
 		expect(browseReducer(browseInitialState, {type: 'NOPE'})).toBe(browseInitialState);
 	});
 });
+
+describe('pending sections', () => {
+	test('a loader finishing clears only the sections it answers for', () => {
+		const pending = browseReducer(browseInitialState, {type: 'SET_PENDING_SECTIONS', sections: ['collections', 'genres', 'rewatch']});
+		const next = browseReducer(pending, {type: 'SECTIONS_DONE', sections: ['genres', 'rewatch']});
+
+		expect(next.pendingSections).toEqual(['collections']);
+	});
+
+	test('nothing changes when there is nothing to clear', () => {
+		const pending = browseReducer(browseInitialState, {type: 'SET_PENDING_SECTIONS', sections: ['collections']});
+
+		expect(browseReducer(pending, {type: 'SECTIONS_DONE', sections: ['genres']})).toBe(pending);
+		expect(browseReducer(browseInitialState, {type: 'SET_PENDING_SECTIONS', sections: []})).toBe(browseInitialState);
+	});
+});

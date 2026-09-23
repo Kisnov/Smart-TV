@@ -8,6 +8,7 @@ import RatingsRow from '../../components/RatingsRow';
 import {KEYS} from '../../utils/keys';
 import useTrailerPreview from './useTrailerPreview';
 import css from './Browse.module.less';
+import {carouselIntervalMs} from '../../utils/carouselTiming';
 
 const FEATURED_GENRES_LIMIT = 3;
 const PRELOAD_ADJACENT_SLIDES = 2;
@@ -97,16 +98,25 @@ const MakdBanner = memo(({
 			carouselIntervalRef.current = null;
 		}
 
-		const carouselSpeed = settings.carouselSpeed || 8000;
-		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed === 0 || trailerActive) return;
+		const carouselSpeed = carouselIntervalMs(
+			settings.autoAdvance,
+			settings.autoAdvanceInterval,
+			settings.carouselSpeed
+		);
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
 
 		carouselIntervalRef.current = setInterval(() => {
 			setCurrentIndex((prev) => (prev + 1) % featuredItems.length);
 		}, carouselSpeed);
-	}, [isVisible, featuredItems.length, featuredFocused, settings.carouselSpeed, trailerActive]);
+	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerActive]);
 
 	useEffect(() => {
-		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || settings.carouselSpeed === 0 || trailerActive) return;
+		const carouselSpeed = carouselIntervalMs(
+			settings.autoAdvance,
+			settings.autoAdvanceInterval,
+			settings.carouselSpeed
+		);
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
 		startCarouselTimer();
 		return () => {
 			if (carouselIntervalRef.current) {
@@ -114,7 +124,7 @@ const MakdBanner = memo(({
 				carouselIntervalRef.current = null;
 			}
 		};
-	}, [isVisible, featuredItems.length, featuredFocused, settings.carouselSpeed, trailerActive, startCarouselTimer]);
+	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerActive, startCarouselTimer]);
 
 	useEffect(() => {
 		return () => {

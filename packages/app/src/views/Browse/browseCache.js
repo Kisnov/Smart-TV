@@ -2,9 +2,12 @@
 // is running, so coming back to Browse is instant. The other is written to storage so a cold
 // start has something to draw before the first request comes back.
 
-import {getFromStorage, saveToStorage} from '../../services/storage';
+import {getFromStorage, removeFromStorage, saveToStorage} from '../../services/storage';
 
-const STORAGE_KEY_BROWSE = 'browse_cache_v4';
+// Bumped whenever a card needs a field the cache used to drop, so rows saved under the old shape
+// are fetched again rather than restored with gaps.
+const STORAGE_KEY_BROWSE = 'browse_cache_v5';
+const STALE_BROWSE_KEYS = ['browse_cache_v4'];
 
 export const CACHE_TTL_VOLATILE = 5 * 60 * 1000;
 export const CACHE_TTL_LIBRARIES = 30 * 60 * 1000;
@@ -59,6 +62,7 @@ const stripItemForCache = (item) => ({
 	BackdropImageTags: item.BackdropImageTags,
 	ProviderIds: item.ProviderIds,
 	UserRating: item.UserRating,
+	OfficialRating: item.OfficialRating,
 	_representative: stripRepresentativeForCache(item._representative),
 	_external: item._external,
 	_externalPosterUrl: item._externalPosterUrl,
@@ -155,6 +159,9 @@ export const saveBrowseCache = (rowData, libraries, featuredItems, {serverUrl, u
 
 // A cache written for a different server or user says nothing about this one.
 export const loadBrowseCache = async (serverUrl, userId) => {
+	STALE_BROWSE_KEYS.forEach((key) => {
+		removeFromStorage(key).catch(() => {});
+	});
 	try {
 		const cached = await getFromStorage(STORAGE_KEY_BROWSE);
 		if (cached && cached.serverUrl === serverUrl && cached.userId === userId) {

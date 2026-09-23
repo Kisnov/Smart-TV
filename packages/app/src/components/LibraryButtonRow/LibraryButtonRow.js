@@ -6,6 +6,7 @@ import {KEYS} from '../../utils/keys';
 import {isGameLibrary} from '../../utils/gameLibrary';
 import {useSettings} from '../../context/SettingsContext';
 import {MATERIAL_ICON_PATHS} from '../../views/Settings/materialIconMap';
+import useItemMenuHold from '../../hooks/useItemMenuHold';
 
 import css from './LibraryButtonRow.module.less';
 
@@ -44,9 +45,12 @@ const iconPathFor = (library) => {
 const LibraryButton = memo(function LibraryButton({item, spotlightId, onSelect, onFocusItem, onSpotlightLeft, onSpotlightRight}) {
 	const handleClick = useCallback(() => onSelect?.(item), [item, onSelect]);
 	const handleFocus = useCallback(() => onFocusItem?.(item), [item, onFocusItem]);
+	const itemAt = useCallback(() => item, [item]);
+	const menuHold = useItemMenuHold(itemAt);
 
 	return (
 		<SpottableDiv
+			{...menuHold}
 			className={css.button}
 			spotlightId={spotlightId}
 			onClick={handleClick}

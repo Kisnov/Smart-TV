@@ -100,6 +100,33 @@ describe('profileToLocal', () => {
 
 		expect(local.mdblistRatingSources).toEqual(['tomatoes_audience', 'imdb']);
 	});
+
+	test('takes the loading animation stored in the profile', () => {
+		const local = profileToLocal({
+			loadingAnimationImage: 'neonfinPhases',
+			loadingAnimationSize: 'large',
+			loadingAnimationPosition: 'bouncing',
+			loadingAnimationSpeed: 'ultra',
+			showLoadingAnimationText: false
+		});
+
+		expect(local.loadingAnimationImage).toBe('neonfinPhases');
+		expect(local.loadingAnimationSize).toBe('large');
+		expect(local.loadingAnimationPosition).toBe('bouncing');
+		expect(local.loadingAnimationSpeed).toBe('ultra');
+		expect(local.showLoadingAnimationText).toBe(false);
+	});
+
+	test('keeps the loading animation it has when the profile names one it has no way to draw', () => {
+		const local = profileToLocal({
+			loadingAnimationImage: 'hourglass',
+			loadingAnimationSize: 'huge',
+			loadingAnimationPosition: 'staticCorner',
+			loadingAnimationSpeed: 'staticCorner'
+		});
+
+		expect(local).toEqual({});
+	});
 });
 
 describe('localToProfile', () => {
@@ -149,6 +176,19 @@ describe('localToProfile', () => {
 
 		expect(profile).toEqual({
 			mdblistRatingSources: ['stars', 'myAnimeList', 'metacriticUser', 'rogerEbert', 'tomatoes_audience']
+		});
+	});
+
+	test('sends the loading animation under the names the other clients read', () => {
+		const keys = ['loadingAnimationImage', 'loadingAnimationSize', 'loadingAnimationPosition', 'loadingAnimationSpeed', 'showLoadingAnimationText'];
+		const profile = localToProfile({...defaultSettings, loadingAnimationImage: 'runner', showLoadingAnimationText: false}, keys);
+
+		expect(profile).toEqual({
+			loadingAnimationImage: 'runner',
+			loadingAnimationSize: 'medium',
+			loadingAnimationPosition: 'middle',
+			loadingAnimationSpeed: 'fast',
+			showLoadingAnimationText: false
 		});
 	});
 

@@ -7,6 +7,7 @@ import {isPaused} from '@enact/spotlight/Pause';
 import {useAuth} from '../../context/AuthContext';
 import {pointerHover} from '../../utils/focusScroll';
 import {isKidsMode} from '../../utils/kidsMode';
+import {withoutBlockedItems} from '../../services/parentalControls';
 import {useSettings} from '../../context/SettingsContext';
 import {useSeerr} from '../../context/SeerrContext';
 import * as connectionPool from '../../services/connectionPool';
@@ -22,6 +23,7 @@ import {isGameLibrary, resolveGameLibraryId} from '../../utils/gameLibrary';
 import {groupSearchResults, aspectClassForType, isCircleType, filterByName, fetchAllGames, filterGames} from '../../utils/searchGroups';
 import SpottableInput from '../../components/SpottableInput/SpottableInput';
 import useStorage from '../../hooks/useStorage';
+import useItemMenuHold from '../../hooks/useItemMenuHold';
 import {
 	initialCardCount,
 	expandedCardCount,
@@ -188,7 +190,8 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 			]);
 			if (requestId !== requestIdRef.current) return;
 
-			const items = [...(libraryResult.Items || []), ...filterByName(channels, q)];
+			// Suggestions come from these results, so this keeps blocked titles out of both.
+			const items = [...withoutBlockedItems(libraryResult.Items || []), ...filterByName(channels, q)];
 			lastResultNamesRef.current = items.map((found) => found.Name).filter(Boolean);
 			setGroups(groupSearchResults(items));
 			setActiveRowIndex(0);
@@ -423,6 +426,14 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 		}
 	}, [onSelectItem, onSelectPerson, onPlayChannel]);
 
+	const jellyfinItemById = useCallback((id) => {
+		for (const group of groups) {
+			const item = group.items.find((i) => i.Id === id);
+			if (item) return item;
+		}
+		return null;
+	}, [groups]);
+
 	// One click handler for every card keeps a stable reference across the grid
 	// instead of a closure per card.
 	const handleCardClick = useCallback((e) => {
@@ -435,13 +446,18 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 			if (item) onSelectSeerrItem?.(item);
 			return;
 		}
-		for (const group of groups) {
-			const item = group.items.find((i) => i.Id === id);
-			if (item) { handleSelectJellyfin(item); return; }
-		}
-	}, [groups, seerrResults, onSelectSeerrItem, handleSelectJellyfin]);
+		const libraryItem = jellyfinItemById(id);
+		if (libraryItem) handleSelectJellyfin(libraryItem);
+	}, [jellyfinItemById, seerrResults, onSelectSeerrItem, handleSelectJellyfin]);
 
 	const handleGameSelect = useCallback((game) => onSelectGame?.(game._library, game), [onSelectGame]);
+
+	// Holding OK on a library result opens its menu. A Seerr or game result has none.
+	const itemAtCard = useCallback((target) => {
+		const card = target.closest('[data-kind]');
+		return card && card.getAttribute('data-kind') === 'jellyfin' ? jellyfinItemById(card.getAttribute('data-id')) : null;
+	}, [jellyfinItemById]);
+	const menuHold = useItemMenuHold(itemAtCard);
 
 	const renderJellyfinCard = useCallback((item, spotlightId) => {
 		const {aspect, card, img} = cardSizeClass(item.Type);
@@ -538,7 +554,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 	const renderContent = () => {
 		if (activeTab === 'all') {
 			return (
-				<div className={css.resultsContainer}>
+				<div className={css.resultsContainer} {...menuHold}>
 					{allRows.map((row, rowIndex) => {
 						const mounted = shouldMountSearchRow(rowIndex, activeRowIndex);
 						const visibleCount = mounted ? visibleCardCounts[row.id] || initialCardCount(row.items.length) : 0;
@@ -579,7 +595,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 		}
 		if (!gridConfig) return null;
 		return (
-			<GridContainer className={css.gridWrapper} spotlightId="search-grid">
+			<GridContainer className={css.gridWrapper} spotlightId="search-grid" {...menuHold}>
 				<div className={css.grid}>
 					{gridConfig.items.map((item, idx) => renderCard(gridConfig.kind, item, `grid-item-${idx}`))}
 				</div>

@@ -1,52 +1,41 @@
 import {useState, useEffect} from 'react';
 import {api as jellyfinApi, createApiForServer} from '../../services/jellyfinApi';
+import {programAiringAt} from '../../utils/liveTvGuide';
 
-// Fetches the program currently airing on a live channel so the OSD can show its
-// name and progress, then refetches shortly after that program ends. Errors and
-// channels without guide data just leave the OSD without a program line.
+const MINUTE = 60000;
+
+// The program airing on a live channel, for the OSD's name, episode line and progress, checked
+// every minute. When nothing covers now, the earliest program in the fetch stands in. A failed
+// or empty fetch leaves whatever was showing.
 const useLiveProgram = (item, isLiveTV) => {
 	const [program, setProgram] = useState(null);
 
 	useEffect(() => {
-		if (!isLiveTV || !item?.Id) {
-			setProgram(null);
-			return;
-		}
+		setProgram(null);
+		if (!isLiveTV || !item?.Id) return undefined;
 
 		let cancelled = false;
-		let timer = null;
-
 		const apiClient = item._serverUrl
 			? createApiForServer(item._serverUrl, item._serverAccessToken, item._serverUserId)
 			: jellyfinApi;
 
 		const load = async () => {
-			let current = null;
 			try {
-				const now = new Date();
-				const result = await apiClient.getLiveTvPrograms([item.Id], now, now);
-				const t = Date.now();
-				current = (result.Items || []).find(p => {
-					const start = new Date(p.StartDate).getTime();
-					const end = new Date(p.EndDate).getTime();
-					return t >= start && t < end;
-				}) || null;
+				const now = Date.now();
+				const result = await apiClient.getLiveTvPrograms([item.Id], new Date(now - 30 * MINUTE), new Date(now + 180 * MINUTE));
+				const programs = (result?.Items || []).filter((p) => p.StartDate && p.EndDate);
+				if (cancelled || !programs.length) return;
+				setProgram(programAiringAt(programs, Date.now()) || programs[0]);
 			} catch {
-				current = null;
+				// The OSD keeps the program it had.
 			}
-			if (cancelled) return;
-			setProgram(current);
-			// A little past the end so the server has rolled over to the next program.
-			const delay = current
-				? Math.max(30000, new Date(current.EndDate).getTime() - Date.now() + 5000)
-				: 300000;
-			timer = setTimeout(load, delay);
 		};
 
 		load();
+		const timer = setInterval(load, MINUTE);
 		return () => {
 			cancelled = true;
-			if (timer) clearTimeout(timer);
+			clearInterval(timer);
 		};
 	}, [item, isLiveTV]);
 

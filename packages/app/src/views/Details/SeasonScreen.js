@@ -1,3 +1,4 @@
+import {useCallback} from 'react';
 import $L from '@enact/i18n/$L';
 
 import RatingsRow from '../../components/RatingsRow';
@@ -9,8 +10,16 @@ import {SpottableDiv, HorizontalContainer} from './detailsSpottables';
 import {handleSeasonButtonKeyDown} from './detailsFocus';
 import {PosterBadges, WatchedCheckIcon, FavoriteHeartIcon} from './DetailBadges';
 import {AnimeEpisodePills} from '../../components/AnimeMarkerPills';
+import useItemMenuHold, {itemWithIdAt} from '../../hooks/useItemMenuHold';
 
 import css from './Details.module.less';
+
+// Holding OK on an episode opens its menu.
+const EpisodeList = ({episodes, children}) => {
+	const episodeAt = useCallback((target) => itemWithIdAt(episodes, 'data-episode-id', target), [episodes]);
+	const menuHold = useItemMenuHold(episodeAt);
+	return <div className={css.seasonEpisodesList} {...menuHold}>{children}</div>;
+};
 
 const SeasonScreen = ({
 	item,
@@ -88,7 +97,7 @@ const SeasonScreen = ({
 			</HorizontalContainer>
 		)}
 
-		<div className={css.seasonEpisodesList}>
+		<EpisodeList episodes={episodes}>
 			{episodes.map(ep => {
 				const epThumbUrl = ep.ImageTags?.Primary
 					? getImageUrl(serverUrl, ep.Id, 'Primary', {maxWidth: 400, quality: 80})
@@ -143,7 +152,7 @@ const SeasonScreen = ({
 					</SpottableDiv>
 				);
 			})}
-		</div>
+		</EpisodeList>
 	</>
 );
 

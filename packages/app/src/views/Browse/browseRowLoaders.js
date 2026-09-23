@@ -3,6 +3,7 @@
 
 import $L from '@enact/i18n/$L';
 import {scopedGetItems} from '../../services/libraryScope';
+import {withoutBlockedItems} from '../../services/parentalControls';
 import {genericCollectionLabel, mergeRecentRows} from '../../utils/mergeRecentRows';
 import {latestMediaFetchLimitForCollection, normalizeLatestMediaItems} from '../../utils/latestMediaRowNormalizer';
 
@@ -75,7 +76,9 @@ const expandSeriesToEpisodes = async (api, items, limit) => {
 				Fields: HOME_ROW_ITEM_FIELDS
 			});
 			const episodes = result?.Items || [];
-			return episodes.length ? episodes : [item];
+			if (!episodes.length) return [item];
+			// Not a fallback to the series card, or a blocked series would come back as one.
+			return withoutBlockedItems(episodes, item.OfficialRating);
 		} catch (_error) {
 			return [item];
 		}
@@ -670,13 +673,21 @@ const loadPluginsAndRecos = async (ctx) => {
 	}
 };
 // Fired together rather than in sequence: their requests queue on the media server anyway, so
-// holding the later ones back would only delay those rows without easing the load.
+// holding the later ones back would only delay those rows without easing the load. Each names
+// the home sections it answers for, so a section still waiting on its loader can hold its place.
 export const BROWSE_ROW_LOADERS = [
-	loadLatestAndRecentlyReleased,
-	loadCollections,
-	loadStudios,
-	loadFavorites,
-	loadGenres,
-	loadPlaylistsAndMusic,
-	loadPluginsAndRecos
+	{load: loadLatestAndRecentlyReleased, sections: () => ['latest-media', 'recently-released']},
+	{load: loadCollections, sections: () => ['collections']},
+	{load: loadStudios, sections: () => ['studios']},
+	{load: loadFavorites, sections: () => FAVORITE_ROW_CONFIGS.map((row) => row.id)},
+	{load: loadGenres, sections: () => ['genres']},
+	{load: loadPlaylistsAndMusic, sections: () => ['playlists', 'audioartists', 'audioalbums', 'audioplaylists', 'resumeaudio', 'activerecordings']},
+	{
+		load: loadPluginsAndRecos,
+		sections: (ctx) => [
+			...ctx.enabledPluginSections.map((section) => section.id),
+			...ctx.sinceYouWatchedIndexes.map((index) => `sinceyouwatched${index}`),
+			'rewatch'
+		]
+	}
 ];

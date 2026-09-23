@@ -20,6 +20,9 @@ import {
 	getHomeRowSortOptions, getPlaylistCollectionSortOptions,
 	getHomeRowsStyleOptions,
 	getImageTypeOptions,
+	getLoadingAnimationImageOptions,
+	getLoadingAnimationPositionOptions,
+	getLoadingAnimationSpeedOptions,
 	getMaxAudioChannelsOptions,
 	getMaxResolutionOptions,
 	getMediaSegmentActionOptions,
@@ -122,6 +125,7 @@ const whenScreensaver = (ctx) => ctx.settings.screensaverEnabled;
 const whenScreensaverLibrary = (ctx) => ctx.settings.screensaverEnabled && ctx.settings.screensaverBackdrop === 'library';
 const whenScreensaverComponent = (ctx) => ctx.settings.screensaverEnabled && ctx.settings.screensaverComponent !== 'none';
 const whenScreensaverStatic = (ctx) => whenScreensaverComponent(ctx) && ctx.settings.screensaverMovement === 'staticCorner';
+const whenLoadingAnimation = (ctx) => ctx.settings.loadingAnimationImage !== 'none';
 const whenPassthrough = (ctx) => ctx.settings.audioPassthroughMode === 'manual';
 const whenSyncCorrection = (ctx) => ctx.settings.syncPlayAdvancedCorrectionEnabled !== false;
 
@@ -180,14 +184,9 @@ export const SETTINGS_SCHEMA = [
 					{
 						kind: KIND.NAV,
 						id: 'parentalControls',
-						label: () => $L('Parental Controls'),
-						desc: (ctx) => {
-							const count = Array.isArray(ctx.settings.blockedRatings) ? ctx.settings.blockedRatings.length : 0;
-							return count > 0
-								? $L('{count} ratings blocked').replace('{count}', String(count))
-								: $L('Block content by age rating');
-						},
-						icon: 'shield',
+						label: () => $L('Blocked Ratings'),
+						desc: () => $L('Content rating restrictions'),
+						icon: 'family_restroom',
 						action: (ctx) => ctx.actions.openParentalControls()
 					},
 					{kind: KIND.TOGGLE, key: 'exitConfirmation', label: () => $L('Confirm Exit'), desc: () => $L('Show confirmation before exiting'), icon: 'exit'},
@@ -517,6 +516,23 @@ export const SETTINGS_SCHEMA = [
 				]
 			},
 			{
+				id: 'loadingAnimation',
+				icon: 'motion_photos_on',
+				section: () => $L('Extras'),
+				label: () => $L('Loading Animation'),
+				description: () => $L('Customize the loading animations used throughout Moonfin'),
+				keywords: () => ['spinner', 'runner', 'moon', 'logo', 'loading'],
+				rows: [
+					{kind: KIND.SECTION, id: 'loadingAnimationConfiguration', label: () => $L('Loading Animation Configuration')},
+					{kind: KIND.OPTION, key: 'loadingAnimationImage', label: () => $L('Image'), options: getLoadingAnimationImageOptions, fallback: () => $L('Moonfin Logo'), icon: 'movie_filter'},
+					{kind: KIND.CUSTOM, id: 'loadingAnimationPreview', render: 'loadingAnimationPreview', when: whenLoadingAnimation},
+					{kind: KIND.OPTION, key: 'loadingAnimationSize', label: () => $L('Animation Size'), options: getScreensaverSizeOptions, fallback: () => $L('Medium'), icon: 'photo', when: whenLoadingAnimation},
+					{kind: KIND.OPTION, key: 'loadingAnimationPosition', label: () => $L('Animation Position'), options: getLoadingAnimationPositionOptions, fallback: () => $L('Middle'), icon: 'grid_view', when: whenLoadingAnimation},
+					{kind: KIND.OPTION, key: 'loadingAnimationSpeed', label: () => $L('Animation Speed'), options: getLoadingAnimationSpeedOptions, fallback: () => $L('Fast'), icon: 'speed', when: whenLoadingAnimation},
+					{kind: KIND.TOGGLE, key: 'showLoadingAnimationText', label: () => $L('Show Text?'), icon: 'text_fields', when: whenLoadingAnimation}
+				]
+			},
+			{
 				id: 'localPreviews',
 				icon: 'preview',
 				section: () => $L('Extras'),
@@ -574,11 +590,13 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.NAV, id: 'progressBarTime', label: () => $L('Progress Bar Time'), desc: () => $L('Choose which time labels appear around the playback progress bar.'), icon: 'timer', action: (ctx) => ctx.actions.openScreen('playbackSyncPlay', 'playbackTime', 'setting-progressBarTime')},
 					{kind: KIND.OPTION, key: 'playerZoomMode', label: () => $L('Player Zoom Mode'), desc: () => $L('How video that does not match the screen shape is displayed'), options: getZoomModeOptions, fallback: () => $L('Fit'), icon: 'crop'},
 					{kind: KIND.TOGGLE, key: 'trickPlayEnabled', label: () => $L('Trick Play'), desc: () => $L('Show preview thumbnails when seeking'), icon: 'imagesearch'},
+					{kind: KIND.TOGGLE, key: 'trickPlayPauseWhileScrubbing', label: () => $L('Pause While Scrubbing'), desc: () => $L('Playback pauses while you seek and resumes when you press play. Turn this off to keep playing and jump straight to the new spot'), icon: 'pausecircle', when: (ctx) => ctx.settings.trickPlayEnabled !== false},
 					{kind: KIND.OPTION, key: 'resumeSubtractDuration', label: () => $L('Resume Rewind'), desc: () => $L('Rewind a little when resuming partially watched media'), options: getResumeRewindOptions, fallback: () => $L('Disabled'), icon: 'replay'},
 					{kind: KIND.SLIDER, key: 'unpauseRewind', label: () => $L('Unpause Rewind'), desc: () => $L('When resuming playback after pressing the pause button, how many seconds should be rewound?'), min: 0, max: 30, step: 5, format: (v) => (v === 0 ? $L('Off') : `${v}s`), icon: 'autoplay'},
 					{kind: KIND.OPTION, key: 'seekStep', label: () => $L('Seek Step'), desc: () => $L('How far each press moves while scrubbing the progress bar'), options: getSeekStepOptions, fallback: () => $L('10 seconds'), icon: 'skip'},
 					{kind: KIND.OPTION, key: 'skipBackLength', label: () => $L('Skip Back Length'), desc: () => $L('How far the rewind button jumps'), options: getSkipLengthOptions, fallback: () => $L('10 seconds'), icon: 'rewind'},
 					{kind: KIND.OPTION, key: 'skipForwardLength', label: () => $L('Skip Forward Length'), desc: () => $L('How far the fast forward button jumps'), options: getSkipLengthOptions, fallback: () => $L('30 seconds'), icon: 'fifteenforward'},
+					{kind: KIND.TOGGLE, key: 'showChapterMarkers', label: () => $L('Chapter Marks'), desc: () => $L('Mark where each chapter starts on the seek bar'), icon: 'straighten'},
 					{kind: KIND.NAV, id: 'osdButtons', label: () => $L('Player Buttons'), desc: () => $L('Choose which buttons the player shows'), icon: 'tune', action: (ctx) => ctx.actions.openOsdButtons()},
 					{kind: KIND.SECTION, id: 'decodingRendering', label: () => $L('Decoding & Rendering')},
 					{kind: KIND.TOGGLE, key: 'preferTranscode', label: () => $L('Prefer Transcoding'), desc: () => $L('Request transcoded streams when available'), icon: 'gear'},
@@ -594,7 +612,7 @@ export const SETTINGS_SCHEMA = [
 				menu: false,
 				label: () => $L('Progress Bar Time'),
 				description: () => $L('Choose which time labels appear around the playback progress bar.'),
-				keywords: () => [$L('Ends at'), $L('Time remaining'), $L('Time elapsed'), $L('Total duration'), $L('Clock')],
+				keywords: () => [$L('Ends at'), $L('Time remaining'), $L('Time elapsed'), $L('Total duration'), $L('Current Time'), $L('Clock')],
 				rows: [
 					{kind: KIND.SECTION, id: 'playbackTimeVideo', label: () => $L('Video Player')},
 					{kind: KIND.CUSTOM, id: 'playbackTimePreview', render: 'playbackTimePreview'},
@@ -683,7 +701,7 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.OPTION, key: 'subtitlePositionHdr', label: () => $L('Subtitle Position'), options: getSubtitlePositionOptions, fallback: () => $L('Bottom'), icon: 'arrowlargedown', when: whenHdrSubtitles},
 					{kind: KIND.SLIDER, key: 'subtitlePositionAbsoluteHdr', label: () => $L('Absolute Position'), min: 0, max: 100, step: 5, format: percent, icon: 'vertical_align_bottom', when: (ctx) => whenHdrSubtitles(ctx) && ctx.settings.subtitlePositionHdr === 'absolute'},
 					{kind: KIND.SLIDER, key: 'subtitleOpacityHdr', label: () => $L('Text Opacity'), min: 0, max: 100, step: 5, format: percent, icon: 'opacity', when: whenHdrSubtitles},
-					{kind: KIND.OPTION, key: 'subtitleColorHdr', label: () => $L('Text Fill Color'), options: getSubtitleColorOptions, fallback: () => $L('Grey'), icon: 'format_color_text', when: whenHdrSubtitles},
+					{kind: KIND.OPTION, key: 'subtitleColorHdr', label: () => $L('Text Fill Color'), options: getSubtitleColorOptions, fallback: () => $L('Gray'), icon: 'format_color_text', when: whenHdrSubtitles},
 					{kind: KIND.DIVIDER, id: 'hdrShadow', when: whenHdrSubtitles},
 					{kind: KIND.OPTION, key: 'subtitleShadowColorHdr', label: () => $L('Shadow Color'), options: getSubtitleShadowColorOptions, fallback: () => $L('Black'), icon: 'edit', when: whenHdrSubtitles},
 					{kind: KIND.SLIDER, key: 'subtitleShadowOpacityHdr', label: () => $L('Shadow Opacity'), min: 0, max: 100, step: 5, format: percent, icon: 'opacity', when: whenHdrSubtitles},

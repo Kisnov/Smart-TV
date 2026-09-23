@@ -9,6 +9,12 @@ import {getAvailableThemeList, getAvailableThemes, isBuiltInThemeId, registerSto
 import {applyOledMode} from '../utils/oledMode';
 import {normalizeRatingSources, ratingSourcesToServer} from '../utils/ratingSources';
 import {
+	IMAGES as LOADING_IMAGES,
+	POSITIONS as LOADING_POSITIONS,
+	SIZES as LOADING_SIZES,
+	SPEEDS as LOADING_SPEEDS
+} from '../components/LoadingAnimation/loadingAnimationLayout';
+import {
 	DEFAULT_HOME_ROWS,
 	SERVER_TO_TV_ROW,
 	TV_TO_SERVER_ROW,
@@ -114,6 +120,9 @@ const MIN_INTERVAL_MS = 100;
 const secondsToMs = (v) => (typeof v === 'number' ? Math.round(v * 1000) : undefined);
 const msToSeconds = (v) => (typeof v === 'number' ? Math.round(v / 1000) : undefined);
 
+// A choice this app doesn't offer is left out, so the one already picked stays.
+const oneOf = (values) => ({fromServer: v => (values.includes(v) ? v : undefined)});
+
 const VALUE_CONVERSIONS = {
 	clockDisplay: {
 		toServer: v => v === '24-hour',
@@ -145,6 +154,13 @@ const VALUE_CONVERSIONS = {
 	mediaBarSourceType: {
 		fromServer: v => (v === 'library' || v === 'collection' ? v : undefined)
 	},
+	liveTvChannelSortBy: {
+		fromServer: v => (['number', 'name', 'favoritesFirst'].includes(v) ? v : undefined)
+	},
+	loadingAnimationImage: oneOf(LOADING_IMAGES),
+	loadingAnimationSize: oneOf(LOADING_SIZES),
+	loadingAnimationPosition: oneOf(LOADING_POSITIONS),
+	loadingAnimationSpeed: oneOf(LOADING_SPEEDS),
 	screensaverContentType: {
 		toServer: v => CONTENT_TYPE_TO_SERVER[v],
 		fromServer: v => CONTENT_TYPE_FROM_SERVER[v]
@@ -230,7 +246,7 @@ export const SYNCABLE_KEYS = [
 	// client stores, so they need no conversion on the way to the server.
 	'playbackTimeAboveLeft', 'playbackTimeAboveCenter', 'playbackTimeAboveRight',
 	'playbackTimeBelowLeft', 'playbackTimeBelowCenter', 'playbackTimeBelowRight',
-	'musicPlaybackTimeDisplay',
+	'musicPlaybackTimeDisplay', 'liveTvChannelSortBy',
 	'autoPlay', 'nextUpBehavior', 'nextUpTimeout', 'nextUpCountdownStyle',
 	'replaceSkipOutroWithNextUp',
 	'backdropBlurHome', 'backdropBlurDetail',
@@ -248,12 +264,12 @@ export const SYNCABLE_KEYS = [
 	'audioLanguage', 'fallbackAudioLanguage', 'preferDefaultAudioTrack', 'preferAudioDescription',
 	'subtitleLanguage', 'fallbackSubtitleLanguage', 'preferSdhSubtitles', 'subtitleMode',
 	'assDirectPlay',
-	'resumeSubtractDuration', 'unpauseRewind', 'skipBackLength', 'skipForwardLength',
+	'resumeSubtractDuration', 'unpauseRewind', 'skipBackLength', 'skipForwardLength', 'showChapterMarkers',
 	'maxVideoResolution', 'playerZoomMode', 'mediaSegmentAutoHide',
 	'exitConfirmation',
 	'diagnosticLoggingEnabled',
 	'uiLanguage',
-	'blockedRatings',
+	// blockedRatings is left out on purpose, since it's kept per server and user and never syncs.
 	'mergeRadarrSonarrCalendars',
 	'radarrCalendarShowCinema', 'radarrCalendarShowDigital', 'radarrCalendarShowPhysical',
 	'radarrCalendarShowDate', 'sonarrCalendarShowDate', 'sonarrCalendarShowEpisodeInfo',
@@ -263,6 +279,8 @@ export const SYNCABLE_KEYS = [
 	'screensaverBackdrop', 'screensaverComponent', 'screensaverMovement',
 	'screensaverPosition', 'screensaverSize', 'screensaverContentType',
 	'screensaverLibraryIds', 'screensaverCollectionIds', 'screensaverExcludedGenres',
+	'loadingAnimationImage', 'loadingAnimationSize', 'loadingAnimationPosition', 'loadingAnimationSpeed',
+	'showLoadingAnimationText',
 	'navbarAlwaysExpanded', 'oledMode', 'themeMusicLoop',
 	// Settings this app has no screen for. They ride along so a value set on another client
 	// survives the profile the TV writes back.

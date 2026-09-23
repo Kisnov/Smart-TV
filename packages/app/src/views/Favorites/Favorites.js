@@ -8,6 +8,7 @@ import useQuickReturnGrid from '../../hooks/useQuickReturnGrid';
 import {useAuth} from '../../context/AuthContext';
 import {useSettings} from '../../context/SettingsContext';
 import * as connectionPool from '../../services/connectionPool';
+import {withoutBlockedItems} from '../../services/parentalControls';
 import BackdropLayer from '../../components/BackdropLayer';
 import DetailsTabBar from '../../components/DetailsTabBar';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -16,6 +17,8 @@ import {showsWatchedCheck} from '../../utils/playedState';
 import {useStorage} from '../../hooks/useStorage';
 import useSortSettingsPanels from '../../hooks/useSortSettingsPanels';
 import useStartLetter from '../../hooks/useStartLetter';
+import {useUserDataList} from '../../hooks/useUserDataSync';
+import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
 import {GRID_DIRECTIONS, IMAGE_SIZES, IMAGE_TYPES, LETTERS, capitalize, createGridKeyDown, createToolbarKeyDown, cycleValue, stopPropagation} from '../../utils/gridChrome';
 import {keepFocusInView} from '../../utils/focusScroll';
 
@@ -142,7 +145,9 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 		? (activeTab?.cardType || 'portrait')
 		: (imageType === 'thumbnail' ? 'landscape' : 'portrait');
 
-	const displayItems = isHome ? (activeTab ? itemsByKey[activeTab.key] || [] : []) : items;
+	// Something here can be played or unfavorited while the screen is up, on this set or another
+	// one, so the cards draw from the items with what's known now laid over them.
+	const displayItems = useUserDataList(isHome ? (activeTab ? itemsByKey[activeTab.key] || [] : []) : items);
 	const displayTotal = isHome ? tabsTotalCount : totalCount;
 	const displayLoading = isHome ? tabsLoading : isLoading;
 
@@ -150,6 +155,10 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 	// over it, so switching tabs cant rebuild them and drop the focus.
 	const itemsRef = useRef(displayItems);
 	itemsRef.current = displayItems;
+
+	// Holding OK on a card opens its menu, found from the card the press landed on.
+	const itemAtCard = useCallback((target) => itemsRef.current[cardIndexOf(target)] || null, []);
+	const menuHold = useItemMenuHold(itemAtCard);
 
 	const activeKeyRef = useRef(null);
 	activeKeyRef.current = activeTab?.key || null;
@@ -203,11 +212,13 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 				};
 
 				const result = await api.getItems(params);
-				const newItems = result.Items || [];
+				const fetched = result.Items || [];
+				const newItems = withoutBlockedItems(fetched);
 
+				// Paged by what the server sent, since a page thinned by the filter would rewind it.
 				apiFetchIndexRef.current = append
-					? apiFetchIndexRef.current + newItems.length
-					: newItems.length;
+					? apiFetchIndexRef.current + fetched.length
+					: fetched.length;
 				setAllItems(prev => append ? [...prev, ...newItems] : newItems);
 				setTotalCount(result.TotalRecordCount || 0);
 			}
@@ -505,7 +516,7 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 					) : displayItems.length === 0 ? (
 						<div className={css.empty}>{emptyText}</div>
 					) : (
-						<div className={css.gridWrapper}>
+						<div className={css.gridWrapper} {...menuHold}>
 							<VirtualGridList
 								className={css.grid}
 								cbScrollTo={captureGridScrollTo}

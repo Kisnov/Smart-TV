@@ -7,12 +7,15 @@ import {resolveItemsByProviderIds} from '../../services/jellyfinApi';
 // Home rows built from TMDB and IMDb charts, lists the viewer pasted a URL for, and the
 // Radarr and Sonarr calendars. Items arrive as provider ids, so every row is resolved against
 // the local library first: what the server owns becomes playable, the rest falls back to Seerr.
+// The rows still on their way come back as [pending], so they can hold their place.
 const useExternalRows = ({settings, homeRows, kidsMode}) => {
 	const [externalRows, setExternalRows] = useState([]);
+	const [pending, setPending] = useState([]);
 
 	useEffect(() => {
 		if (!settings.useMoonfinPlugin) {
 			setExternalRows([]);
+			setPending([]);
 			return undefined;
 		}
 		// The rows arrive already filtered, and the pasted list rows go the way the plugin rows do,
@@ -25,11 +28,23 @@ const useExternalRows = ({settings, homeRows, kidsMode}) => {
 		const calendarsEnabled = radarrEnabled || sonarrEnabled;
 		if (enabledPresets.length === 0 && customRows.length === 0 && !calendarsEnabled) {
 			setExternalRows([]);
+			setPending([]);
 			return undefined;
 		}
 
 		let cancelled = false;
 		const presetConfigs = getExternalHomeRowConfigs();
+		const mergedCalendars = radarrEnabled && sonarrEnabled && settings.mergeRadarrSonarrCalendars;
+		setPending([
+			...enabledPresets
+				.map((id) => presetConfigs.find((c) => c.id === id))
+				.filter(Boolean)
+				.map((cfg) => ({id: cfg.id, title: cfg.title})),
+			...customRows.map((row) => ({id: `external-${row.id}`, title: row.name || row.title || $L('Custom'), isCustomRow: true})),
+			...(mergedCalendars ? [{id: 'radarr_calendar', title: $L('Upcoming Releases'), isCalendarMerged: true}] : []),
+			...(radarrEnabled && !mergedCalendars ? [{id: 'radarr_calendar', title: $L('Upcoming Movies')}] : []),
+			...(sonarrEnabled && !mergedCalendars ? [{id: 'sonarr_calendar', title: $L('Upcoming Episodes')}] : [])
+		]);
 
 		(async () => {
 			try {
@@ -106,6 +121,7 @@ const useExternalRows = ({settings, homeRows, kidsMode}) => {
 			} catch (err) {
 				console.warn('[Browse] Failed to fetch and resolve external rows:', err);
 			}
+			if (!cancelled) setPending([]);
 		})();
 
 		return () => {
@@ -116,7 +132,7 @@ const useExternalRows = ({settings, homeRows, kidsMode}) => {
 		settings.radarrCalendarShowCinema, settings.radarrCalendarShowDigital, settings.radarrCalendarShowPhysical,
 		settings.radarrCalendarShowDate, settings.sonarrCalendarShowDate, settings.sonarrCalendarShowEpisodeInfo]);
 
-	return externalRows;
+	return {rows: externalRows, pending};
 };
 
 export default useExternalRows;
