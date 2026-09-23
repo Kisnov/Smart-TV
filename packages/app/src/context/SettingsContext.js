@@ -144,6 +144,9 @@ const VALUE_CONVERSIONS = {
 	mediaBarSourceType: {
 		fromServer: v => (v === 'library' || v === 'collection' ? v : undefined)
 	},
+	liveTvChannelSortBy: {
+		fromServer: v => (['number', 'name', 'favoritesFirst'].includes(v) ? v : undefined)
+	},
 	screensaverContentType: {
 		toServer: v => CONTENT_TYPE_TO_SERVER[v],
 		fromServer: v => CONTENT_TYPE_FROM_SERVER[v]
@@ -223,7 +226,7 @@ export const SYNCABLE_KEYS = [
 	// client stores, so they need no conversion on the way to the server.
 	'playbackTimeAboveLeft', 'playbackTimeAboveCenter', 'playbackTimeAboveRight',
 	'playbackTimeBelowLeft', 'playbackTimeBelowCenter', 'playbackTimeBelowRight',
-	'musicPlaybackTimeDisplay',
+	'musicPlaybackTimeDisplay', 'liveTvChannelSortBy',
 	'autoPlay', 'nextUpBehavior', 'nextUpTimeout', 'nextUpCountdownStyle',
 	'replaceSkipOutroWithNextUp',
 	'backdropBlurHome', 'backdropBlurDetail',
@@ -241,12 +244,12 @@ export const SYNCABLE_KEYS = [
 	'audioLanguage', 'fallbackAudioLanguage', 'preferDefaultAudioTrack', 'preferAudioDescription',
 	'subtitleLanguage', 'fallbackSubtitleLanguage', 'preferSdhSubtitles', 'subtitleMode',
 	'assDirectPlay',
-	'resumeSubtractDuration', 'unpauseRewind', 'skipBackLength', 'skipForwardLength',
+	'resumeSubtractDuration', 'unpauseRewind', 'skipBackLength', 'skipForwardLength', 'showChapterMarkers',
 	'maxVideoResolution', 'playerZoomMode', 'mediaSegmentAutoHide',
 	'exitConfirmation',
 	'diagnosticLoggingEnabled',
 	'uiLanguage',
-	'blockedRatings',
+	// blockedRatings is left out on purpose, since it's kept per server and user and never syncs.
 	'mergeRadarrSonarrCalendars',
 	'radarrCalendarShowCinema', 'radarrCalendarShowDigital', 'radarrCalendarShowPhysical',
 	'radarrCalendarShowDate', 'sonarrCalendarShowDate', 'sonarrCalendarShowEpisodeInfo',

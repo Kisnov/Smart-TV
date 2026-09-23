@@ -5,6 +5,7 @@
 import $L from '@enact/i18n/$L';
 import {isKidsMode} from '../../utils/kidsMode';
 import {isLiveTvLibrary} from '../../utils/liveTvLibrary';
+import {withoutBlocked} from '../../utils/parentalFilter';
 
 import {SERVER_TO_TV_ROW, TV_TO_SERVER_ROW} from '../../utils/homeLayout';
 import {FAVORITE_ROW_CONFIGS, isHiddenByMap, parseHiddenMap} from './browseFilters';
@@ -175,19 +176,15 @@ const orderRows = (rows, rowOrderMap) => {
 		.map((entry) => entry.row);
 };
 
-// Parental controls. Items carrying a blocked rating drop out of every row, and
-// unrated items pass through the way the other clients let them.
-const filterBlockedRatings = (rows, blockedRatings) => {
-	if (!Array.isArray(blockedRatings) || blockedRatings.length === 0) return rows;
-	const blocked = new Set(blockedRatings.map((rating) => String(rating).trim().toUpperCase()));
+// Unrated items always pass, since a server that rates nothing can't be told apart from one that
+// just didn't rate this item.
+const filterBlockedRatings = (rows, parentalFilter) => {
+	if (!parentalFilter?.isActive) return rows;
 	return rows
 		.map((row) => {
 			if (!Array.isArray(row.items)) return row;
-			const items = row.items.filter((item) => {
-				const rating = typeof item.OfficialRating === 'string' ? item.OfficialRating.trim().toUpperCase() : '';
-				return !rating || !blocked.has(rating);
-			});
-			return items.length === row.items.length ? row : {...row, items};
+			const items = withoutBlocked(row.items, parentalFilter);
+			return items === row.items ? row : {...row, items};
 		})
 		.filter((row) => !Array.isArray(row.items) || row.items.length > 0);
 };
@@ -245,7 +242,7 @@ export const buildBrowseRows = ({allRowData, seerrRows, externalRows, homeRowsCo
 	};
 
 	return orderRows(
-		filterBlockedRatings([...result, ...seerrRows, ...externalRows].map(withSubtitles), settings.blockedRatings),
+		filterBlockedRatings([...result, ...seerrRows, ...externalRows].map(withSubtitles), settings.parentalFilter),
 		rowOrderMap
 	);
 };

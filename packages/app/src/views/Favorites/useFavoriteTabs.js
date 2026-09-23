@@ -3,6 +3,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 
 import * as connectionPool from '../../services/connectionPool';
+import {withoutBlockedItems} from '../../services/parentalControls';
 
 import {FAVORITE_TABS, FAVORITE_TAB_FIELDS, FAVORITE_TAB_PAGE_SIZE, FAVORITE_TAB_TYPES, bucketByTab, visibleTabs} from './favoriteTabs';
 
@@ -27,8 +28,9 @@ const useFavoriteTabs = ({api, sortBy, sortOrder, unifiedMode, enabled = true}) 
 	// so a stale response is thrown away rather than landing on top of the new list.
 	const loadIdRef = useRef(0);
 	const pagingRef = useRef({});
-	const itemsRef = useRef(itemsByKey);
-	itemsRef.current = itemsByKey;
+	// How far into each tab the server has been read. Paging from what's on screen instead would
+	// ask again for rows the ratings filter dropped.
+	const fetchedRef = useRef({});
 	const countsRef = useRef(countsByKey);
 	countsRef.current = countsByKey;
 
@@ -38,6 +40,7 @@ const useFavoriteTabs = ({api, sortBy, sortOrder, unifiedMode, enabled = true}) 
 		const loadId = ++loadIdRef.current;
 		let cancelled = false;
 		pagingRef.current = {};
+		fetchedRef.current = {};
 		setIsLoading(true);
 
 		const run = async () => {
@@ -82,8 +85,10 @@ const useFavoriteTabs = ({api, sortBy, sortOrder, unifiedMode, enabled = true}) 
 				const counts = emptyCounts();
 				FAVORITE_TABS.forEach((tab, index) => {
 					const result = results[index];
-					buckets[tab.key] = result?.Items || [];
-					counts[tab.key] = result?.TotalRecordCount || buckets[tab.key].length;
+					const fetched = result?.Items || [];
+					fetchedRef.current[tab.key] = fetched.length;
+					buckets[tab.key] = withoutBlockedItems(fetched);
+					counts[tab.key] = result?.TotalRecordCount || fetched.length;
 				});
 				setItemsByKey(buckets);
 				setCountsByKey(counts);
@@ -102,7 +107,7 @@ const useFavoriteTabs = ({api, sortBy, sortOrder, unifiedMode, enabled = true}) 
 	const loadMore = useCallback(async (key) => {
 		if (unifiedMode || !api || !key) return;
 
-		const loaded = itemsRef.current[key]?.length || 0;
+		const loaded = fetchedRef.current[key] || 0;
 		if (pagingRef.current[key] || loaded === 0) return;
 		// The grid asks for more every time it settles, so a tab that is already all
 		// here says so rather than asking the server again for nothing.
@@ -129,9 +134,12 @@ const useFavoriteTabs = ({api, sortBy, sortOrder, unifiedMode, enabled = true}) 
 
 			if (loadId !== loadIdRef.current) return;
 
-			const more = result?.Items || [];
-			if (more.length === 0) return;
+			const fetched = result?.Items || [];
+			if (fetched.length === 0) return;
+			fetchedRef.current[key] = loaded + fetched.length;
 
+			const more = withoutBlockedItems(fetched);
+			if (more.length === 0) return;
 			setItemsByKey((prev) => ({...prev, [key]: [...(prev[key] || []), ...more]}));
 		} catch (err) {
 			console.error(`Failed to load more ${key} favorites:`, err);

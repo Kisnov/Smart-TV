@@ -6,6 +6,7 @@ import * as multiServerManager from '../services/multiServerManager';
 import {clearImageCache} from '../services/imageProxy';
 import {clearAnimeMarkerCache} from '../services/animeMarkersApi';
 import {resetLibraryScope} from '../services/libraryScope';
+import {resetBlockedContentGate} from '../services/blockedContentGate';
 
 import {clearProxiedImageCache} from '../hooks/useProxiedImage';
 import {parseUrl} from '../utils/urlCompat';
@@ -37,6 +38,7 @@ const clearAllCaches = () => {
 	clearAnimeMarkerCache();
 	// The policy and the hidden library list belong to the account that just left.
 	resetLibraryScope();
+	resetBlockedContentGate();
 	console.log('[AuthContext] All caches cleared');
 };
 

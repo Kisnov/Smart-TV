@@ -1,6 +1,7 @@
 import {useState, useEffect, useCallback, useMemo} from 'react';
 import $L from '@enact/i18n/$L';
 import {useAuth} from '../../context/AuthContext';
+import {withoutBlockedItems} from '../../services/parentalControls';
 import MediaRow from '../../components/MediaRow';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PersonDetailShell from '../../components/PersonDetailShell';
@@ -28,7 +29,7 @@ const Person = ({personId, onSelectItem, onSelectSeerrItem, onSelectSeerrPerson}
 					api.getItemsByPerson(personId)
 				]);
 				setPerson(personData);
-				setItems(itemsData.Items || []);
+				setItems(withoutBlockedItems(itemsData.Items || []));
 			} catch (err) {
 				console.error('Failed to load person:', err);
 			} finally {

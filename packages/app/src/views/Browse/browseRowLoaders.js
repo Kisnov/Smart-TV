@@ -3,6 +3,7 @@
 
 import $L from '@enact/i18n/$L';
 import {scopedGetItems} from '../../services/libraryScope';
+import {withoutBlockedItems} from '../../services/parentalControls';
 import {genericCollectionLabel, mergeRecentRows} from '../../utils/mergeRecentRows';
 import {latestMediaFetchLimitForCollection, normalizeLatestMediaItems} from '../../utils/latestMediaRowNormalizer';
 
@@ -75,7 +76,9 @@ const expandSeriesToEpisodes = async (api, items, limit) => {
 				Fields: HOME_ROW_ITEM_FIELDS
 			});
 			const episodes = result?.Items || [];
-			return episodes.length ? episodes : [item];
+			if (!episodes.length) return [item];
+			// Not a fallback to the series card, or a blocked series would come back as one.
+			return withoutBlockedItems(episodes, item.OfficialRating);
 		} catch (_error) {
 			return [item];
 		}
