@@ -15,10 +15,10 @@ const searchWords = (value) => foldForSearch(value)
 export const gameQueryWords = (query) => searchWords((query || '').trim());
 
 const letterBucket = (title) => {
-	const trimmed = foldAccents(title).replace(/^\s+/, '');
+	const trimmed = String(title || '').replace(/^\s+/, '');
 	if (!trimmed) return '#';
-	const initial = trimmed.charAt(0).toUpperCase();
-	return initial >= 'A' && initial <= 'Z' ? initial : '#';
+	const initial = foldAccents(trimmed.charAt(0).toUpperCase());
+	return initial.length === 1 && initial >= 'A' && initial <= 'Z' ? initial : '#';
 };
 
 // A system can hold thousands of roms, so each title is tokenised once and the

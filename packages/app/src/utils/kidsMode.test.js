@@ -1,6 +1,6 @@
 import {
 	isKidsMode, kidsModeRows, kidsModeButtons, blockedPanels, allowedPanel,
-	KIDS_MODE_BUTTONS, kidsModeNeedsPin, kidsModeSettings
+	KIDS_MODE_BUTTONS, kidsModeNeedsPin, kidsModeSettings, mergesContinueWatchingNextUp
 } from './kidsMode';
 
 const row = (id, enabled = true, order = 0) => ({id, name: id, enabled, order});
@@ -35,15 +35,26 @@ describe('home rows', () => {
 		expect(kidsModeRows(saved, false)).toBe(saved);
 	});
 
-	test('keeps only the libraries and what arrived lately', () => {
-		expect(kidsModeRows(saved, true).map((r) => r.id)).toEqual(['library-tiles', 'latest-media']);
+	test('keeps the libraries, what arrived lately, and what is part way through', () => {
+		expect(kidsModeRows(saved, true).map((r) => r.id)).toEqual(['library-tiles', 'latest-media', 'resume']);
+	});
+
+	test('keeps next up alongside continue watching', () => {
+		const rows = kidsModeRows([row('resume', true, 0), row('nextup', true, 1)], true);
+		expect(rows.map((r) => r.id)).toEqual(['library-tiles', 'resume', 'nextup']);
 	});
 
 	test('drops the request and live tv rows', () => {
 		const ids = kidsModeRows(saved, true).map((r) => r.id);
 		expect(ids).not.toContain('livetv');
 		expect(ids).not.toContain('seerr_trending');
-		expect(ids).not.toContain('resume');
+		expect(ids).not.toContain('favorites-movies');
+	});
+
+	// My Media is the artwork a child picks a library by, so the small variant goes.
+	test('drops the small library row', () => {
+		const rows = kidsModeRows([row('librarybuttons', true, 0), row('latest-media', true, 1)], true);
+		expect(rows.map((r) => r.id)).toEqual(['library-tiles', 'latest-media']);
 	});
 
 	// An allow list, so anything added later stays out until someone decides otherwise.
@@ -63,11 +74,11 @@ describe('home rows', () => {
 
 	// It is the only way into a library once the navbar entry is gone, so it leads either way.
 	test('brings a library row the user had already enabled to the front too', () => {
-		const rows = kidsModeRows([row('latest-media', true, 2), row('library-tiles', true, 4)], true);
+		const rows = kidsModeRows([row('resume', true, 0), row('library-tiles', true, 4)], true);
 		const myMedia = rows.find((r) => r.id === 'library-tiles');
 
 		expect(myMedia.order).toBe(-1);
-		expect(myMedia.order).toBeLessThan(rows.find((r) => r.id === 'latest-media').order);
+		expect(myMedia.order).toBeLessThan(rows.find((r) => r.id === 'resume').order);
 	});
 
 	test('adds My Media when the saved rows have no library row at all', () => {
@@ -77,30 +88,27 @@ describe('home rows', () => {
 	});
 
 	test('never carries the same row twice', () => {
-		const rows = kidsModeRows([row('library-tiles', false, 4), row('librarybuttons', false, 62)], true);
-		expect(rows.map((r) => r.id)).toEqual(['library-tiles', 'librarybuttons']);
-		expect(rows[0].order).toBe(-1);
-	});
-
-	test('adds nothing when a library row is already there', () => {
-		expect(kidsModeRows([row('librarybuttons', true)], true).map((r) => r.id)).toEqual(['librarybuttons']);
-	});
-
-	test('the row it leads with is the one the user already had', () => {
-		const rows = kidsModeRows([row('latest-media', true, 2), row('librarybuttons', true, 62)], true);
-		expect(rows.map((r) => r.id)).toEqual(['latest-media', 'librarybuttons']);
-		expect(rows.find((r) => r.id === 'librarybuttons').order).toBe(-1);
-	});
-
-	test('the row it adds sorts ahead of the rest', () => {
-		const rows = kidsModeRows([row('latest-media', true, 2)], true);
-		expect(rows[0].order).toBe(-1);
+		const rows = kidsModeRows([row('resume', true, 0), row('library-tiles', false, 4)], true);
+		expect(rows.filter((r) => r.id === 'library-tiles')).toHaveLength(1);
+		expect(rows.find((r) => r.id === 'library-tiles').order).toBe(-1);
 	});
 
 	test('does not rewrite the saved rows', () => {
 		const before = saved.map((r) => r.id);
 		kidsModeRows(saved, true);
 		expect(saved.map((r) => r.id)).toEqual(before);
+	});
+});
+
+// Apart they read as two places to carry on from, which means nothing to a child.
+describe('continue watching and next up', () => {
+	test('merge in the mode whatever the account chose', () => {
+		expect(mergesContinueWatchingNextUp({kidsModeEnabled: true, mergeContinueWatchingNextUp: false})).toBe(true);
+	});
+
+	test('follow the account outside the mode', () => {
+		expect(mergesContinueWatchingNextUp({mergeContinueWatchingNextUp: false})).toBe(false);
+		expect(mergesContinueWatchingNextUp({mergeContinueWatchingNextUp: true})).toBe(true);
 	});
 });
 

@@ -2,27 +2,37 @@ import {useState, useEffect, useCallback, useRef, useMemo, memo} from 'react';
 import Spottable from '@enact/spotlight/Spottable';
 import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDecorator';
 import Spotlight from '@enact/spotlight';
-import ri from '@enact/ui/resolution';
 import $L from '@enact/i18n/$L';
 import {useAuth} from '../../context/AuthContext';
-import {pointerHover} from '../../utils/focusScroll';
 import {useSettings} from '../../context/SettingsContext';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import {formatClockTime, formatDayLabel} from '../../utils/clock';
 import {KEYS} from '../../utils/keys';
+import {pointerHover} from '../../utils/focusScroll';
+import {rem, rootScale} from '../../utils/rootScale';
+import {createLiveTvGuideStore} from '../../services/liveTvGuideStore';
+import {getLiveTvLastChannelId, loadLiveTvLastChannel} from '../../services/liveTvLastChannel';
+import {
+	CELL_KINDS, CHANNEL_SORTS, GUIDE_FILTERS, TV_CANVAS_SCALE, artworkSource, buildRowCells, categoryTags,
+	clampAnchorInto, episodeLine, episodeTitleOf, filterLabel, floorToHalfHour, genreFor, guideWindowFor,
+	guideLeftEdge, hasSeriesTimer, hasTimer, isLiveAt, programAiringAt, programEnd, programStart, progressAt,
+	reanchorSelection, resolveCellIndexAt, seasonEpisodeLabel
+} from '../../utils/liveTvGuide';
+import {ChannelCell, ProgramCell} from './GuideCells';
+import {GUIDE_ICONS, GuideIcon} from './GuideIcons';
+import GuideHero from './GuideHero';
 
 import css from './LiveTV.module.less';
 
 const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
-const ToolbarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
 const FilterRailContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
-// Rows are deliberately not spotlight containers. A row container swallows up and
-// down presses and drops focus on its first spottable, the channel cell, instead of
-// letting spotlight pick the program cell directly below the one that was focused.
+const WindowBarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
+// Rows aren't spotlight containers. Every arrow key inside the grid is resolved by the guide
+// itself against the selection's time, so nothing is left for geometry to decide.
 const ProgramGridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
-// self-only on its own still lets a press at the edge reach the guide behind the
-// scrim, so every direction is closed off as well.
+// self-only on its own still lets a press at the edge reach the guide behind the scrim, so every
+// direction is closed off as well.
 const PopupContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
 	restrict: 'self-only',
@@ -30,931 +40,1158 @@ const PopupContainer = SpotlightContainerDecorator({
 	preserveId: true
 }, 'div');
 
-// Geometry mirrors moonfin-core's guide at the 1.5 scale the stylesheet explains.
-// Core sizes the window to whole hours that fit the screen, which lands on 3 hours
-// and no horizontal scrolling.
-const GUIDE_HOURS = 3;
-const PIXELS_PER_MINUTE = 9;
-const GUIDE_WIDTH = GUIDE_HOURS * 60 * PIXELS_PER_MINUTE;
-// Matches @row-height in the stylesheet. The build rewrites that to rem, so the real
-// on screen height is measured from a rendered row and this is only the fallback
-// until one exists.
-const ROW_HEIGHT = 126;
-const OVERSCAN_ROWS = 6;
-const VISIBLE_ROWS = 6;
-const PROGRAM_BATCH = 50;
-const PREFETCH_ROWS = 12;
-// Cells narrower than this keep only their title, dropping the badge and time label.
-const META_MIN_WIDTH = 120;
+const MINUTE = 60000;
+const HALF_HOUR = 30 * MINUTE;
 
-const ICON_PATHS = {
-	chevronLeft: 'M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z',
-	chevronRight: 'M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z',
-	sort: 'M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z',
-	calendar: 'M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13z',
-	dvr: 'M17.5 10.5h2v1h-2v-1zm-13 0h2v3h-2v-3zM21 3H3c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h18c1.11 0 2-.9 2-2V5c0-1.11-.89-2-2-2zM8 13.5c0 .85-.65 1.5-1.5 1.5H3V9h3.5c.85 0 1.5.65 1.5 1.5v3zm4.62 1.5h-1.5L9.37 9h1.5l1 3.43 1-3.43h1.5l-1.75 6zM21 11.5c0 .6-.4 1.15-.9 1.4L21 15h-1.5l-.85-2H17.5v2H16V9h3.5c.85 0 1.5.65 1.5 1.5v1z',
-	tv: 'M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z',
-	record: 'M12 4c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z',
-	check: 'M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'
+// Match the stylesheet.
+const ROW_HEIGHT = 87;
+const CHANNEL_COLUMN_WIDTH = 296;
+// The page's side padding and the divider beside the channel column.
+const GRID_CHROME_WIDTH = 70 + 1;
+
+// The standalone guide on the television canvas, less the page's padding, measured against the
+// screen as the UI scale leaves it.
+const measureGuideLayout = () => {
+	const width = window.innerWidth / rootScale();
+	const windowMs = guideWindowFor(width / TV_CANVAS_SCALE - 48);
+	const gridWidth = width - GRID_CHROME_WIDTH - CHANNEL_COLUMN_WIDTH;
+	return {windowMs, gridWidth, pxPerMs: gridWidth / windowMs};
 };
 
-const GuideIcon = ({path, className}) => (
-	<svg className={className} viewBox="0 0 24 24">
-		<path d={path} />
-	</svg>
-);
+const OVERSCAN_ROWS = 4;
+const VISIBLE_ROWS = 9;
+// Start fetching the next batch this many rows before the loaded edge, so rows are usually
+// filled by the time they're on screen.
+const PROGRAM_PREFETCH_ROWS = 12;
+const ARTWORK_PREFETCH_ROW_MARGIN = 5;
+// How far back the earlier button pages. Most guide sources keep little history.
+const MAX_GUIDE_HISTORY_MS = 24 * 60 * MINUTE;
+// A re-anchor waits this long after the last press, so the window never moves under the viewer.
+const REANCHOR_INPUT_QUIET_MS = 1000;
 
-// The genre palette and its precedence order both come from moonfin-core. The rgb
-// triple exists so the live cell tint can be built without a css color function.
-const GENRES = [
-	{flag: 'IsMovie', label: 'Movie', color: '#6c4bd8', rgb: '108, 75, 216'},
-	{flag: 'IsSports', label: 'Sports', color: '#2e8b57', rgb: '46, 139, 87'},
-	{flag: 'IsNews', label: 'News', color: '#c08a2e', rgb: '192, 138, 46'},
-	{flag: 'IsKids', label: 'Kids', color: '#c0497a', rgb: '192, 73, 122'},
-	{flag: 'IsSeries', label: 'Series', color: '#2e7d8a', rgb: '46, 125, 138'}
-];
-const DEFAULT_GENRE = {flag: null, label: '', color: '#00a4dc', rgb: '0, 164, 220'};
+const WINDOW_BAR_PREVIOUS = 0;
+const WINDOW_BAR_LAST = 5;
 
-const genreFor = (program) => GENRES.find(g => program[g.flag]) || DEFAULT_GENRE;
-
-const FILTERS = [
-	{key: 'all', label: 'All'},
-	{key: 'movies', label: 'Movies', flag: 'IsMovie'},
-	{key: 'series', label: 'Series', flag: 'IsSeries'},
-	{key: 'sports', label: 'Sports', flag: 'IsSports'},
-	{key: 'news', label: 'News', flag: 'IsNews'},
-	{key: 'kids', label: 'Kids', flag: 'IsKids'},
-	{key: 'premiere', label: 'Premiere', flag: 'IsPremiere'},
-	{key: 'favorites', label: 'Favorites'}
-];
-
-const SORT_OPTIONS = [
-	{key: 'number', label: 'Channel number'},
-	{key: 'name', label: 'Name'},
-	{key: 'favoritesFirst', label: 'Favorites first'}
-];
-
-const compareByName = (a, b) => (a.Name || '').toLowerCase().localeCompare((b.Name || '').toLowerCase());
-
-// Channel numbers are dot separated segments ('10.10' airs after '10.2'), so compare
-// segment-wise as ints rather than as a decimal.
-const numberSegments = (number) => {
-	if (!number || !String(number).trim()) return null;
-	const parts = String(number).trim().split('.');
-	const segments = [];
-	for (const part of parts) {
-		const value = parseInt(part, 10);
-		if (isNaN(value) || String(value) !== part) return null;
-		segments.push(value);
-	}
-	return segments;
+// Fast forward and rewind, and the track and page keys a remote may carry, page the rows.
+const PAGE_FORWARD_KEYS = [KEYS.FAST_FORWARD || 417, 425, 10233, 34];
+const PAGE_BACK_KEYS = [KEYS.REWIND || 412, 424, 10232, 33];
+const pageDirection = (keyCode) => {
+	if (PAGE_FORWARD_KEYS.indexOf(keyCode) >= 0) return 1;
+	if (PAGE_BACK_KEYS.indexOf(keyCode) >= 0) return -1;
+	return 0;
 };
 
-const compareByNumber = (a, b) => {
-	const segsA = numberSegments(a.ChannelNumber);
-	const segsB = numberSegments(b.ChannelNumber);
-	if (!segsA || !segsB) {
-		if (segsA) return -1;
-		if (segsB) return 1;
-		return compareByName(a, b);
-	}
-	const len = Math.max(segsA.length, segsB.length);
-	for (let i = 0; i < len; i++) {
-		const va = i < segsA.length ? segsA[i] : 0;
-		const vb = i < segsB.length ? segsB[i] : 0;
-		if (va !== vb) return va - vb;
-	}
-	return compareByName(a, b);
+const SORT_LABELS = {number: 'Channel Number', name: 'Name', favoritesFirst: 'Favorites First'};
+const normalizeSort = (value) => (CHANNEL_SORTS.indexOf(value) >= 0 ? value : 'number');
+
+const channelSpotlightId = (channelId) => `guide-ch-${channelId}`;
+const cellSpotlightId = (channelId, index) => `guide-cell-${channelId}-${index}`;
+const barSpotlightId = (index) => `guide-bar-${index}`;
+const chipSpotlightId = (index) => `guide-chip-${index}`;
+
+const isLoadingCells = (cells) => cells.length === 1 && cells[0].kind === CELL_KINDS.loading;
+
+// The element may not be on screen for a frame or two after the rows it lives in are scrolled
+// to, so this keeps asking until it's there. A deferred request waits a frame first, for focus
+// asked for right after the guide changed, before the rows have redrawn.
+const focusWhenMounted = (spotlightId, {attempts = 12, defer = false} = {}) => {
+	const tryFocus = (left) => {
+		const node = document.querySelector(`[data-spotlight-id="${spotlightId}"]`);
+		if (node) {
+			Spotlight.focus(node);
+		} else if (left > 0) {
+			window.requestAnimationFrame(() => tryFocus(left - 1));
+		}
+	};
+	if (defer) window.requestAnimationFrame(() => tryFocus(attempts));
+	else tryFocus(attempts);
 };
 
-const comparatorFor = (sortBy) => {
-	if (sortBy === 'name') return compareByName;
-	if (sortBy === 'favoritesFirst') {
-		return (a, b) => {
-			const favA = Boolean(a.UserData?.IsFavorite);
-			const favB = Boolean(b.UserData?.IsFavorite);
-			if (favA !== favB) return favA ? -1 : 1;
-			return compareByNumber(a, b);
-		};
-	}
-	return compareByNumber;
+const animateScrollTop = (node, target, duration) => {
+	const from = node.scrollTop;
+	const distance = target - from;
+	if (!distance) return;
+	const started = Date.now();
+	const step = () => {
+		const t = Math.min(1, (Date.now() - started) / duration);
+		node.scrollTop = from + distance * (1 - Math.pow(1 - t, 3));
+		if (t < 1) window.requestAnimationFrame(step);
+	};
+	window.requestAnimationFrame(step);
 };
 
-const formatTimeRange = (start, end, clockDisplay) =>
-	`${formatClockTime(start, clockDisplay)} - ${formatClockTime(end, clockDisplay)}`;
-
-// The same span moonfin-core's date picker offers, a week back through two weeks out.
+// The same span the other clients' date picker offers, a week back through two weeks out.
 const buildDateOptions = () => {
 	const options = [];
 	const today = new Date();
 	today.setHours(0, 0, 0, 0);
-	for (let i = -7; i <= 14; i++) {
-		options.push(new Date(today.getTime() + i * 86400000));
-	}
+	for (let i = -7; i <= 14; i++) options.push(new Date(today.getTime() + i * 86400000));
 	return options;
 };
 
-const ChannelCell = memo(({channel, serverUrl, onPlayChannel, onChannelFocus}) => {
-	const [logoFailed, setLogoFailed] = useState(false);
+const createEmitter = () => {
+	const listeners = new Set();
+	return {
+		subscribe: (listener) => {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+		emit: () => listeners.forEach((listener) => listener())
+	};
+};
 
-	const handleClick = useCallback(() => {
-		onPlayChannel(channel);
-	}, [channel, onPlayChannel]);
-
-	const handleFocus = useCallback(() => {
-		onChannelFocus(channel);
-	}, [channel, onChannelFocus]);
-
-	const handleLogoError = useCallback(() => setLogoFailed(true), []);
-
-	// Core renders whatever name the server sends, which leaves the cell blank on
-	// lineups without names. Fall back to the number so every row says something.
-	const name = channel.Name || channel.ChannelNumber || $L('Channel');
-	const logoUrl = channel.ImageTags?.Primary
-		? `${serverUrl}/Items/${channel.Id}/Images/Primary?maxHeight=126&tag=${channel.ImageTags.Primary}`
-		: null;
-
-	return (
-		<SpottableDiv
-			className={css.channelCell}
-			onClick={handleClick}
-			onFocus={handleFocus}
-		>
-			{logoUrl && !logoFailed ? (
-				<img className={css.channelLogo} src={logoUrl} alt="" onError={handleLogoError} />
-			) : (
-				<div className={css.channelLogoFallback}>
-					<GuideIcon path={ICON_PATHS.tv} />
-				</div>
-			)}
-			<div className={css.channelText}>
-				{channel.ChannelNumber && <span className={css.channelNumberChip}>{channel.ChannelNumber}</span>}
-				<div className={css.channelName}>{name}</div>
-			</div>
-		</SpottableDiv>
+// One channel's timeline. It hands every focus, key and press back to the screen along with
+// where it happened, since the selection that decides vertical movement lives there.
+const GuideRow = memo(({channel, rowIndex, cells, windowStart, now, layout, logoUrl, onFocusChannel, onKeyDownChannel, onSelectChannel, onFocusCell, onKeyDownCell, onSelectCell}) => {
+	const handleFocusCell = useCallback((cell) => onFocusCell(rowIndex, channel.Id, cell), [rowIndex, channel.Id, onFocusCell]);
+	const handleKeyDownCell = useCallback((e, cell) => onKeyDownCell(e, rowIndex, channel.Id, cell, cells), [rowIndex, channel.Id, cells, onKeyDownCell]);
+	const handleSelectCell = useCallback((cell) => onSelectCell(rowIndex, channel.Id, cell), [rowIndex, channel.Id, onSelectCell]);
+	const cellTags = useMemo(
+		() => cells.map((cell) => (cell.program ? categoryTags(cell.program).map((key) => $L(filterLabel(key))) : [])),
+		[cells]
 	);
-});
-
-const ProgramCell = memo(({program, channel, left, width, hasTimer, clockDisplay, onProgramClick, onProgramFocus}) => {
-	// The live tint is an inline style, so the focused background has to be one too
-	// rather than fighting it from the stylesheet.
-	const [focused, setFocused] = useState(false);
-
-	const handleClick = useCallback(() => {
-		onProgramClick(program, channel);
-	}, [program, channel, onProgramClick]);
-
-	const handleFocus = useCallback((e) => {
-		setFocused(true);
-		onProgramFocus(program, channel);
-		if (pointerHover()) return;
-		const el = e.currentTarget || e.target;
-		if (el) el.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'nearest'});
-	}, [program, channel, onProgramFocus]);
-
-	const handleBlur = useCallback(() => setFocused(false), []);
-
-	const genre = genreFor(program);
-	const now = Date.now();
-	const start = new Date(program.StartDate).getTime();
-	const end = new Date(program.EndDate).getTime();
-	const isLive = now >= start && now < end;
-	const showMeta = width > META_MIN_WIDTH;
-	const background = focused
-		? '#1c2c3c'
-		: isLive
-			? `rgba(${genre.rgb}, 0.14)`
-			: 'rgba(26, 26, 26, 0.5)';
-
-	return (
-		<SpottableDiv
-			className={`${css.programCell} ${focused ? css.focused : ''}`}
-			style={{left: `${left}px`, width: `${Math.max(0, width - 1)}px`, backgroundColor: background}}
-			onClick={handleClick}
-			onFocus={handleFocus}
-			onBlur={handleBlur}
-			data-program-id={program.Id}
-		>
-			<div className={css.genreBar} style={{backgroundColor: genre.color}} />
-			<div className={css.programBody}>
-				<div className={css.programTitleRow}>
-					{isLive && showMeta && (
-						<span className={css.liveBadge} style={{backgroundColor: genre.color}}>{$L('LIVE')}</span>
-					)}
-					<span className={`${css.programTitle} ${focused || isLive ? css.programTitleStrong : ''}`}>
-						{program.Name}
-					</span>
-					{hasTimer && <GuideIcon className={css.timerDot} path={ICON_PATHS.record} />}
-				</div>
-				{showMeta && (
-					<div className={css.programMeta}>
-						{formatTimeRange(new Date(start), new Date(end), clockDisplay)}
-					</div>
-				)}
-			</div>
-			{isLive && (
-				<div className={css.liveProgressTrack}>
-					<div
-						className={css.liveProgressFill}
-						style={{width: `${Math.min(100, ((now - start) / (end - start)) * 100)}%`, backgroundColor: genre.color}}
-					/>
-				</div>
-			)}
-		</SpottableDiv>
-	);
-});
-
-const GuideRow = memo(({channel, programs, filterFlag, loaded, timersByProgram, clockDisplay, serverUrl, windowStartMs, onPlayChannel, onChannelFocus, onProgramClick, onProgramFocus}) => {
-	const totalMinutes = GUIDE_HOURS * 60;
-	const cells = [];
-	if (loaded) {
-		const list = filterFlag ? programs.filter(p => p[filterFlag]) : programs;
-		for (const program of list) {
-			const startMin = (new Date(program.StartDate).getTime() - windowStartMs) / 60000;
-			const endMin = (new Date(program.EndDate).getTime() - windowStartMs) / 60000;
-			const clampedStart = Math.max(0, startMin);
-			const clampedEnd = Math.min(totalMinutes, endMin);
-			const width = (clampedEnd - clampedStart) * PIXELS_PER_MINUTE;
-			if (width <= 0) continue;
-			cells.push(
-				<ProgramCell
-					key={program.Id}
-					program={program}
-					channel={channel}
-					left={clampedStart * PIXELS_PER_MINUTE}
-					width={width}
-					hasTimer={Boolean(timersByProgram[program.Id])}
-					clockDisplay={clockDisplay}
-					onProgramClick={onProgramClick}
-					onProgramFocus={onProgramFocus}
-				/>
-			);
-		}
-	}
 
 	return (
 		<div className={css.guideRow} data-channel-id={channel.Id}>
-			<div className={css.channelCellWrap}>
-				<ChannelCell
-					channel={channel}
-					serverUrl={serverUrl}
-					onPlayChannel={onPlayChannel}
-					onChannelFocus={onChannelFocus}
-				/>
-			</div>
-			<div className={css.programsArea} style={{width: `${GUIDE_WIDTH}px`}}>
-				{loaded ? cells : <div className={css.skeleton} />}
+			<ChannelCell
+				channel={channel}
+				index={rowIndex}
+				logoUrl={logoUrl}
+				spotlightId={channelSpotlightId(channel.Id)}
+				onFocusChannel={onFocusChannel}
+				onKeyDownChannel={onKeyDownChannel}
+				onSelectChannel={onSelectChannel}
+			/>
+			<div className={css.columnDivider} />
+			<div className={css.programsArea} style={{width: rem(layout.gridWidth)}}>
+				{cells.map((cell, index) => {
+					const program = cell.program;
+					const live = program ? isLiveAt(program, now) : false;
+					return (
+						<ProgramCell
+							key={`${cell.kind}-${cell.start}`}
+							cell={cell}
+							left={(cell.start - windowStart) * layout.pxPerMs}
+							width={(cell.end - cell.start) * layout.pxPerMs}
+							spotlightId={cellSpotlightId(channel.Id, index)}
+							genre={program ? genreFor(program) : null}
+							rating={program?.OfficialRating || null}
+							tags={cellTags[index]}
+							isLive={live}
+							isPast={program ? programEnd(program) < now : false}
+							progress={live ? progressAt(program, now) : 0}
+							hasTimer={program ? hasTimer(program) : false}
+							startsBeforeWindow={program ? programStart(program) < windowStart : false}
+							noProgramLabel={$L('No program data')}
+							onFocusCell={handleFocusCell}
+							onKeyDownCell={handleKeyDownCell}
+							onSelectCell={handleSelectCell}
+						/>
+					);
+				})}
 			</div>
 		</div>
 	);
 });
 
-const HeroBand = ({program, channel, clockDisplay, serverUrl}) => {
-	const [logoFailed, setLogoFailed] = useState(false);
+// Previews the focused program, or what the focused channel is airing now. It redraws on its
+// own as focus moves, so the grid doesn't.
+const GuideHeroHost = ({store, emitter, focusRef, serverUrl, clockDisplay, version}) => {
+	const [tick, setTick] = useState(0);
+	useEffect(() => emitter.subscribe(() => setTick((t) => t + 1)), [emitter]);
 
+	const {program, railFocused, channelId} = focusRef.current;
+	const channel = !railFocused && program ? store.channelForId(program.ChannelId) : (channelId ? store.channelForId(channelId) : null);
+	const now = Date.now();
+	const preview = program || (channel ? programAiringAt(store.programsForChannel(channel.Id), now) : null);
+	const previewId = preview?.Id || null;
+
+	// The bulk fetch carries no artwork, so the focused program's is looked up on its own once
+	// focus settles on it.
 	useEffect(() => {
-		setLogoFailed(false);
-	}, [channel?.Id]);
+		if (!preview || artworkSource(preview) || store.hasArtworkResult(preview.Id)) return undefined;
+		const timer = setTimeout(() => {
+			store.artworkSourceFor(preview).then((result) => {
+				if (result) setTick((t) => t + 1);
+			});
+		}, 500);
+		return () => clearTimeout(timer);
+	}, [previewId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-	const title = program?.Name || channel?.Name || $L('Guide Timeline');
-	const metaParts = [];
-	let synopsis = '';
-	if (program) {
-		const start = new Date(program.StartDate);
-		const end = new Date(program.EndDate);
-		const now = Date.now();
-		if (now >= start.getTime() && now < end.getTime()) metaParts.push($L('Live'));
-		metaParts.push(formatTimeRange(start, end, clockDisplay));
-		const genre = genreFor(program);
-		if (genre.label) metaParts.push($L(genre.label));
-		synopsis = program.Overview || '';
-	}
+	const heroProps = useMemo(() => {
+		const logoUrl = channel?.ImageTags?.Primary
+			? `${serverUrl}/Items/${channel.Id}/Images/Primary?maxHeight=209&tag=${channel.ImageTags.Primary}`
+			: null;
+		const artwork = preview ? (artworkSource(preview) || store.cachedArtworkFor(preview.Id)) : null;
+		let programImageUrl = null;
+		if (artwork) {
+			programImageUrl = artwork.isThumb
+				? `${serverUrl}/Items/${artwork.itemId}/Images/Thumb?maxWidth=157&tag=${artwork.tag}`
+				: `${serverUrl}/Items/${artwork.itemId}/Images/Primary?maxHeight=209&maxWidth=157&tag=${artwork.tag}`;
+		}
+		const episodeTitle = preview ? episodeTitleOf(preview) : '';
+		const episodeSuffix = episodeTitle && episodeTitle !== preview?.Name ? ` - ${episodeTitle}` : '';
+		const label = preview ? seasonEpisodeLabel(preview) : null;
+		const badgeLabel = preview ? (preview.IsPremiere ? $L('Premiere') : preview.IsRepeat ? $L('Repeat') : null) : null;
+		return {
+			title: channel?.Name || preview?.Name || $L('Guide Timeline'),
+			programTitle: channel ? preview?.Name || null : null,
+			programSubtitle: `${episodeSuffix}${label ? ` (${label})` : ''}`,
+			channelLogoUrl: logoUrl,
+			programImageUrl,
+			timeLabel: preview
+				? `${formatClockTime(new Date(programStart(preview)), clockDisplay)} - ${formatClockTime(new Date(programEnd(preview)), clockDisplay)}`
+				: null,
+			genreLabel: preview ? genreFor(preview)?.label || null : null,
+			officialRating: preview?.OfficialRating || null,
+			communityRating: preview?.CommunityRating ?? null,
+			badgeLabel,
+			synopsis: preview?.Overview || null,
+			isLive: preview ? isLiveAt(preview, now) : false
+		};
+	}, [tick, version, clockDisplay, serverUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
-	const logoUrl = channel?.ImageTags?.Primary
-		? `${serverUrl}/Items/${channel.Id}/Images/Primary?maxHeight=138&tag=${channel.ImageTags.Primary}`
-		: null;
-	const handleLogoError = useCallback(() => setLogoFailed(true), []);
-
-	return (
-		<div className={css.hero}>
-			<div className={css.heroInfo}>
-				<div className={css.heroTitle}>{title}</div>
-				{metaParts.length > 0 && <div className={css.heroMeta}>{metaParts.join('  ·  ')}</div>}
-				{synopsis && <div className={css.heroSynopsis}>{synopsis}</div>}
-			</div>
-			{channel && (
-				<div className={css.heroChannel}>
-					{logoUrl && !logoFailed ? (
-						<img className={css.heroChannelLogo} src={logoUrl} alt="" onError={handleLogoError} />
-					) : (
-						<div className={css.heroChannelFallback}>
-							<GuideIcon path={ICON_PATHS.tv} />
-						</div>
-					)}
-					<div className={css.heroChannelName}>{channel.Name || channel.ChannelNumber || $L('Channel')}</div>
-					{channel.ChannelNumber && <div className={css.heroChannelNumber}>{channel.ChannelNumber}</div>}
-				</div>
-			)}
-		</div>
-	);
+	return <GuideHero {...heroProps} />;
 };
 
 const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 	const {api, serverUrl} = useAuth();
-	const {settings} = useSettings();
+	const {settings, updateSetting} = useSettings();
 	const clockDisplay = settings.clockDisplay;
 
-	const [channels, setChannels] = useState([]);
-	const [channelsLoading, setChannelsLoading] = useState(true);
-	const [programsByChannel, setProgramsByChannel] = useState({});
-	const [loadedIds, setLoadedIds] = useState(() => new Set());
-	const [programsLoading, setProgramsLoading] = useState(true);
-	const [windowStart, setWindowStart] = useState(() => {
-		const d = new Date();
-		d.setMinutes(0, 0, 0);
-		return d;
-	});
-	const [filter, setFilter] = useState('all');
-	const [sortBy, setSortBy] = useState('number');
-	const [hero, setHero] = useState({program: null, channel: null});
-	const [selectedProgram, setSelectedProgram] = useState(null);
-	const [sortOpen, setSortOpen] = useState(false);
-	const [dateOpen, setDateOpen] = useState(false);
-	const [channelWindowStart, setChannelWindowStart] = useState(0);
-	const [channelNumberBuffer, setChannelNumberBuffer] = useState('');
-	// ProgramId to timer Id, so an already scheduled program offers Cancel
-	// instead of silently creating a duplicate timer.
-	const [timersByProgram, setTimersByProgram] = useState({});
+	const storeRef = useRef(null);
+	if (!storeRef.current) {
+		storeRef.current = createLiveTvGuideStore(api, {sortBy: normalizeSort(settings.liveTvChannelSortBy)});
+	}
+	const store = storeRef.current;
+	const emitter = useMemo(() => createEmitter(), []);
+	const layout = useMemo(measureGuideLayout, []);
 
+	const [version, setVersion] = useState(0);
+	const [scrollRow, setScrollRow] = useState(0);
+	const [dialog, setDialog] = useState(null);
+	const [toast, setToast] = useState(null);
+	const [channelNumberBuffer, setChannelNumberBuffer] = useState('');
+	const [clockNow, setClockNow] = useState(() => Date.now());
+	const [measuredRowHeight, setMeasuredRowHeight] = useState(0);
+
+	const pageRef = useRef(null);
 	const gridRef = useRef(null);
 	const rowHeightRef = useRef(ROW_HEIGHT);
-	const [measuredRowHeight, setMeasuredRowHeight] = useState(0);
-	const channelWindowStartRef = useRef(0);
-	const loadedIdsRef = useRef(loadedIds);
-	const sortedChannelsRef = useRef([]);
-	const filteredChannelsRef = useRef([]);
-	const windowStartRef = useRef(windowStart);
-	// Bumped on every window change so a fetch that raced a page turn gets dropped
-	// instead of merging old-window programs into the new grid.
-	const windowKeyRef = useRef(0);
-	const loadingMoreRef = useRef(false);
+	const cellsCacheRef = useRef({version: -1, byChannel: new Map()});
+	const filterRailRef = useRef(null);
+	const selectionRef = useRef(null);
+	const pendingMoveRef = useRef(null);
+	const lastDpadRef = useRef(0);
+	const lastWindowBarIndexRef = useRef(WINDOW_BAR_PREVIOUS);
+	const lastFocusedRowRef = useRef(null);
+	const focusRef = useRef({railFocused: false, channelId: null, program: null, area: null});
+	const didRestoreFocusRef = useRef(false);
+	const resettingRef = useRef(false);
+	const actionBusyRef = useRef(false);
+	const dialogRef = useRef(dialog);
+	dialogRef.current = dialog;
+	const prevStateRef = useRef(store.state);
+	const prevLineupRef = useRef('');
 	const channelNumberTimeoutRef = useRef(null);
-	// Nothing renders from these, they only stop a double press firing two requests.
-	const recordBusyRef = useRef(false);
-	const favoriteBusyRef = useRef(false);
+	const artworkScrollTimerRef = useRef(null);
 
-	const windowEnd = useMemo(() => new Date(windowStart.getTime() + GUIDE_HOURS * 3600000), [windowStart]);
+	const channels = store.filteredChannels;
+	const channelsRef = useRef(channels);
+	channelsRef.current = channels;
+	const windowStart = store.windowStart;
+	const windowEnd = store.windowEnd;
 
-	const sortedChannels = useMemo(
-		() => [...channels].sort(comparatorFor(sortBy)),
-		[channels, sortBy]
-	);
-	sortedChannelsRef.current = sortedChannels;
+	const cellsFor = useCallback((channelId) => buildRowCells({
+		visible: store.programsForChannel(channelId),
+		unfiltered: store.unfilteredProgramsForChannel(channelId),
+		windowStart: store.windowStart,
+		windowEnd: store.windowEnd,
+		loaded: store.hasProgramsFor(channelId)
+	}), [store]);
 
-	const activeFilter = useMemo(() => FILTERS.find(f => f.key === filter) || FILTERS[0], [filter]);
-
-	const filteredChannels = useMemo(() => {
-		if (filter === 'all') return sortedChannels;
-		if (filter === 'favorites') return sortedChannels.filter(c => c.UserData?.IsFavorite);
-		return sortedChannels.filter(c => (programsByChannel[c.Id] || []).some(p => p[activeFilter.flag]));
-	}, [sortedChannels, filter, activeFilter, programsByChannel]);
-	filteredChannelsRef.current = filteredChannels;
-
-	const loadProgramsFor = useCallback(async (batch) => {
-		if (!batch.length) return;
-		const windowKey = windowKeyRef.current;
-		const ids = batch.map(c => c.Id);
-		const result = await api.getLiveTvPrograms(ids, windowStartRef.current, new Date(windowStartRef.current.getTime() + GUIDE_HOURS * 3600000));
-		if (windowKey !== windowKeyRef.current) return;
-		const items = result.Items || [];
-		setProgramsByChannel(prev => {
-			const next = {...prev};
-			const touched = new Set();
-			for (const program of items) {
-				if (!program.ChannelId) continue;
-				next[program.ChannelId] = next[program.ChannelId] ? [...next[program.ChannelId], program] : [program];
-				touched.add(program.ChannelId);
-			}
-			for (const id of touched) {
-				next[id].sort((a, b) => new Date(a.StartDate) - new Date(b.StartDate));
-			}
-			return next;
-		});
-		// Every requested channel counts as loaded, even with no programs, so its
-		// row stops showing the placeholder.
-		const merged = new Set(loadedIdsRef.current);
-		ids.forEach(id => merged.add(id));
-		loadedIdsRef.current = merged;
-		setLoadedIds(merged);
-	}, [api]);
-
-	// Walks the lineup in sorted order and fetches program batches until the rows the
-	// viewport needs, plus a prefetch margin, are all covered. Filters that hide
-	// channels without matches keep pulling batches until enough rows qualify.
-	const ensureViewportLoaded = useCallback(async () => {
-		if (loadingMoreRef.current) return;
-		loadingMoreRef.current = true;
-		try {
-			let guard = 0;
-			while (guard++ < 20) {
-				const all = sortedChannelsRef.current;
-				if (!all.length) return;
-				const scroller = gridRef.current;
-				const lastNeeded = scroller
-					? Math.ceil((scroller.scrollTop + scroller.clientHeight) / rowHeightRef.current) + PREFETCH_ROWS
-					: VISIBLE_ROWS + PREFETCH_ROWS;
-				const rows = filteredChannelsRef.current.slice(0, lastNeeded);
-				const rowsCovered = rows.every(c => loadedIdsRef.current.has(c.Id));
-				const enoughRows = filteredChannelsRef.current.length >= lastNeeded;
-				const hasMore = loadedIdsRef.current.size < all.length;
-				if (rowsCovered && (enoughRows || !hasMore)) return;
-				const batch = [];
-				for (const channel of all) {
-					if (loadedIdsRef.current.has(channel.Id)) continue;
-					batch.push(channel);
-					if (batch.length >= PROGRAM_BATCH) break;
-				}
-				if (!batch.length) return;
-				await loadProgramsFor(batch);
-			}
-		} catch (err) {
-			console.error('Failed to load guide programs:', err);
-		} finally {
-			loadingMoreRef.current = false;
+	// The rows drawn this render reuse their cells until the guide changes, so a scroll only
+	// redraws the rows that came into view.
+	const renderedCellsFor = (channelId) => {
+		const cache = cellsCacheRef.current;
+		if (cache.version !== version) {
+			cache.version = version;
+			cache.byChannel = new Map();
 		}
-	}, [loadProgramsFor]);
-
-	useEffect(() => {
-		let cancelled = false;
-		const init = async () => {
-			setChannelsLoading(true);
-			try {
-				const result = await api.getLiveTvChannels();
-				if (!cancelled) setChannels(result.Items || []);
-			} catch (err) {
-				console.error('Failed to load channels:', err);
-			} finally {
-				if (!cancelled) setChannelsLoading(false);
-			}
-		};
-		init();
-		return () => {
-			cancelled = true;
-		};
-	}, [api]);
-
-	// A window change invalidates every fetched program, so clear the cache and
-	// refill from the top like core's full reload.
-	useEffect(() => {
-		windowStartRef.current = windowStart;
-		windowKeyRef.current += 1;
-		if (!channels.length) return;
-		let cancelled = false;
-		const reload = async () => {
-			setProgramsLoading(true);
-			setProgramsByChannel({});
-			loadedIdsRef.current = new Set();
-			setLoadedIds(new Set());
-			if (gridRef.current) gridRef.current.scrollTop = 0;
-			channelWindowStartRef.current = 0;
-			setChannelWindowStart(0);
-			await ensureViewportLoaded();
-			if (!cancelled) setProgramsLoading(false);
-		};
-		reload();
-		return () => {
-			cancelled = true;
-		};
-	}, [windowStart, channels, ensureViewportLoaded]);
-
-	// A sort or filter change can surface channels whose programs were never
-	// fetched, so top the viewport back up.
-	useEffect(() => {
-		if (!channels.length || programsLoading) return;
-		ensureViewportLoaded();
-	}, [sortBy, filter, channels, programsLoading, ensureViewportLoaded]);
-
-	// Favorites can sit anywhere in the lineup, past the lazily loaded prefix, so
-	// fetch all of them when that filter is selected.
-	useEffect(() => {
-		if (filter !== 'favorites') return;
-		const favorites = sortedChannelsRef.current.filter(
-			c => c.UserData?.IsFavorite && !loadedIdsRef.current.has(c.Id)
-		);
-		if (!favorites.length) return;
-		const run = async () => {
-			for (let i = 0; i < favorites.length; i += PROGRAM_BATCH) {
-				try {
-					await loadProgramsFor(favorites.slice(i, i + PROGRAM_BATCH));
-				} catch (err) {
-					console.error('Failed to load favorite programs:', err);
-					return;
-				}
-			}
-		};
-		run();
-	}, [filter, channels, loadProgramsFor]);
-
-	// Timers only decide which buttons the dialog shows and which cells get the
-	// recording dot, so a server without recording support just leaves this empty.
-	const loadTimers = useCallback(async () => {
-		const result = await api.getLiveTvTimers().catch(() => null);
-		const map = {};
-		for (const timer of result?.Items || []) {
-			if (timer.ProgramId) map[timer.ProgramId] = timer.Id;
+		let cells = cache.byChannel.get(channelId);
+		if (!cells) {
+			cells = cellsFor(channelId);
+			cache.byChannel.set(channelId, cells);
 		}
-		setTimersByProgram(map);
-	}, [api]);
+		return cells;
+	};
+
+	// ------------------------------------------------------------------------------------------
+	// Loading
+	// ------------------------------------------------------------------------------------------
 
 	useEffect(() => {
-		loadTimers();
-	}, [loadTimers]);
+		const unsubscribe = store.subscribe(() => setVersion((v) => v + 1));
+		loadLiveTvLastChannel();
+		store.load({window: layout.windowMs, windowStart: guideLeftEdge(Date.now()), livePosition: true});
+		return () => {
+			unsubscribe();
+			store.dispose();
+		};
+	}, [layout, store]);
+
+	// A sort synced in from another device takes effect here too.
+	useEffect(() => {
+		store.setSortBy(normalizeSort(settings.liveTvChannelSortBy));
+	}, [settings.liveTvChannelSortBy, store]);
+
+	// A clock the cells read their live and ended state from.
+	useEffect(() => {
+		const timer = setInterval(() => setClockNow(Date.now()), 15000);
+		return () => clearInterval(timer);
+	}, []);
+
+	// The stylesheet's row height comes back from the build in rem, so the pixels the scroll math
+	// needs are read off a rendered row rather than assumed.
+	useEffect(() => {
+		const row = gridRef.current?.querySelector('[data-channel-id]');
+		if (row && row.offsetHeight && row.offsetHeight !== measuredRowHeight) {
+			setMeasuredRowHeight(row.offsetHeight);
+		}
+	}, [measuredRowHeight, version, scrollRow]);
+	rowHeightRef.current = measuredRowHeight || ROW_HEIGHT * rootScale();
+
+	// ------------------------------------------------------------------------------------------
+	// Scrolling
+	// ------------------------------------------------------------------------------------------
+
+	// The focused row scrolls to the top of the grid, so the rows below it are the ones in view.
+	const scrollToRow = useCallback((index, {animate = true} = {}) => {
+		if (lastFocusedRowRef.current === index) return;
+		lastFocusedRowRef.current = index;
+		const scroller = gridRef.current;
+		if (!scroller) return;
+		const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+		const target = Math.max(0, Math.min(max, index * rowHeightRef.current));
+		if (animate) animateScrollTop(scroller, target, 200);
+		else scroller.scrollTop = target;
+	}, []);
+
+	const rowsPerViewport = useCallback(() => {
+		const scroller = gridRef.current;
+		if (!scroller) return 1;
+		return Math.max(1, Math.floor(scroller.clientHeight / rowHeightRef.current));
+	}, []);
+
+	const queueArtworkPrefetch = useCallback(() => {
+		const lineup = channelsRef.current;
+		if (!lineup.length) {
+			store.queueArtworkPrefetch([], {replace: true});
+			return;
+		}
+		const scroller = gridRef.current;
+		const firstRow = scroller ? Math.floor(scroller.scrollTop / rowHeightRef.current) : 0;
+		const visibleCount = scroller ? Math.ceil(scroller.clientHeight / rowHeightRef.current) : VISIBLE_ROWS;
+		const start = Math.max(0, firstRow - ARTWORK_PREFETCH_ROW_MARGIN);
+		const end = Math.min(lineup.length, firstRow + visibleCount + ARTWORK_PREFETCH_ROW_MARGIN);
+		if (start >= end) return;
+		const programs = [];
+		lineup.slice(start, end).forEach((channel) => programs.push(...store.programsForChannel(channel.Id)));
+		store.queueArtworkPrefetch(programs, {replace: true});
+	}, [store]);
 
 	const handleScroll = useCallback(() => {
 		const scroller = gridRef.current;
 		if (!scroller) return;
-		const firstVisibleIndex = Math.floor(scroller.scrollTop / rowHeightRef.current);
-		const nextWindowStart = Math.max(0, firstVisibleIndex - OVERSCAN_ROWS);
-		if (nextWindowStart !== channelWindowStartRef.current) {
-			channelWindowStartRef.current = nextWindowStart;
-			setChannelWindowStart(nextWindowStart);
+		const first = Math.floor(scroller.scrollTop / rowHeightRef.current);
+		const next = Math.max(0, first - OVERSCAN_ROWS);
+		setScrollRow((prev) => (prev === next ? prev : next));
+		clearTimeout(artworkScrollTimerRef.current);
+		artworkScrollTimerRef.current = setTimeout(queueArtworkPrefetch, 250);
+	}, [queueArtworkPrefetch]);
+
+	useEffect(() => () => clearTimeout(artworkScrollTimerRef.current), []);
+
+	// ------------------------------------------------------------------------------------------
+	// Focus
+	// ------------------------------------------------------------------------------------------
+
+	const onNavigationKey = () => {
+		lastDpadRef.current = Date.now();
+		pendingMoveRef.current = null;
+	};
+
+	const focusChannelRow = useCallback((index, {animate = true} = {}) => {
+		const lineup = channelsRef.current;
+		if (index < 0 || index >= lineup.length) return;
+		pendingMoveRef.current = null;
+		scrollToRow(index, {animate});
+		focusWhenMounted(channelSpotlightId(lineup[index].Id));
+	}, [scrollToRow]);
+
+	const focusWindowBar = useCallback((index) => {
+		if (index < WINDOW_BAR_PREVIOUS || index > WINDOW_BAR_LAST) return;
+		pendingMoveRef.current = null;
+		lastWindowBarIndexRef.current = index;
+		focusWhenMounted(barSpotlightId(index));
+	}, []);
+
+	const focusCell = useCallback((rowIndex, channelId, cellIndex) => {
+		scrollToRow(rowIndex);
+		focusWhenMounted(cellSpotlightId(channelId, cellIndex));
+	}, [scrollToRow]);
+
+	// Only a row already drawn takes focus. The clock reaches here on its own, and it keeps the
+	// selection right without scrolling the grid or taking the remote from a dialog.
+	const focusSelectedCell = useCallback((selection, cells) => {
+		if (dialogRef.current || isLoadingCells(cells)) return;
+		const rowIndex = channelsRef.current.findIndex((channel) => channel.Id === selection.channelId);
+		if (rowIndex < 0) return;
+		focusWhenMounted(cellSpotlightId(selection.channelId, resolveCellIndexAt(cells, selection.anchorTime)), {attempts: 1, defer: true});
+	}, []);
+
+	// Anchor for the first focused cell: now while the window covers it, the window start otherwise.
+	const seedAnchorInto = (cell) => {
+		const now = Date.now();
+		const base = now >= store.windowStart && now < store.windowEnd ? now : store.windowStart;
+		return clampAnchorInto(cell, base);
+	};
+
+	const handleFocusChannel = useCallback((channel, index) => {
+		if (!pointerHover()) scrollToRow(index);
+		focusRef.current = {railFocused: true, channelId: channel.Id, program: null, area: 'grid'};
+		emitter.emit();
+	}, [emitter, scrollToRow]);
+
+	const handleFocusCell = useCallback((rowIndex, channelId, cell) => {
+		focusRef.current = {railFocused: false, channelId, program: cell.program || null, area: 'grid'};
+		if (!pointerHover()) scrollToRow(rowIndex);
+		const current = selectionRef.current;
+		// A key move lands on the cell holding the anchor already. A pointer can land anywhere,
+		// so the anchor is pulled into whatever it landed on.
+		selectionRef.current = current
+			? {channelId, anchorTime: clampAnchorInto(cell, current.anchorTime), programId: cell.program?.Id || null}
+			: {channelId, anchorTime: seedAnchorInto(cell), programId: cell.program?.Id || null};
+		emitter.emit();
+	}, [emitter, scrollToRow]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	// A horizontal move is the only navigation that rewrites the anchor.
+	const handleHorizontalMove = (cell) => {
+		const selection = selectionRef.current;
+		if (selection) selectionRef.current = {...selection, anchorTime: clampAnchorInto(cell, cell.start)};
+	};
+
+	// Moves one row holding the anchor time, so the selection keeps its place in time instead of
+	// following whichever cell happens to be nearest. A row still loading defers the move.
+	const moveSelectionVertically = useCallback((fromRowIndex, delta) => {
+		const selection = selectionRef.current;
+		if (!selection) return;
+		const target = fromRowIndex + delta;
+		const lineup = channelsRef.current;
+		if (target < 0 || target >= lineup.length) return;
+		const cells = cellsFor(lineup[target].Id);
+		if (!cells.length) return;
+		if (isLoadingCells(cells)) {
+			pendingMoveRef.current = {targetRowIndex: target, anchorTime: selection.anchorTime};
+			return;
 		}
-		ensureViewportLoaded();
-	}, [ensureViewportLoaded]);
+		focusCell(target, lineup[target].Id, resolveCellIndexAt(cells, selection.anchorTime));
+	}, [cellsFor, focusCell]);
 
-	const shiftWindow = useCallback((hours) => {
-		setWindowStart(prev => new Date(prev.getTime() + hours * 3600000));
-	}, []);
+	const applyPendingVerticalMove = useCallback(() => {
+		const pending = pendingMoveRef.current;
+		if (!pending || dialogRef.current) return;
+		const lineup = channelsRef.current;
+		const channel = lineup[pending.targetRowIndex];
+		if (!channel) return;
+		const cells = cellsFor(channel.Id);
+		if (!cells.length || isLoadingCells(cells)) return;
+		pendingMoveRef.current = null;
+		focusCell(pending.targetRowIndex, channel.Id, resolveCellIndexAt(cells, pending.anchorTime));
+	}, [cellsFor, focusCell]);
 
-	const handlePrevWindow = useCallback(() => shiftWindow(-GUIDE_HOURS), [shiftWindow]);
-	const handleNextWindow = useCallback(() => shiftWindow(GUIDE_HOURS), [shiftWindow]);
+	const pageChannelRows = useCallback((fromRowIndex, direction) => {
+		const lineup = channelsRef.current;
+		if (!lineup.length) return;
+		const target = Math.max(0, Math.min(lineup.length - 1, fromRowIndex + direction * rowsPerViewport()));
+		if (target === fromRowIndex) return;
+		moveSelectionVertically(fromRowIndex, target - fromRowIndex);
+		// A row a viewport away is usually not built yet. Scrolling builds it so the deferred move
+		// can finish.
+		if (pendingMoveRef.current) scrollToRow(target);
+	}, [moveSelectionVertically, rowsPerViewport, scrollToRow]);
 
-	const goToNow = useCallback(() => {
-		const d = new Date();
-		d.setMinutes(0, 0, 0);
-		setWindowStart(d);
-	}, []);
+	// Enters the program row at the anchor the viewer last used, or now when focus arrived
+	// through the channel column.
+	const focusProgramFromChannel = useCallback((rowIndex) => {
+		const lineup = channelsRef.current;
+		const channel = lineup[rowIndex];
+		if (!channel) return;
+		const cells = cellsFor(channel.Id);
+		if (!cells.length || isLoadingCells(cells)) return;
+		const raw = selectionRef.current?.anchorTime ?? Date.now();
+		const anchor = raw < store.windowStart ? store.windowStart : raw > store.windowEnd ? store.windowEnd - 1 : raw;
+		const index = resolveCellIndexAt(cells, anchor);
+		const cell = cells[index];
+		selectionRef.current = {channelId: channel.Id, anchorTime: clampAnchorInto(cell, anchor), programId: cell.program?.Id || null};
+		focusCell(rowIndex, channel.Id, index);
+	}, [cellsFor, focusCell, store]);
+
+	// ------------------------------------------------------------------------------------------
+	// The window
+	// ------------------------------------------------------------------------------------------
+
+	// focusGrid is false when a control drove the shift, so a press on a window button doesn't
+	// pull focus down into the grid. allowPast is only for the earlier button, the one way to
+	// look before the live window.
+	const shiftGuideWindow = useCallback(async (amount, {focusGrid = true, allowPast = false} = {}) => {
+		pendingMoveRef.current = null;
+		const oldStart = store.windowStart;
+		const oldEnd = store.windowEnd;
+		const target = oldStart + amount;
+		const liveStart = guideLeftEdge(Date.now());
+		const floor = allowPast ? liveStart - MAX_GUIDE_HISTORY_MS : liveStart;
+		const clamped = amount < 0 && target < floor ? floor : target;
+		if (clamped === oldStart) return;
+		try {
+			await store.setWindowStart(clamped, {livePosition: clamped === liveStart});
+		} catch {
+			return;
+		}
+		const selection = selectionRef.current;
+		if (!selection) return;
+		const cells = cellsFor(selection.channelId);
+		if (!cells.length) return;
+		const edgeAnchor = amount < 0 ? oldStart - 1 : oldEnd;
+		const cell = cells[resolveCellIndexAt(cells, edgeAnchor)];
+		const updated = {...selection, anchorTime: clampAnchorInto(cell, edgeAnchor), programId: cell.program?.Id || null};
+		selectionRef.current = updated;
+		if (focusGrid) focusSelectedCell(updated, cells);
+	}, [cellsFor, focusSelectedCell, store]);
+
+	// Puts the anchor on the new window start after a jump, so it addresses the first cell of
+	// every row instead of a time the window no longer covers.
+	const anchorToWindowStart = useCallback(() => {
+		const selection = selectionRef.current;
+		if (!selection) return;
+		const cells = cellsFor(selection.channelId);
+		if (!cells.length) {
+			selectionRef.current = {...selection, anchorTime: store.windowStart, programId: null};
+			return;
+		}
+		const cell = cells[resolveCellIndexAt(cells, store.windowStart)];
+		const updated = {...selection, anchorTime: clampAnchorInto(cell, store.windowStart), programId: cell.program?.Id || null};
+		selectionRef.current = updated;
+		focusSelectedCell(updated, cells);
+	}, [cellsFor, focusSelectedCell, store]);
+
+	const goToNow = useCallback(async () => {
+		pendingMoveRef.current = null;
+		await store.goToNow({windowStart: guideLeftEdge(Date.now())});
+		anchorToWindowStart();
+	}, [anchorToWindowStart, store]);
+
+	const handleProgramLeftEdge = (rowIndex) => {
+		if (store.windowStart > guideLeftEdge(Date.now())) {
+			shiftGuideWindow(-HALF_HOUR);
+			return;
+		}
+		focusChannelRow(rowIndex);
+	};
+
+	// The window moves on the half hour the left edge floors to, so one timer is armed for the
+	// next one rather than polling.
+	useEffect(() => {
+		let timer = null;
+		let tick = null;
+		const reanchor = async (at) => {
+			if (!store.atLivePosition) return;
+			try {
+				await store.setWindowStart(guideLeftEdge(at), {livePosition: true});
+			} catch {
+				store.scheduleBoundaryRefresh();
+				return;
+			}
+			await store.refreshAtQuarterHour();
+			const selection = selectionRef.current;
+			if (!selection) return;
+			const cells = cellsFor(selection.channelId);
+			if (!cells.length) return;
+			const updated = reanchorSelection({current: selection, cells, now: at});
+			if (updated.anchorTime === selection.anchorTime && updated.programId === selection.programId) return;
+			pendingMoveRef.current = null;
+			selectionRef.current = updated;
+			focusSelectedCell(updated, cells);
+		};
+		const schedule = () => {
+			const at = Date.now();
+			timer = setTimeout(tick, floorToHalfHour(at) + HALF_HOUR - at);
+		};
+		tick = () => {
+			const at = Date.now();
+			const quiet = REANCHOR_INPUT_QUIET_MS - (at - lastDpadRef.current);
+			if (lastDpadRef.current && quiet > 0) {
+				// Mid input, so it waits out the quiet period rather than moving under the viewer.
+				timer = setTimeout(tick, quiet);
+				return;
+			}
+			schedule();
+			reanchor(at);
+		};
+		schedule();
+		return () => clearTimeout(timer);
+	}, [cellsFor, focusSelectedCell, store]);
+
+	// ------------------------------------------------------------------------------------------
+	// Keys
+	// ------------------------------------------------------------------------------------------
+
+	const handleKeyDownCell = useCallback((e, rowIndex, channelId, cell, cells) => {
+		const code = e.keyCode;
+		const index = cells.indexOf(cell);
+		const consume = () => {
+			e.preventDefault();
+			e.stopPropagation();
+		};
+		const page = pageDirection(code);
+		if (page) {
+			consume();
+			onNavigationKey();
+			pageChannelRows(rowIndex, page);
+			return;
+		}
+		if (code === KEYS.LEFT) {
+			consume();
+			onNavigationKey();
+			if (index > 0) {
+				handleHorizontalMove(cells[index - 1]);
+				focusCell(rowIndex, channelId, index - 1);
+			} else {
+				handleProgramLeftEdge(rowIndex);
+			}
+		} else if (code === KEYS.RIGHT) {
+			consume();
+			onNavigationKey();
+			if (index < cells.length - 1) {
+				handleHorizontalMove(cells[index + 1]);
+				focusCell(rowIndex, channelId, index + 1);
+			} else {
+				shiftGuideWindow(HALF_HOUR);
+			}
+		} else if (code === KEYS.UP) {
+			consume();
+			onNavigationKey();
+			if (rowIndex === 0) focusWindowBar(lastWindowBarIndexRef.current);
+			else moveSelectionVertically(rowIndex, -1);
+		} else if (code === KEYS.DOWN) {
+			// Taken even when refused, so geometry can't pick a cell and drift the selection in time.
+			consume();
+			onNavigationKey();
+			moveSelectionVertically(rowIndex, 1);
+		}
+	}, [focusCell, focusWindowBar, moveSelectionVertically, pageChannelRows, shiftGuideWindow]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	const handleKeyDownChannel = useCallback((e, index) => {
+		const code = e.keyCode;
+		const consume = () => {
+			e.preventDefault();
+			e.stopPropagation();
+		};
+		const lineup = channelsRef.current;
+		const page = pageDirection(code);
+		if (page) {
+			consume();
+			onNavigationKey();
+			focusChannelRow(Math.max(0, Math.min(lineup.length - 1, index + page * rowsPerViewport())));
+			return;
+		}
+		if (code === KEYS.UP) {
+			consume();
+			onNavigationKey();
+			if (index === 0) focusWindowBar(lastWindowBarIndexRef.current);
+			else focusChannelRow(index - 1);
+		} else if (code === KEYS.DOWN) {
+			consume();
+			onNavigationKey();
+			if (index < lineup.length - 1) focusChannelRow(index + 1);
+		} else if (code === KEYS.RIGHT) {
+			consume();
+			onNavigationKey();
+			focusProgramFromChannel(index);
+		} else if (code === KEYS.LEFT) {
+			consume();
+			onNavigationKey();
+		}
+	}, [focusChannelRow, focusProgramFromChannel, focusWindowBar, rowsPerViewport]);
+
+	// ------------------------------------------------------------------------------------------
+	// Watching and program actions
+	// ------------------------------------------------------------------------------------------
+
+	const watchChannel = useCallback((channelId) => {
+		const lineup = channelsRef.current;
+		const channel = lineup.find((c) => c.Id === channelId);
+		if (!channel) return;
+		onPlayChannel?.(channel, lineup);
+	}, [onPlayChannel]);
+
+	const handleSelectChannel = useCallback((channel) => watchChannel(channel.Id), [watchChannel]);
+
+	// A gap or a filtered hole tunes the channel. The placeholder does nothing.
+	const handleSelectCell = useCallback((rowIndex, channelId, cell) => {
+		if (cell.kind === CELL_KINDS.program && cell.program) {
+			pendingMoveRef.current = null;
+			actionBusyRef.current = false;
+			setDialog({type: 'program', program: cell.program});
+			setTimeout(() => Spotlight.focus('livetv-popup'), 100);
+		} else if (cell.kind === CELL_KINDS.gap || cell.kind === CELL_KINDS.filtered) {
+			watchChannel(channelId);
+		}
+	}, [watchChannel]);
+
+	const restoreGridFocus = useCallback(() => {
+		const selection = selectionRef.current;
+		if (selection) {
+			const cells = cellsFor(selection.channelId);
+			const rowIndex = channelsRef.current.findIndex((c) => c.Id === selection.channelId);
+			if (cells.length && rowIndex >= 0 && !isLoadingCells(cells)) {
+				lastFocusedRowRef.current = null;
+				focusCell(rowIndex, selection.channelId, resolveCellIndexAt(cells, selection.anchorTime));
+				return;
+			}
+		}
+		const index = Math.min(Math.max(0, lastFocusedRowRef.current || 0), Math.max(0, channelsRef.current.length - 1));
+		lastFocusedRowRef.current = null;
+		focusChannelRow(index, {animate: false});
+	}, [cellsFor, focusCell, focusChannelRow]);
+
+	const closeDialog = useCallback(() => {
+		setDialog(null);
+		setTimeout(restoreGridFocus, 0);
+	}, [restoreGridFocus]);
+
+	const showToast = useCallback((message) => setToast({message, key: Date.now()}), []);
+
+	useEffect(() => {
+		if (!toast) return undefined;
+		const timer = setTimeout(() => setToast(null), 3000);
+		return () => clearTimeout(timer);
+	}, [toast]);
+
+	const runDialogAction = useCallback(async (action, success, failure) => {
+		if (actionBusyRef.current) return;
+		actionBusyRef.current = true;
+		try {
+			await action();
+			setDialog(null);
+			showToast(success);
+			setTimeout(restoreGridFocus, 0);
+		} catch {
+			actionBusyRef.current = false;
+			showToast(failure);
+		}
+	}, [restoreGridFocus, showToast]);
 
 	const openSort = useCallback(() => {
-		setSortOpen(true);
+		pendingMoveRef.current = null;
+		setDialog({type: 'sort'});
 		setTimeout(() => Spotlight.focus('livetv-sort'), 100);
 	}, []);
 
 	const openDate = useCallback(() => {
-		setDateOpen(true);
+		pendingMoveRef.current = null;
+		setDialog({type: 'date'});
 		setTimeout(() => Spotlight.focus('livetv-date'), 100);
 	}, []);
 
 	const handleSortSelect = useCallback((key) => {
-		setSortBy(key);
-		setSortOpen(false);
-		Spotlight.focus('livetv-toolbar');
-	}, []);
+		updateSetting('liveTvChannelSortBy', key);
+		pendingMoveRef.current = null;
+		store.setSortBy(key);
+		setDialog(null);
+		setTimeout(() => focusWindowBar(lastWindowBarIndexRef.current), 0);
+	}, [focusWindowBar, store, updateSetting]);
 
-	const handleDateSelect = useCallback((date) => {
-		setDateOpen(false);
-		setWindowStart(prev => {
-			const next = new Date(date);
-			next.setHours(prev.getHours(), 0, 0, 0);
-			return next;
-		});
-		Spotlight.focus('livetv-toolbar');
-	}, []);
+	const handleDateSelect = useCallback(async (date) => {
+		setDialog(null);
+		setTimeout(() => focusWindowBar(lastWindowBarIndexRef.current), 0);
+		await store.setDate(date.getTime());
+		anchorToWindowStart();
+	}, [anchorToWindowStart, focusWindowBar, store]);
 
-	const handleFilterSelect = useCallback((key) => {
-		setFilter(key);
-	}, []);
+	// ------------------------------------------------------------------------------------------
+	// Back
+	// ------------------------------------------------------------------------------------------
 
-	const handleProgramClick = useCallback((program, channel) => {
-		setSelectedProgram({program, channel});
-		setTimeout(() => Spotlight.focus('livetv-popup'), 100);
-	}, []);
+	// True once the viewer has paged off live or moved focus to a channel other than the one last
+	// tuned. With nothing ever tuned, row 0 stands in for it.
+	const isExploringAwayFromEntry = () => {
+		const homeId = getLiveTvLastChannelId();
+		if (homeId) return !store.atLivePosition || focusRef.current.channelId !== homeId;
+		const lineup = channelsRef.current;
+		if (!lineup.length) return false;
+		const rowZero = document.querySelector(`[data-spotlight-id="${channelSpotlightId(lineup[0].Id)}"]`);
+		return !store.atLivePosition || !rowZero || document.activeElement !== rowZero;
+	};
 
-	const handleProgramFocus = useCallback((program, channel) => {
-		setHero({program, channel});
-	}, []);
+	// The row the guide calls home, the last tuned channel or row 0 before anything was, or -1 when
+	// that channel isn't in the lineup.
+	const homeRowIndex = () => {
+		const homeId = getLiveTvLastChannelId();
+		const lineup = channelsRef.current;
+		if (!lineup.length) return -1;
+		return homeId ? lineup.findIndex((channel) => channel.Id === homeId) : 0;
+	};
 
-	const handleChannelFocus = useCallback((channel) => {
-		setHero({program: null, channel});
-	}, []);
-
-	const handlePlayChannel = useCallback((channel) => {
-		onPlayChannel?.(channel);
-	}, [onPlayChannel]);
-
-	const handleWatchChannel = useCallback(() => {
-		if (selectedProgram?.channel) {
-			onPlayChannel?.(selectedProgram.channel);
-		}
-	}, [selectedProgram, onPlayChannel]);
-
-	const handleClosePopup = useCallback(() => {
-		setSelectedProgram(null);
-	}, []);
-
-	const handleRecordProgram = useCallback(async () => {
-		const program = selectedProgram?.program;
-		if (!program?.Id || recordBusyRef.current) return;
-		recordBusyRef.current = true;
+	const resetToEntryState = useCallback(async () => {
+		resettingRef.current = true;
 		try {
-			await api.createLiveTvTimer(program.Id);
-			// Re-read rather than guessing the new timer id, so the Cancel button
-			// that replaces this one always has something real to cancel.
-			await loadTimers();
-		} catch (err) {
-			console.error('Failed to create timer:', err);
+			await goToNow();
 		} finally {
-			recordBusyRef.current = false;
+			resettingRef.current = false;
 		}
-	}, [api, selectedProgram, loadTimers]);
+		const index = homeRowIndex();
+		if (index < 0) return;
+		const lineup = channelsRef.current;
+		focusRef.current = {railFocused: true, channelId: lineup[index].Id, program: null, area: 'grid'};
+		emitter.emit();
+		lastFocusedRowRef.current = null;
+		focusChannelRow(index, {animate: false});
+	}, [emitter, focusChannelRow, goToNow]); // eslint-disable-line react-hooks/exhaustive-deps
 
-	const handleCancelProgramTimer = useCallback(async () => {
-		const program = selectedProgram?.program;
-		const timerId = program?.Id ? timersByProgram[program.Id] : null;
-		if (!timerId || recordBusyRef.current) return;
-		recordBusyRef.current = true;
-		try {
-			await api.cancelLiveTvTimer(timerId);
-			setTimersByProgram(prev => {
-				const next = {...prev};
-				delete next[program.Id];
-				return next;
-			});
-		} catch (err) {
-			console.error('Failed to cancel timer:', err);
-		} finally {
-			recordBusyRef.current = false;
-		}
-	}, [api, selectedProgram, timersByProgram]);
-
-	const handleRecordSeries = useCallback(async () => {
-		const program = selectedProgram?.program;
-		if (!program?.Id || recordBusyRef.current) return;
-		recordBusyRef.current = true;
-		try {
-			await api.createLiveTvSeriesTimer(program.Id);
-			// The series rule schedules this airing too, so re-reading turns the
-			// button for it into Cancel Recording.
-			await loadTimers();
-		} catch (err) {
-			console.error('Failed to create series timer:', err);
-		} finally {
-			recordBusyRef.current = false;
-		}
-	}, [api, selectedProgram, loadTimers]);
-
-	const handleToggleChannelFavorite = useCallback(async () => {
-		const channel = selectedProgram?.channel;
-		if (!channel?.Id || favoriteBusyRef.current) return;
-		favoriteBusyRef.current = true;
-		const next = !channel.UserData?.IsFavorite;
-		try {
-			await api.setFavorite(channel.Id, next);
-			const patch = c => ({...c, UserData: {...(c.UserData || {}), IsFavorite: next}});
-			setChannels(prev => prev.map(c => (c.Id === channel.Id ? patch(c) : c)));
-			setSelectedProgram(prev => (prev ? {...prev, channel: patch(prev.channel)} : prev));
-		} catch (err) {
-			console.error('Failed to toggle channel favorite:', err);
-		} finally {
-			favoriteBusyRef.current = false;
-		}
-	}, [api, selectedProgram]);
+	// A back press first re-homes a guide that has drifted from where it opened, and only leaves
+	// once it's already there.
+	const consumeBackIfExploring = useCallback(() => {
+		if (resettingRef.current) return true;
+		if (!isExploringAwayFromEntry() || homeRowIndex() < 0) return false;
+		resetToEntryState();
+		return true;
+	}, [resetToEntryState]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	useEffect(() => {
-		if (!backHandlerRef) return;
+		if (!backHandlerRef) return undefined;
 		const handler = () => {
-			if (selectedProgram) {
-				setSelectedProgram(null);
+			if (dialogRef.current) {
+				if (dialogRef.current.type === 'program') closeDialog();
+				else {
+					setDialog(null);
+					setTimeout(() => focusWindowBar(lastWindowBarIndexRef.current), 0);
+				}
 				return true;
 			}
-			if (sortOpen) {
-				setSortOpen(false);
-				Spotlight.focus('livetv-toolbar');
-				return true;
-			}
-			if (dateOpen) {
-				setDateOpen(false);
-				Spotlight.focus('livetv-toolbar');
-				return true;
-			}
-			return false;
+			return consumeBackIfExploring();
 		};
 		backHandlerRef.current = handler;
 		return () => {
 			if (backHandlerRef.current === handler) backHandlerRef.current = null;
 		};
-	}, [backHandlerRef, selectedProgram, sortOpen, dateOpen]);
+	}, [backHandlerRef, closeDialog, consumeBackIfExploring, focusWindowBar]);
+
+	// ------------------------------------------------------------------------------------------
+	// Channel numbers typed on the remote
+	// ------------------------------------------------------------------------------------------
 
 	const handleChannelNumber = useCallback((digit) => {
-		if (channelNumberTimeoutRef.current) {
-			clearTimeout(channelNumberTimeoutRef.current);
-		}
-
-		setChannelNumberBuffer(prev => prev + digit);
-
-		channelNumberTimeoutRef.current = setTimeout(() => {
-			const channelNum = channelNumberBuffer + digit;
-			const channelIndex = filteredChannelsRef.current.findIndex(ch => ch.ChannelNumber === channelNum);
-			if (channelIndex >= 0) {
-				const channel = filteredChannelsRef.current[channelIndex];
-				const scroller = gridRef.current;
-				if (scroller) {
-					scroller.scrollTop = Math.max(0, channelIndex * rowHeightRef.current - scroller.clientHeight / 2);
-				}
-				setTimeout(() => {
-					const row = document.querySelector(`[data-channel-id="${channel.Id}"]`);
-					const spottable = row && row.querySelector('[tabindex]');
-					if (spottable) spottable.focus();
-				}, 100);
-			}
-			setChannelNumberBuffer('');
-		}, 1500);
-	}, [channelNumberBuffer]);
+		clearTimeout(channelNumberTimeoutRef.current);
+		setChannelNumberBuffer((prev) => {
+			const typed = prev + digit;
+			channelNumberTimeoutRef.current = setTimeout(() => {
+				const index = channelsRef.current.findIndex((ch) => ch.ChannelNumber === typed);
+				if (index >= 0) focusChannelRow(index, {animate: false});
+				setChannelNumberBuffer('');
+			}, 1500);
+			return typed;
+		});
+	}, [focusChannelRow]);
 
 	useEffect(() => {
 		const handleKeyDown = (e) => {
-			if (selectedProgram || sortOpen || dateOpen) return;
+			if (dialogRef.current) return;
 			const keyCode = e.keyCode;
 			if (keyCode >= KEYS.NUM_0 && keyCode <= KEYS.NUM_9) {
 				e.preventDefault();
 				handleChannelNumber(String.fromCharCode(keyCode));
 			}
 		};
-
 		window.addEventListener('keydown', handleKeyDown, true);
-		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [selectedProgram, sortOpen, dateOpen, handleChannelNumber]);
+		return () => {
+			window.removeEventListener('keydown', handleKeyDown, true);
+			clearTimeout(channelNumberTimeoutRef.current);
+		};
+	}, [handleChannelNumber]);
+
+	// ------------------------------------------------------------------------------------------
+	// Reacting to the store
+	// ------------------------------------------------------------------------------------------
 
 	useEffect(() => {
-		if (channelsLoading || programsLoading) return;
-		if (!Spotlight.getCurrent()) {
-			Spotlight.focus('program-grid');
+		const currentState = store.state;
+		const prevState = prevStateRef.current;
+		prevStateRef.current = currentState;
+		if (currentState !== 'ready') return;
+		store.scheduleBoundaryRefresh();
+		queueArtworkPrefetch();
+
+		const lineup = channelsRef.current;
+		const lineupKey = lineup.map((c) => c.Id).join(',');
+		const lineupChanged = lineupKey !== prevLineupRef.current;
+		prevLineupRef.current = lineupKey;
+
+		// Where the guide opens: the channel last tuned, or the first row.
+		if (!didRestoreFocusRef.current) {
+			if (!lineup.length) return;
+			didRestoreFocusRef.current = true;
+			loadLiveTvLastChannel().then(() => {
+				const preferred = channelsRef.current.findIndex((c) => c.Id === getLiveTvLastChannelId());
+				focusChannelRow(preferred >= 0 ? preferred : 0, {animate: false});
+			});
+			return;
 		}
-	}, [channelsLoading, programsLoading]);
+
+		// A reload replaced the grid under the viewer, so focus goes back where it was.
+		if (prevState === 'loading' && !dialogRef.current && focusRef.current.area === 'grid' &&
+			pageRef.current && !pageRef.current.contains(document.activeElement)) {
+			restoreGridFocus();
+			return;
+		}
+
+		// A filter or sort moved the selected channel to another row, or out of the lineup.
+		if (lineupChanged && selectionRef.current && lineup.length) {
+			const selection = selectionRef.current;
+			let rowIndex = lineup.findIndex((c) => c.Id === selection.channelId);
+			if (rowIndex < 0) {
+				rowIndex = Math.min(Math.max(0, lastFocusedRowRef.current || 0), lineup.length - 1);
+				const fallbackCells = cellsFor(lineup[rowIndex].Id);
+				if (!fallbackCells.length) return;
+				const cell = fallbackCells[resolveCellIndexAt(fallbackCells, selection.anchorTime)];
+				selectionRef.current = {
+					channelId: lineup[rowIndex].Id,
+					anchorTime: clampAnchorInto(cell, selection.anchorTime),
+					programId: cell.program?.Id || null
+				};
+			}
+			const rebound = selectionRef.current;
+			const cells = cellsFor(rebound.channelId);
+			if (!cells.length) return;
+			lastFocusedRowRef.current = null;
+			scrollToRow(rowIndex);
+			if (focusRef.current.area === 'grid') focusSelectedCell(rebound, cells);
+		}
+
+		applyPendingVerticalMove();
+	}, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	// As the guide nears the loaded edge, the next batch is asked for.
+	useEffect(() => {
+		if (store.state !== 'ready') return;
+		const lastBuiltRow = scrollRow + VISIBLE_ROWS + OVERSCAN_ROWS * 2;
+		if (store.hasMorePrograms && lastBuiltRow + PROGRAM_PREFETCH_ROWS >= store.programsHighWater) {
+			store.loadMorePrograms();
+		}
+	}, [scrollRow, version, store]);
+
+	// ------------------------------------------------------------------------------------------
+	// Controls
+	// ------------------------------------------------------------------------------------------
+
+	const handleFilterSelect = useCallback((key) => {
+		pendingMoveRef.current = null;
+		store.setFilter(key);
+	}, [store]);
+
+	const handleChipFocus = useCallback((e) => {
+		focusRef.current = {...focusRef.current, area: 'chips'};
+		const rail = filterRailRef.current;
+		const chip = e.currentTarget;
+		if (rail && chip) rail.scrollLeft = Math.max(0, chip.offsetLeft - (rail.clientWidth - chip.offsetWidth) / 2);
+	}, []);
+
+	const handleChipKeyDown = useCallback((e) => {
+		if (e.keyCode !== KEYS.DOWN) return;
+		e.preventDefault();
+		e.stopPropagation();
+		focusWindowBar(lastWindowBarIndexRef.current);
+	}, [focusWindowBar]);
+
+	const handleBarFocus = useCallback((e) => {
+		focusRef.current = {...focusRef.current, area: 'bar'};
+		const index = parseInt(e.currentTarget.dataset.barIndex, 10);
+		if (!isNaN(index)) lastWindowBarIndexRef.current = index;
+	}, []);
+
+	const handleBarKeyDown = useCallback((e) => {
+		const index = parseInt(e.currentTarget.dataset.barIndex, 10);
+		const code = e.keyCode;
+		if (code !== KEYS.LEFT && code !== KEYS.RIGHT && code !== KEYS.UP && code !== KEYS.DOWN) return;
+		e.preventDefault();
+		e.stopPropagation();
+		if (code === KEYS.LEFT) focusWindowBar(index - 1);
+		else if (code === KEYS.RIGHT) focusWindowBar(index + 1);
+		else if (code === KEYS.UP) focusWhenMounted(chipSpotlightId(0));
+		else focusChannelRow(0);
+	}, [focusChannelRow, focusWindowBar]);
+
+	const handleEarlier = useCallback(() => shiftGuideWindow(-store.guideWindow, {focusGrid: false, allowPast: true}), [shiftGuideWindow, store]);
+	const handleLater = useCallback(() => shiftGuideWindow(store.guideWindow, {focusGrid: false}), [shiftGuideWindow, store]);
+
+	// ------------------------------------------------------------------------------------------
+	// Render
+	// ------------------------------------------------------------------------------------------
 
 	const timeSlots = useMemo(() => {
 		const slots = [];
-		for (let i = 0; i < GUIDE_HOURS * 2; i++) {
-			const slotTime = new Date(windowStart.getTime() + i * 30 * 60000);
-			slots.push(formatClockTime(slotTime, clockDisplay));
-		}
+		for (let time = windowStart; time < windowEnd; time += HALF_HOUR) slots.push(time);
 		return slots;
-	}, [windowStart, clockDisplay]);
+	}, [windowStart, windowEnd]);
 
-	// The stylesheet's row height comes back from the build in rem, so the pixel value
-	// the scroll math needs is read off a rendered row rather than assumed.
-	useEffect(() => {
-		const row = gridRef.current?.querySelector('[data-channel-id]');
-		if (row && row.offsetHeight && row.offsetHeight !== measuredRowHeight) {
-			setMeasuredRowHeight(row.offsetHeight);
-		}
-	}, [measuredRowHeight, programsLoading, filteredChannels]);
+	const state = store.state;
+	const safeScrollRow = Math.min(scrollRow, Math.max(0, channels.length - VISIBLE_ROWS));
+	const rowsEnd = Math.min(channels.length, safeScrollRow + VISIBLE_ROWS + OVERSCAN_ROWS * 2);
+	const visibleChannels = channels.slice(safeScrollRow, rowsEnd);
+	const topSpacer = safeScrollRow * rowHeightRef.current;
+	const bottomSpacer = Math.max(0, (channels.length - rowsEnd) * rowHeightRef.current);
 
-	const scaledRowHeight = ri.scale(ROW_HEIGHT);
-	const rowHeight = measuredRowHeight || (Number.isFinite(scaledRowHeight) && scaledRowHeight > 0 ? scaledRowHeight : ROW_HEIGHT);
-	rowHeightRef.current = rowHeight;
-
-	const windowStartMs = windowStart.getTime();
-	const safeWindowStart = Math.min(channelWindowStart, Math.max(0, filteredChannels.length - VISIBLE_ROWS));
-	const rowsEnd = Math.min(filteredChannels.length, safeWindowStart + VISIBLE_ROWS + OVERSCAN_ROWS * 2);
-	const visibleChannels = filteredChannels.slice(safeWindowStart, rowsEnd);
-	const topSpacerHeight = safeWindowStart * rowHeight;
-	const bottomSpacerHeight = Math.max(0, (filteredChannels.length - rowsEnd) * rowHeight);
-
-	if (channelsLoading) {
-		return (
-			<div className={css.page}>
-				<div className={css.loadingContainer}>
-					<LoadingSpinner />
-					<p>{$L('Loading TV Guide...')}</p>
-				</div>
+	let body;
+	if (state === 'loading') {
+		body = <div className={css.loadingContainer}><LoadingSpinner /></div>;
+	} else if (state === 'error') {
+		body = (
+			<div className={css.stateMessage}>
+				{$L('Failed to load guide: {error}').replace('{error}', store.error?.message || String(store.error || ''))}
 			</div>
 		);
-	}
-
-	// There is nothing to schedule once a program has already finished.
-	const canSchedule = selectedProgram
-		? new Date(selectedProgram.program.EndDate).getTime() > Date.now()
-		: false;
-	const isSeriesProgram = Boolean(selectedProgram?.program.SeriesId || selectedProgram?.program.IsSeries);
-	const selectedIsFavorite = Boolean(selectedProgram?.channel?.UserData?.IsFavorite);
-	const selectedGenres = selectedProgram
-		? [...GENRES.filter(g => selectedProgram.program[g.flag]).map(g => g.label),
-			...(selectedProgram.program.IsPremiere ? ['Premiere'] : [])]
-		: [];
-
-	return (
-		<div className={css.page}>
-			<ToolbarContainer className={css.toolbar} spotlightId="livetv-toolbar">
-				<SpottableButton className={css.pill} onClick={handlePrevWindow} aria-label={$L('Earlier')}>
-					<GuideIcon path={ICON_PATHS.chevronLeft} />
-				</SpottableButton>
-				<SpottableButton className={`${css.pill} ${css.gapXs}`} onClick={goToNow}>
-					<span className={css.pillText}>{$L('Now')}</span>
-				</SpottableButton>
-				<SpottableButton className={`${css.pill} ${css.gapXs}`} onClick={handleNextWindow} aria-label={$L('Later')}>
-					<GuideIcon path={ICON_PATHS.chevronRight} />
-				</SpottableButton>
-				<div className={css.toolbarLabel}>
-					{`${formatDayLabel(windowStart)}  ${formatTimeRange(windowStart, windowEnd, clockDisplay)}`}
-				</div>
-				<SpottableButton className={css.pill} onClick={openSort} aria-label={$L('Sort')}>
-					<GuideIcon path={ICON_PATHS.sort} />
-				</SpottableButton>
-				<SpottableButton className={`${css.pill} ${css.gapSm}`} onClick={openDate} aria-label={$L('Select date')}>
-					<GuideIcon path={ICON_PATHS.calendar} />
-				</SpottableButton>
-				<SpottableButton className={`${css.pill} ${css.pillWithLabel} ${css.gapSm}`} onClick={onRecordings}>
-					<GuideIcon path={ICON_PATHS.dvr} />
-					<span className={css.pillText}>{$L('Recordings')}</span>
-				</SpottableButton>
-			</ToolbarContainer>
-
-			<FilterRailContainer className={css.filterRail} spotlightId="livetv-filters">
-				{FILTERS.map(f => (
-					<SpottableButton
-						key={f.key}
-						className={`${css.filterChip} ${filter === f.key ? css.selected : ''}`}
-						onClick={() => handleFilterSelect(f.key)} // eslint-disable-line react/jsx-no-bind
-					>
-						{$L(f.label)}
-					</SpottableButton>
-				))}
-			</FilterRailContainer>
-
-			<HeroBand
-				program={hero.program}
-				channel={hero.channel}
-				clockDisplay={clockDisplay}
-				serverUrl={serverUrl}
-			/>
-
-			<div className={css.guideSection}>
-				<div className={css.timelineTitle}>{$L('Guide Timeline')}</div>
+	} else if (!channels.length) {
+		body = <div className={css.stateMessage}>{$L('No channels found')}</div>;
+	} else {
+		body = (
+			<>
 				<div className={css.timeRuler}>
 					<div className={css.rulerSpacer} />
-					{timeSlots.map((label, idx) => (
-						<div key={idx} className={css.timeSlot}>{label}</div>
+					{timeSlots.map((time) => (
+						<div key={time} className={css.timeSlot} style={{width: rem(HALF_HOUR * layout.pxPerMs)}}>
+							{formatClockTime(new Date(time), clockDisplay)}
+						</div>
 					))}
 				</div>
 				<div className={css.rulerDivider} />
-				{programsLoading ? (
-					<div className={css.loadingContainer}>
-						<LoadingSpinner />
-					</div>
-				) : (
-					<ProgramGridContainer className={css.gridWrap} spotlightId="program-grid">
-						{/* The spotlight decorator's ref is the component instance, so the
-						    scroller is a plain div to make gridRef a real DOM node. */}
-						<div className={css.gridBody} ref={gridRef} onScroll={handleScroll}>
-							{topSpacerHeight > 0 && <div style={{height: `${topSpacerHeight}px`, flexShrink: 0}} />}
-							{visibleChannels.map(channel => (
+				<ProgramGridContainer className={css.gridWrap} spotlightId="program-grid">
+					{/* The spotlight decorator's ref is the component instance, so the scroller
+					    is a plain div to make gridRef a real DOM node. */}
+					<div className={css.gridBody} ref={gridRef} onScroll={handleScroll}>
+						{topSpacer > 0 && <div style={{height: `${topSpacer}px`}} />}
+						{visibleChannels.map((channel, i) => {
+							const rowIndex = safeScrollRow + i;
+							return (
 								<GuideRow
 									key={channel.Id}
 									channel={channel}
-									programs={programsByChannel[channel.Id] || []}
-									filterFlag={activeFilter.flag || null}
-									loaded={loadedIds.has(channel.Id)}
-									timersByProgram={timersByProgram}
-									clockDisplay={clockDisplay}
-									serverUrl={serverUrl}
-									windowStartMs={windowStartMs}
-									onPlayChannel={handlePlayChannel}
-									onChannelFocus={handleChannelFocus}
-									onProgramClick={handleProgramClick}
-									onProgramFocus={handleProgramFocus}
+									rowIndex={rowIndex}
+									cells={renderedCellsFor(channel.Id)}
+									windowStart={windowStart}
+									now={clockNow}
+									layout={layout}
+									logoUrl={channel.ImageTags?.Primary
+										? `${serverUrl}/Items/${channel.Id}/Images/Primary?maxHeight=${ROW_HEIGHT}&tag=${channel.ImageTags.Primary}`
+										: null}
+									onFocusChannel={handleFocusChannel}
+									onKeyDownChannel={handleKeyDownChannel}
+									onSelectChannel={handleSelectChannel}
+									onFocusCell={handleFocusCell}
+									onKeyDownCell={handleKeyDownCell}
+									onSelectCell={handleSelectCell}
 								/>
-							))}
-							{bottomSpacerHeight > 0 && <div style={{height: `${bottomSpacerHeight}px`, flexShrink: 0}} />}
-							{filteredChannels.length === 0 && (
-								<div className={css.empty}>
-									{filter === 'favorites' ? $L('No favorite channels') : $L('No channels available')}
-								</div>
-							)}
-						</div>
-					</ProgramGridContainer>
-				)}
-			</div>
+							);
+						})}
+						{bottomSpacer > 0 && <div style={{height: `${bottomSpacer}px`}} />}
+					</div>
+				</ProgramGridContainer>
+			</>
+		);
+	}
 
-			{channelNumberBuffer && (
-				<div className={css.channelNumberOverlay}>
-					{channelNumberBuffer}
+	const program = dialog?.type === 'program' ? dialog.program : null;
+	const programChannel = program ? store.channelForId(program.ChannelId) : null;
+	const programEnded = program ? clockNow > programEnd(program) : false;
+	const programFuture = program ? clockNow < programStart(program) : false;
+	const programHasTimer = program ? hasTimer(program) : false;
+	const programHasSeriesTimer = program ? hasSeriesTimer(program) : false;
+	// On air with a timer set, the recording is running, so cancelling it is almost certainly why
+	// the dialog was opened.
+	const recordingNow = programHasTimer && !programEnded && !programFuture;
+	const favoriteChannel = programChannel?.UserData?.IsFavorite === true;
+	const programEpisodeLine = episodeLine(program);
+	const guideDay = new Date(store.guideDate).toDateString();
+
+	return (
+		<div className={css.page} ref={pageRef}>
+			<FilterRailContainer className={css.filterRail} spotlightId="livetv-filters">
+				<div ref={filterRailRef} className={css.filterRailScroller}>
+					{GUIDE_FILTERS.map((filter, index) => (
+						<SpottableButton
+							key={filter.key}
+							className={`${css.chip} ${store.filter === filter.key ? css.chipSelected : ''}`}
+							spotlightId={chipSpotlightId(index)}
+							onFocus={handleChipFocus}
+							onKeyDown={handleChipKeyDown}
+							onClick={() => handleFilterSelect(filter.key)} // eslint-disable-line react/jsx-no-bind
+						>
+							{$L(filter.label)}
+						</SpottableButton>
+					))}
 				</div>
-			)}
+			</FilterRailContainer>
 
-			{sortOpen && (
+			<GuideHeroHost
+				store={store}
+				emitter={emitter}
+				focusRef={focusRef}
+				serverUrl={serverUrl}
+				clockDisplay={clockDisplay}
+				version={version}
+			/>
+
+			<WindowBarContainer className={css.windowBar} spotlightId="livetv-windowbar">
+				<SpottableButton className={css.barButton} spotlightId={barSpotlightId(0)} data-bar-index={0} onFocus={handleBarFocus} onKeyDown={handleBarKeyDown} onClick={handleEarlier} aria-label={$L('Earlier')}>
+					<GuideIcon path={GUIDE_ICONS.chevronLeft} />
+				</SpottableButton>
+				<SpottableButton className={`${css.barButton} ${css.barGapXs}`} spotlightId={barSpotlightId(1)} data-bar-index={1} onFocus={handleBarFocus} onKeyDown={handleBarKeyDown} onClick={goToNow}>
+					{$L('Now')}
+				</SpottableButton>
+				<SpottableButton className={`${css.barButton} ${css.barGapXs}`} spotlightId={barSpotlightId(2)} data-bar-index={2} onFocus={handleBarFocus} onKeyDown={handleBarKeyDown} onClick={handleLater} aria-label={$L('Later')}>
+					<GuideIcon path={GUIDE_ICONS.chevronRight} />
+				</SpottableButton>
+				<div className={css.windowLabel}>
+					{`${formatDayLabel(new Date(store.guideDate))}  ${formatClockTime(new Date(windowStart), clockDisplay)} – ${formatClockTime(new Date(windowEnd), clockDisplay)}`}
+				</div>
+				<SpottableButton className={css.barButton} spotlightId={barSpotlightId(3)} data-bar-index={3} onFocus={handleBarFocus} onKeyDown={handleBarKeyDown} onClick={openSort} aria-label={$L('Sort By')}>
+					<GuideIcon path={GUIDE_ICONS.sort} />
+				</SpottableButton>
+				<SpottableButton className={`${css.barButton} ${css.barGapSm}`} spotlightId={barSpotlightId(4)} data-bar-index={4} onFocus={handleBarFocus} onKeyDown={handleBarKeyDown} onClick={openDate} aria-label={$L('Select date')}>
+					<GuideIcon path={GUIDE_ICONS.calendar} />
+				</SpottableButton>
+				<SpottableButton className={`${css.barButton} ${css.barButtonLabelled} ${css.barGapSm}`} spotlightId={barSpotlightId(5)} data-bar-index={5} onFocus={handleBarFocus} onKeyDown={handleBarKeyDown} onClick={onRecordings}>
+					<GuideIcon path={GUIDE_ICONS.dvr} />
+					<span>{$L('Recordings')}</span>
+				</SpottableButton>
+			</WindowBarContainer>
+
+			<div className={css.guideSection}>{body}</div>
+
+			{channelNumberBuffer && <div className={css.channelNumberOverlay}>{channelNumberBuffer}</div>}
+
+			{dialog?.type === 'sort' && (
 				<div className={css.dialogScrim}>
 					<PopupContainer className={css.dialog} spotlightId="livetv-sort">
-						<div className={css.dialogTitle}>{$L('Sort channels')}</div>
+						<div className={css.dialogTitle}>{$L('Sort By')}</div>
 						<div className={css.dialogBody}>
-							{SORT_OPTIONS.map((option, idx) => (
+							{CHANNEL_SORTS.map((key) => (
 								<SpottableDiv
-									key={option.key}
-									className={`${css.optionRow} ${sortBy === option.key ? css.selectedOption : ''} ${idx === 0 ? 'spottable-default' : ''}`}
-									onClick={() => handleSortSelect(option.key)} // eslint-disable-line react/jsx-no-bind
+									key={key}
+									className={`${css.optionRow} ${store.sortBy === key ? 'spottable-default' : ''}`}
+									onClick={() => handleSortSelect(key)} // eslint-disable-line react/jsx-no-bind
 								>
-									<span>{$L(option.label)}</span>
-									{sortBy === option.key && <GuideIcon path={ICON_PATHS.check} />}
+									<span className={`${css.radio} ${store.sortBy === key ? css.radioSelected : ''}`} />
+									<span className={css.optionLabel}>{$L(SORT_LABELS[key])}</span>
 								</SpottableDiv>
 							))}
 						</div>
@@ -962,15 +1199,13 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 				</div>
 			)}
 
-			{dateOpen && (
+			{dialog?.type === 'date' && (
 				<div className={css.dialogScrim}>
 					<PopupContainer className={css.dialog} spotlightId="livetv-date">
 						<div className={css.dialogTitle}>{$L('Select date')}</div>
 						<div className={css.dialogBody}>
 							{buildDateOptions().map((date, idx) => {
-								const isSelected = date.getFullYear() === windowStart.getFullYear() &&
-									date.getMonth() === windowStart.getMonth() &&
-									date.getDate() === windowStart.getDate();
+								const isSelected = date.toDateString() === guideDay;
 								return (
 									<SpottableDiv
 										key={idx}
@@ -978,7 +1213,7 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 										onClick={() => handleDateSelect(date)} // eslint-disable-line react/jsx-no-bind
 									>
 										<span>{idx === 7 ? `${formatDayLabel(date)} (${$L('Today')})` : formatDayLabel(date)}</span>
-										{isSelected && <GuideIcon path={ICON_PATHS.check} />}
+										{isSelected && <GuideIcon path={GUIDE_ICONS.check} />}
 									</SpottableDiv>
 								);
 							})}
@@ -987,68 +1222,81 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 				</div>
 			)}
 
-			{selectedProgram && (
+			{program && (
 				<div className={css.dialogScrim}>
 					<PopupContainer className={css.dialog} spotlightId="livetv-popup">
-						<div className={css.dialogTitle}>{selectedProgram.program.Name}</div>
+						<div className={css.dialogTitle}>{program.Name}</div>
 						<div className={css.dialogBody}>
 							<div className={css.dialogTime}>
-								{formatTimeRange(
-									new Date(selectedProgram.program.StartDate),
-									new Date(selectedProgram.program.EndDate),
-									clockDisplay
-								)}
+								{`${formatClockTime(new Date(programStart(program)), clockDisplay)} – ${formatClockTime(new Date(programEnd(program)), clockDisplay)}`}
 							</div>
-							{selectedProgram.program.EpisodeTitle && (
-								<div className={css.dialogEpisode}>{selectedProgram.program.EpisodeTitle}</div>
-							)}
-							<div className={css.dialogOverview}>
-								{selectedProgram.program.Overview || $L('No description available.')}
+							{programEpisodeLine && <div className={css.dialogEpisode}>{programEpisodeLine}</div>}
+							{program.Overview && <div className={css.dialogOverview}>{program.Overview}</div>}
+							<div className={css.dialogChips}>
+								{program.IsMovie && <span className={css.genreChip}>{$L('Movie')}</span>}
+								{program.IsSeries && <span className={css.genreChip}>{$L('Series')}</span>}
+								{program.IsSports && <span className={css.genreChip}>{$L('Sports')}</span>}
+								{program.IsNews && <span className={css.genreChip}>{$L('News')}</span>}
+								{program.IsKids && <span className={css.genreChip}>{$L('Kids')}</span>}
+								{program.IsPremiere && <span className={css.genreChip}>{$L('Premiere')}</span>}
 							</div>
-							{selectedGenres.length > 0 && (
-								<div className={css.chipRow}>
-									{selectedGenres.map(label => (
-										<span key={label} className={css.genreChip}>{$L(label)}</span>
-									))}
-								</div>
-							)}
 						</div>
 						<div className={css.dialogActions}>
-							{canSchedule && (
-								timersByProgram[selectedProgram.program.Id] ? (
-									<SpottableButton
-										className={`${css.dialogBtn} ${css.danger}`}
-										onClick={handleCancelProgramTimer}
-									>
-										{$L('Cancel Recording')}
-									</SpottableButton>
-								) : (
-									<SpottableButton className={css.dialogBtn} onClick={handleRecordProgram}>
-										{$L('Record')}
-									</SpottableButton>
-								)
-							)}
-							{canSchedule && isSeriesProgram && (
-								<SpottableButton className={css.dialogBtn} onClick={handleRecordSeries}>
-									{$L('Record Series')}
+							{!programEnded && (
+								<SpottableButton
+									className={`${css.dialogBtn} ${programHasTimer ? css.danger : ''} ${recordingNow ? 'spottable-default' : ''}`}
+									onClick={() => runDialogAction( // eslint-disable-line react/jsx-no-bind
+										() => store.toggleProgramRecording(program),
+										programHasTimer ? $L('Recording cancelled') : $L('Program set to record'),
+										programHasTimer ? $L('Failed to cancel recording') : $L('Unable to create recording')
+									)}
+								>
+									{programHasTimer ? $L('Cancel Recording') : $L('Record')}
 								</SpottableButton>
 							)}
-							<SpottableButton className={css.dialogBtn} onClick={handleToggleChannelFavorite}>
-								{selectedIsFavorite ? $L('Unfavorite Channel') : $L('Favorite Channel')}
-							</SpottableButton>
-							<SpottableButton className={css.dialogBtn} onClick={handleWatchChannel}>
-								{$L('Watch')}
+							{program.IsSeries && (
+								<SpottableButton
+									className={`${css.dialogBtn} ${programHasSeriesTimer ? css.danger : ''}`}
+									onClick={() => runDialogAction( // eslint-disable-line react/jsx-no-bind
+										() => store.toggleSeriesRecording(program),
+										programHasSeriesTimer ? $L('Series recording cancelled') : $L('Series set to record'),
+										programHasSeriesTimer ? $L('Failed to cancel series recording') : $L('Unable to create series recording')
+									)}
+								>
+									{programHasSeriesTimer ? $L('Cancel Series Recording') : $L('Record Series')}
+								</SpottableButton>
+							)}
+							<SpottableButton
+								className={css.dialogBtn}
+								disabled={!programChannel}
+								onClick={() => runDialogAction( // eslint-disable-line react/jsx-no-bind
+									() => store.toggleChannelFavorite(program.ChannelId),
+									favoriteChannel ? $L('Removed from favorite channels') : $L('Added to favorite channels'),
+									$L('Failed to update favorite channel')
+								)}
+							>
+								{favoriteChannel ? $L('Unfavorite Channel') : $L('Favorite Channel')}
 							</SpottableButton>
 							<SpottableButton
-								className={`${css.dialogBtn} spottable-default`}
-								onClick={handleClosePopup}
+								className={`${css.dialogBtn} ${recordingNow ? '' : 'spottable-default'}`}
+								onClick={() => { // eslint-disable-line react/jsx-no-bind
+									if (actionBusyRef.current) return;
+									actionBusyRef.current = true;
+									setDialog(null);
+									watchChannel(program.ChannelId);
+								}}
 							>
+								{programEnded || programFuture ? $L('Watch channel live') : $L('Watch')}
+							</SpottableButton>
+							<SpottableButton className={css.dialogBtn} onClick={closeDialog}>
 								{$L('Close')}
 							</SpottableButton>
 						</div>
 					</PopupContainer>
 				</div>
 			)}
+
+			{toast && <div key={toast.key} className={css.toast}>{toast.message}</div>}
 		</div>
 	);
 };

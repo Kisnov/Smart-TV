@@ -28,14 +28,14 @@ export const SyncPlayProvider = ({children}) => {
 	const listenerRef = useRef(null);
 
 	useEffect(() => {
-		// Emby has no SyncPlay; opening the socket just spams /SyncPlay/Ping with 404s.
+		// Emby has no SyncPlay, and asking it for the clock or a ping only earns 404s.
 		if (isAuthenticated && serverType !== 'emby' && settings.syncplayEnabled !== false) {
-			syncPlayService.connectWebSocket();
+			syncPlayService.start();
 		} else {
-			syncPlayService.disconnectWebSocket();
+			syncPlayService.stop();
 		}
 		return () => {
-			syncPlayService.disconnectWebSocket();
+			syncPlayService.stop();
 		};
 	}, [isAuthenticated, serverType, settings.syncplayEnabled]);
 

@@ -16,6 +16,7 @@ describe('letter buckets', () => {
 		expect(bucketOf('1942')).toBe('#');
 		expect(bucketOf('')).toBe('#');
 		expect(bucketOf('   ')).toBe('#');
+		expect(bucketOf('ßeta')).toBe('#');
 	});
 });
 
@@ -30,6 +31,11 @@ describe('gameIndexMatches', () => {
 	test('needs every term to match', () => {
 		expect(gameIndexMatches(raid, gameQueryWords('river ra'), '')).toBe(true);
 		expect(gameIndexMatches(raid, gameQueryWords('river pitfall'), '')).toBe(false);
+	});
+
+	test('finds a title whether or not the accents were typed', () => {
+		expect(gameIndexMatches(buildGameIndex('Pokémon Snap', ''), gameQueryWords('pokemon'), '')).toBe(true);
+		expect(gameIndexMatches(buildGameIndex('Pokemon Snap', ''), gameQueryWords('poké'), '')).toBe(true);
 	});
 
 	test('reads the filename as well as the title', () => {

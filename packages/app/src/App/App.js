@@ -16,6 +16,7 @@ import {AuthProvider, useAuth} from '../context/AuthContext';
 import {useSettings} from '../context/SettingsContext';
 import * as connectionPool from '../services/connectionPool';
 import * as jellyfinApi from '../services/jellyfinApi';
+import {adoptLegacyBlockedRatings, loadParentalControls, parentalScopeKey, setParentalScope} from '../services/parentalControls';
 import {libraryIdOf, seerrDetailStub} from '../utils/seerrTarget';
 import serverLogger from '../services/serverLogger';
 import {isBackKey, KEYS} from '../utils/keys';
@@ -165,6 +166,27 @@ const AppContent = (props) => {
 		} : null
 	), [syncPlayMessage]);
 	const unifiedMode = settings.unifiedLibraryMode && hasMultipleServers;
+
+	// Blocked ratings belong to whoever is signed in on this server.
+	useEffect(() => {
+		loadParentalControls();
+		setParentalScope(parentalScopeKey(serverUrl, user?.Id));
+	}, [serverUrl, user?.Id]);
+
+	// The list used to be kept once for the whole TV. Whoever is signed in takes it, and the old
+	// copy goes so the next account starts from its own.
+	const legacyBlockedRatings = settings.blockedRatings;
+	useEffect(() => {
+		if (!settingsLoaded || !user?.Id || !Array.isArray(legacyBlockedRatings)) return undefined;
+		let cancelled = false;
+		loadParentalControls().then(() => {
+			if (!cancelled && adoptLegacyBlockedRatings(legacyBlockedRatings)) {
+				updateSettings({blockedRatings: undefined});
+			}
+		});
+		return () => { cancelled = true; };
+	}, [settingsLoaded, user?.Id, serverUrl, legacyBlockedRatings, updateSettings]);
+
 	const [panelIndex, setPanelIndex] = useState(PANELS.LOGIN);
 	const [selectedItem, setSelectedItem] = useState(null);
 	const [selectedLibrary, setSelectedLibrary] = useState(null);
@@ -893,6 +915,9 @@ const AppContent = (props) => {
 			if (prev?.videoQueue?.some(e => e.Id === item.Id)) {
 				return {videoQueue: prev.videoQueue};
 			}
+			if (prev?.liveTvChannels?.some(c => c.Id === item.Id)) {
+				return {liveTvChannels: prev.liveTvChannels};
+			}
 			return null;
 		});
 		setIsResume(false);
@@ -1039,9 +1064,10 @@ const AppContent = (props) => {
 		navigateTo(PANELS.PERSON, false);
 	}, [navigateTo, settings.detailScreenStyle]);
 
-	const handlePlayChannel = useCallback((channel) => {
+	// The guide hands over its lineup, in its own order, for the player's channel carousel.
+	const handlePlayChannel = useCallback((channel, lineup) => {
 		setPlayingItem(channel);
-		setPlaybackOptions(null);
+		setPlaybackOptions(lineup?.length ? {liveTvChannels: lineup} : null);
 		setIsResume(false);
 		navigateTo(PANELS.PLAYER);
 	}, [navigateTo]);
@@ -1451,6 +1477,7 @@ const AppContent = (props) => {
 								forceTranscode={playbackOptions?.forceTranscode}
 								audioPlaylist={playbackOptions?.audioPlaylist}
 								videoQueue={playbackOptions?.videoQueue}
+								liveTvChannels={playbackOptions?.liveTvChannels}
 								onEnded={handlePlayerEnd}
 								onBack={handlePlayerEnd}
 								onGuide={handlePlayerGuide}

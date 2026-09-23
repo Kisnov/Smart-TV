@@ -1,7 +1,7 @@
 import $L from '@enact/i18n/$L';
 import * as gamesApi from '../services/gamesApi';
-import {deduplicateMediaItems} from './mediaDedup';
 import {foldForSearch} from './accentFolding';
+import {deduplicateMediaItems} from './mediaDedup';
 
 const RESULT_CAP = 24;
 
@@ -61,7 +61,8 @@ export const aspectClassForType = (type) => {
 
 export const isCircleType = (type) => type === 'Person';
 
-// Live TV channels are fetched wholesale, so they are matched by name here.
+// Live TV channels are fetched wholesale, so they are matched by name here, with the accent
+// folding the server would have done.
 export const filterByName = (items, query, cap = RESULT_CAP) => {
 	const q = foldForSearch((query || '').trim());
 	if (!q) return [];
