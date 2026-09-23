@@ -46,6 +46,8 @@ import {NextEpisodeContainer, CONTROLS_HIDE_DELAY, withTimeout, SEGMENT_FETCH_TI
 import NextUpOverlay from './NextUpOverlay';
 import SkipSegmentOverlay from './SkipSegmentOverlay';
 import StillWatchingDialog from './StillWatchingDialog';
+import useBufferingAnimation from './useBufferingAnimation';
+import LoadingAnimationLayer from '../../components/LoadingAnimation';
 import {
 	toSubtitleLanguage,
 	mapSubtitleStreamsFromMediaSource,
@@ -180,6 +182,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const [isSeeking, setIsSeeking] = useState(false);
 	const [seekPosition, setSeekPosition] = useState(0);
 	const [mediaSourceId, setMediaSourceId] = useState(null);
+	const {showBuffering, noteSeek} = useBufferingAnimation({
+		isBuffering,
+		isSeeking,
+		hasPreview: settings.trickPlayEnabled !== false && hasTrickplayPreview(item.Id, mediaSourceId)
+	});
 	const [hasTriedTranscode, setHasTriedTranscode] = useState(false);
 	const [focusRow, setFocusRow] = useState('bottom');
 	const isLiveTV = item.Type === 'TvChannel';
@@ -1884,10 +1891,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (pendingSeekMsRef.current != null && avplayReadyRef.current) {
 			const seekMs = pendingSeekMsRef.current;
 			pendingSeekMsRef.current = null;
+			noteSeek();
 			if (groupSeekTo(Math.floor(seekMs * 10000))) return;
 			avplaySeek(seekMs).catch(err => console.warn('[Player] Deferred seek failed:', err));
 		}
-	}, [groupSeekTo]);
+	}, [groupSeekTo, noteSeek]);
 
 	const scheduleDeferredSeek = useCallback((targetMs) => {
 		pendingSeekMsRef.current = targetMs;
@@ -1973,24 +1981,26 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (!avplayReadyRef.current) return;
 		noteViewerActivity();
 		dropScrub();
+		noteSeek();
 		const step = skipBackSeconds(settings);
 		if (groupSeekTo(positionRef.current - step * 10000000)) return;
 		const ms = avplayGetCurrentTime();
 		const newMs = Math.max(0, ms - step * 1000);
 		avplaySeek(newMs).catch(e => console.warn('[Player] Seek failed:', e));
-	}, [settings, groupSeekTo, noteViewerActivity, dropScrub]);
+	}, [settings, groupSeekTo, noteViewerActivity, dropScrub, noteSeek]);
 
 	const handleForward = useCallback(() => {
 		if (!avplayReadyRef.current) return;
 		noteViewerActivity();
 		dropScrub();
+		noteSeek();
 		const step = skipForwardSeconds(settings);
 		if (groupSeekTo(positionRef.current + step * 10000000)) return;
 		const ms = avplayGetCurrentTime();
 		const durationMs = avplayGetDuration();
 		const newMs = Math.min(durationMs, ms + step * 1000);
 		avplaySeek(newMs).catch(e => console.warn('[Player] Seek failed:', e));
-	}, [settings, groupSeekTo, noteViewerActivity, dropScrub]);
+	}, [settings, groupSeekTo, noteViewerActivity, dropScrub, noteSeek]);
 
 	// Modal handlers
 	const openModal = useCallback((modal) => {
@@ -2955,10 +2965,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		return (
 			<div className={css.container}>
 				{channelCarousel}
-				<div className={css.loadingIndicator}>
-					<div className={css.spinner} />
-					<p>{$L('Loading...')}</p>
-				</div>
+				<LoadingAnimationLayer dimmed label={$L('Loading Stream...')} />
 			</div>
 		);
 	}
@@ -3037,12 +3044,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			)}
 
 
-			{/* Buffering Indicator */}
-			{isBuffering && (
-				<div className={css.bufferingIndicator}>
-					<div className={css.spinner} />
-				</div>
-			)}
+			{showBuffering && <LoadingAnimationLayer label={$L('Loading Stream...')} />}
 
 			{isPaused && settings.showDescriptionOnPause && item?.Overview && !isAudioMode && !activeModal && !controlsVisible && (
 				<div className={css.pauseDescriptionOverlay}>

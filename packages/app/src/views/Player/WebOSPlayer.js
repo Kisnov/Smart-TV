@@ -43,6 +43,8 @@ import ChannelCarousel from './ChannelCarousel';
 import NextUpOverlay from './NextUpOverlay';
 import SkipSegmentOverlay from './SkipSegmentOverlay';
 import StillWatchingDialog from './StillWatchingDialog';
+import useBufferingAnimation from './useBufferingAnimation';
+import LoadingAnimationLayer from '../../components/LoadingAnimation';
 import useSleepTimer from './useSleepTimer';
 import useSyncPlayCommands from './useSyncPlayCommands';
 import useSegmentPopups from './useSegmentPopups';
@@ -153,6 +155,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const [isSeeking, setIsSeeking] = useState(false);
 	const [seekPosition, setSeekPosition] = useState(0);
 	const [mediaSourceId, setMediaSourceId] = useState(null);
+	const {showBuffering, noteSeek} = useBufferingAnimation({
+		isBuffering,
+		isSeeking,
+		hasPreview: settings.trickPlayEnabled !== false && hasTrickplayPreview(item.Id, mediaSourceId)
+	});
 	const [hasTriedTranscode, setHasTriedTranscode] = useState(false);
 	const [focusRow, setFocusRow] = useState('bottom');
 	const [isAudioMode, setIsAudioMode] = useState(false);
@@ -1943,21 +1950,25 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (!held.active) return false;
 		scrubHoldRef.current = {active: false, wasPlaying: false, ticks: null};
 		noteViewerActivity();
-		if (held.ticks != null) seekToTicks(held.ticks);
+		if (held.ticks != null) {
+			noteSeek();
+			seekToTicks(held.ticks);
+		}
 		setIsSeeking(false);
 		videoRef.current?.play()?.catch?.(() => {});
 		healthMonitorRef.current?.setPaused(false);
 		return true;
-	}, [noteViewerActivity, seekToTicks]);
+	}, [noteViewerActivity, seekToTicks, noteSeek]);
 
 	// Moving off the bar lands a held scrub where it is and stays paused, and play then carries on
 	// from there.
 	const settleHeldScrub = useCallback(() => {
 		const held = scrubHoldRef.current;
 		if (!held.active || held.ticks == null) return;
+		noteSeek();
 		seekToTicks(held.ticks);
 		scrubHoldRef.current = {...held, ticks: null};
-	}, [seekToTicks]);
+	}, [seekToTicks, noteSeek]);
 
 	// A skip or a chapter jump lands somewhere the scrub knows nothing about, so a held scrub is
 	// dropped and playback carries on as it was.
@@ -1995,6 +2006,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		const held = scrubHoldRef.current;
 		clearTimeout(scrubSettleTimerRef.current);
 		if (!held.active) {
+			noteSeek();
 			seekByOffset(deltaSeconds, true);
 			// A scrub that doesn't hold playback has landed once the presses stop, and the preview
 			// goes with it.
@@ -2006,7 +2018,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		const ticks = Math.max(0, Math.min(maxTicks, base + Math.floor(deltaSeconds * 10000000)));
 		scrubHoldRef.current = {...held, ticks};
 		setSeekPosition(ticks);
-	}, [noteViewerActivity, beginScrub, seekByOffset, duration]);
+	}, [noteViewerActivity, beginScrub, seekByOffset, duration, noteSeek]);
 
 	const handlePlayPause = useCallback(() => {
 		if (resumeHeldScrub()) {
@@ -2043,15 +2055,17 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (!videoRef.current) return;
 		noteViewerActivity();
 		dropScrub();
+		noteSeek();
 		seekByOffset(-skipBackSeconds(settings));
-	}, [settings, seekByOffset, noteViewerActivity, dropScrub]);
+	}, [settings, seekByOffset, noteViewerActivity, dropScrub, noteSeek]);
 
 	const handleForward = useCallback(() => {
 		if (!videoRef.current) return;
 		noteViewerActivity();
 		dropScrub();
+		noteSeek();
 		seekByOffset(skipForwardSeconds(settings));
-	}, [settings, seekByOffset, noteViewerActivity, dropScrub]);
+	}, [settings, seekByOffset, noteViewerActivity, dropScrub, noteSeek]);
 
 	const openModal = useCallback((modal) => {
 	  lastFocusedElementRef.current = document.activeElement;
@@ -2940,12 +2954,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 			<canvas ref={assCanvasRef} className={css.assCanvas} />
 
-			{isLoading && (
-				<div className={css.loadingIndicator}>
-					<div className={css.spinner} />
-					<p>{$L('Loading...')}</p>
-				</div>
-			)}
+			{isLoading && <LoadingAnimationLayer dimmed label={$L('Loading Stream...')} />}
 
 			{error && (
 				<div className={css.error}>
@@ -2990,12 +2999,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			)}
 
 
-			{/* Buffering Indicator */}
-			{!isLoading && isBuffering && (
-				<div className={css.bufferingIndicator}>
-					<div className={css.spinner} />
-				</div>
-			)}
+			{!isLoading && showBuffering && <LoadingAnimationLayer label={$L('Loading Stream...')} />}
 
 			{!isLoading && !error && isPaused && settings.showDescriptionOnPause && item?.Overview && !isAudioMode && !activeModal && !controlsVisible && (
 				<div className={css.pauseDescriptionOverlay}>

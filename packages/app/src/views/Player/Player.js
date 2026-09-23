@@ -1,8 +1,9 @@
 import {getPlatform} from '../../platform';
-import {lazy, useEffect, useMemo, useRef, useState} from 'react';
+import {lazy, Suspense, useEffect, useMemo, useRef, useState} from 'react';
+import $L from '@enact/i18n/$L';
 
 import {isBlocked, isBlockedNow} from '../../services/blockedContentGate';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import LoadingAnimationLayer from '../../components/LoadingAnimation';
 
 const PlatformPlayer = lazy(() =>
 	getPlatform() === 'tizen'
@@ -50,15 +51,19 @@ const Player = ({item, videoQueue, audioPlaylist, ...rest}) => {
 		shownRef.current = {...rest, item, videoQueue: strainedVideoQueue, audioPlaylist: strainedAudioPlaylist};
 	}
 
-	if (!shownRef.current) {
-		return (
-			<div style={WAITING_STYLE}>
-				<LoadingSpinner />
-			</div>
-		);
-	}
+	const waiting = (
+		<div style={WAITING_STYLE}>
+			<LoadingAnimationLayer dimmed label={$L('Loading Stream...')} />
+		</div>
+	);
 
-	return <PlatformPlayer {...shownRef.current} />;
+	if (!shownRef.current) return waiting;
+
+	return (
+		<Suspense fallback={waiting}>
+			<PlatformPlayer {...shownRef.current} />
+		</Suspense>
+	);
 };
 
 export default Player;

@@ -19,6 +19,7 @@ import {isTvKeyboardVisible} from '../../components/TVKeyboard/keyboardBus';
 import {isWebOS} from '../../platform';
 import ClearDataDialog from '../../components/ClearDataDialog';
 import ScreensaverPreview from '../../components/Screensaver/ScreensaverPreview';
+import {LoadingAnimationPreview} from '../../components/LoadingAnimation';
 import {clearAllStorage} from '../../services/storage';
 import {clearImageCache} from '../../services/imageProxy';
 import {clearProxiedImageCache} from '../../hooks/useProxiedImage';
@@ -1158,7 +1159,8 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		checkForUpdates: renderCheckForUpdates,
 		profileSync: renderProfileSync,
 		playbackTimePreview: renderPlaybackTimePreview,
-		screensaverPreview: renderScreensaverPreview
+		screensaverPreview: renderScreensaverPreview,
+		loadingAnimationPreview: () => <LoadingAnimationPreview />
 	};
 
 	const rowDeps = {settings, updateSetting, toggleSetting, pushView, customRenderers};

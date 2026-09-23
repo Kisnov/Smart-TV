@@ -20,6 +20,9 @@ import {
 	getHomeRowSortOptions, getPlaylistCollectionSortOptions,
 	getHomeRowsStyleOptions,
 	getImageTypeOptions,
+	getLoadingAnimationImageOptions,
+	getLoadingAnimationPositionOptions,
+	getLoadingAnimationSpeedOptions,
 	getMaxAudioChannelsOptions,
 	getMaxResolutionOptions,
 	getMediaSegmentActionOptions,
@@ -122,6 +125,7 @@ const whenScreensaver = (ctx) => ctx.settings.screensaverEnabled;
 const whenScreensaverLibrary = (ctx) => ctx.settings.screensaverEnabled && ctx.settings.screensaverBackdrop === 'library';
 const whenScreensaverComponent = (ctx) => ctx.settings.screensaverEnabled && ctx.settings.screensaverComponent !== 'none';
 const whenScreensaverStatic = (ctx) => whenScreensaverComponent(ctx) && ctx.settings.screensaverMovement === 'staticCorner';
+const whenLoadingAnimation = (ctx) => ctx.settings.loadingAnimationImage !== 'none';
 const whenPassthrough = (ctx) => ctx.settings.audioPassthroughMode === 'manual';
 const whenSyncCorrection = (ctx) => ctx.settings.syncPlayAdvancedCorrectionEnabled !== false;
 
@@ -509,6 +513,23 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.SECTION, id: 'mediaBarBehavior', label: () => $L('Behavior')},
 					{kind: KIND.TOGGLE, key: 'autoAdvance', label: () => $L('Auto Advance'), desc: () => $L('Automatically advance to next slide'), icon: 'skip'},
 					{kind: KIND.SLIDER, key: 'autoAdvanceInterval', label: () => $L('Auto Advance Interval'), min: 2, max: 20, step: 1, format: seconds, icon: 'timer', when: (ctx) => ctx.settings.autoAdvance}
+				]
+			},
+			{
+				id: 'loadingAnimation',
+				icon: 'motion_photos_on',
+				section: () => $L('Extras'),
+				label: () => $L('Loading Animation'),
+				description: () => $L('Customize the loading animations used throughout Moonfin'),
+				keywords: () => ['spinner', 'runner', 'moon', 'logo', 'loading'],
+				rows: [
+					{kind: KIND.SECTION, id: 'loadingAnimationConfiguration', label: () => $L('Loading Animation Configuration')},
+					{kind: KIND.OPTION, key: 'loadingAnimationImage', label: () => $L('Image'), options: getLoadingAnimationImageOptions, fallback: () => $L('Moonfin Logo'), icon: 'movie_filter'},
+					{kind: KIND.CUSTOM, id: 'loadingAnimationPreview', render: 'loadingAnimationPreview', when: whenLoadingAnimation},
+					{kind: KIND.OPTION, key: 'loadingAnimationSize', label: () => $L('Animation Size'), options: getScreensaverSizeOptions, fallback: () => $L('Medium'), icon: 'photo', when: whenLoadingAnimation},
+					{kind: KIND.OPTION, key: 'loadingAnimationPosition', label: () => $L('Animation Position'), options: getLoadingAnimationPositionOptions, fallback: () => $L('Middle'), icon: 'grid_view', when: whenLoadingAnimation},
+					{kind: KIND.OPTION, key: 'loadingAnimationSpeed', label: () => $L('Animation Speed'), options: getLoadingAnimationSpeedOptions, fallback: () => $L('Fast'), icon: 'speed', when: whenLoadingAnimation},
+					{kind: KIND.TOGGLE, key: 'showLoadingAnimationText', label: () => $L('Show Text?'), icon: 'text_fields', when: whenLoadingAnimation}
 				]
 			},
 			{

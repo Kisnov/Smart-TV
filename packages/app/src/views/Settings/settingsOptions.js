@@ -159,6 +159,24 @@ export const getScreensaverPositionOptions = () => [
 	{ value: 'bottomRight', label: $L('Bottom-Right') }
 ];
 
+export const getLoadingAnimationImageOptions = () => [
+	{ value: 'none', label: $L('None') },
+	{ value: 'moonfinLogo', label: $L('Moonfin Logo') },
+	{ value: 'spinner', label: $L('Spinner') },
+	{ value: 'runner', label: $L('Runner') },
+	{ value: 'moonPhases', label: $L('Moon Phases') },
+	{ value: 'moonfinPhases', label: $L('Moonfin Phases') },
+	{ value: 'neonfinPhases', label: $L('Neonfin Phases') }
+];
+
+export const getLoadingAnimationPositionOptions = () => [
+	...getScreensaverPositionOptions(),
+	{ value: 'bouncing', label: $L('Bouncing') }
+];
+
+export const getLoadingAnimationSpeedOptions = () =>
+	getScreensaverMovementOptions().filter((option) => option.value !== 'staticCorner');
+
 export const getScreensaverTimeoutOptions = () => [
 	{ value: 30, label: $L('30 seconds') },
 	{ value: 60, label: $L('1 minute') },
