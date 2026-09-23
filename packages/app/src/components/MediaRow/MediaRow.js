@@ -38,7 +38,8 @@ const MediaRow = ({
 	registerRowRef,
 	onSeeAll,
 	seeAllLabel,
-	spotlightId: rowSpotlightId
+	spotlightId: rowSpotlightId,
+	menuOptions
 }) => {
 	const {settings} = useSettings();
 	const scrollerRef = useRef(null);
@@ -180,6 +181,7 @@ const MediaRow = ({
 									spotlightId={spotlightId}
 									onSpotlightLeft={isFirst && !onSeeAll ? handleWrapLeft : null}
 									onSpotlightRight={isLast ? handleWrapRight : null}
+									menuOptions={menuOptions}
 								/>
 							);
 						})}
@@ -201,6 +203,7 @@ const areRowPropsEqual = (prev, next) => {
 	if (prev.rowSpacing !== next.rowSpacing) return false;
 	if (prev.className !== next.className) return false;
 	if (prev.seeAllLabel !== next.seeAllLabel) return false;
+	if (prev.menuOptions !== next.menuOptions) return false;
 	if (prev.spotlightId !== next.spotlightId) return false;
 	// Compare presence, not identity: an inline arrow from a caller would defeat
 	// the whole comparator.

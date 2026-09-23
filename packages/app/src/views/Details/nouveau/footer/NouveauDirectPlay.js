@@ -1,55 +1,28 @@
-import {useCallback, useEffect, useState} from 'react';
 import $L from '@enact/i18n/$L';
 
+import {useSettings} from '../../../../context/SettingsContext';
+import {transcodeReasonLabel} from '../../../../utils/directPlayReasons';
 import {SpottableDiv} from '../../detailsSpottables';
-import {fetchDetailPlaybackInfo} from '../../detailPlaybackInfo';
+import useDetailPlaybackInfo from '../../useDetailPlaybackInfo';
 
 import css from './NouveauDetailsFooter.module.less';
 
-// Whether the server would hand this file over as it is, or rework it on the way. The answer is
-// worth waiting for rather than guessing, so the line says it is still asking rather than showing
-// nothing, and offers a way to ask again when the request falls over.
+// Whether the server would hand this file over as it is, and when it wouldn't, the reasons it gave.
 const NouveauDirectPlay = ({api, itemId, serverType, mediaSourceId, audioStreamIndex, subtitleStreamIndex}) => {
-	const [state, setState] = useState({status: 'loading', result: null});
-	const [attempt, setAttempt] = useState(0);
+	const {settings} = useSettings();
+	const {status, result, retry} = useDetailPlaybackInfo({
+		api, itemId, serverType, mediaSourceId, audioStreamIndex, subtitleStreamIndex, maxBitrate: settings.maxBitrate
+	});
 
-	const retry = useCallback(() => {
-		setState({status: 'loading', result: null});
-		setAttempt((n) => n + 1);
-	}, []);
+	if (status === 'empty') return null;
 
-	useEffect(() => {
-		let cancelled = false;
-		setState({status: 'loading', result: null});
-
-		fetchDetailPlaybackInfo(api, {
-			itemId, serverType, mediaSourceId, audioStreamIndex, subtitleStreamIndex
-		})
-			.then((result) => {
-				if (cancelled) return;
-				setState(result
-					? {status: 'ready', result}
-					// Nothing came back to report on, so there is nothing honest to say.
-					: {status: 'empty', result: null});
-			})
-			.catch(() => {
-				if (!cancelled) setState({status: 'failed', result: null});
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [api, itemId, serverType, mediaSourceId, audioStreamIndex, subtitleStreamIndex, attempt]);
-
-	if (state.status === 'empty') return null;
-
-	if (state.status === 'loading') {
+	if (status === 'loading') {
 		return <div className={css.capabilityPending}>{$L('Checking Direct Play capability...')}</div>;
 	}
 
 	// A blank line reads as still loading and gives the remote nothing to select, so the failure
 	// says so and carries the way to try again.
-	if (state.status === 'failed') {
+	if (status === 'failed') {
 		return (
 			<div className={css.capabilityRow}>
 				<span className={css.capabilityPending}>{$L('Failed to load')}</span>
@@ -58,13 +31,19 @@ const NouveauDirectPlay = ({api, itemId, serverType, mediaSourceId, audioStreamI
 		);
 	}
 
-	const direct = state.result.supportsDirectPlay;
+	const direct = result.supportsDirectPlay;
+	const reasons = direct ? [] : result.transcodeReasons;
 
 	return (
-		<div className={css.capabilityRow}>
-			<span className={`${css.capabilityDot} ${direct ? css.capabilityYes : css.capabilityNo}`} />
-			<span className={css.capabilityLabel}>{$L('Direct Play')}</span>
-		</div>
+		<>
+			<div className={css.capabilityRow}>
+				<span className={`${css.capabilityDot} ${direct ? css.capabilityYes : css.capabilityNo}`} />
+				<span className={css.capabilityLabel}>{$L('Direct Play')}</span>
+			</div>
+			{reasons.length > 0 && (
+				<div className={css.capabilityReasons}>{reasons.map(transcodeReasonLabel).join(' · ')}</div>
+			)}
+		</>
 	);
 };
 

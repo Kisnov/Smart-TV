@@ -28,6 +28,7 @@ import {KEYS} from '../../utils/keys';
 import useSortSettingsPanels from '../../hooks/useSortSettingsPanels';
 import useStartLetter from '../../hooks/useStartLetter';
 import {useUserDataList} from '../../hooks/useUserDataSync';
+import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
 import {GRID_DIRECTIONS, IMAGE_SIZES, IMAGE_TYPES, LETTERS, capitalize, createGridKeyDown, createToolbarKeyDown, cycleValue, focusOverhang, horizontalCellPad, stopPropagation} from '../../utils/gridChrome';
 
 import css from './Library.module.less';
@@ -301,6 +302,10 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 	const itemsRef = useRef(items);
 	itemsRef.current = items;
+
+	// Holding OK on a card opens its menu, found from the card the press landed on.
+	const itemAtCard = useCallback((target) => itemsRef.current[cardIndexOf(target)] || null, []);
+	const menuHold = useItemMenuHold(itemAtCard);
 
 	const [playlistCategories, setPlaylistCategories] = useState({});
 	const playlistResolveRef = useRef({});
@@ -1369,7 +1374,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							))}
 						</div>
 					) : (
-						<div className={css.gridWrapper}>
+						<div className={css.gridWrapper} {...menuHold}>
 							<VirtualGridList
 								className={css.grid}
 								cbScrollTo={getGridScrollTo}

@@ -42,7 +42,7 @@ const SpotlightDetailContent = (props) => {
 		effectiveApi, serverToken, seasons = [], similar = [], similarSource, extras = [], cast = [], crew = [],
 		nextUp = [], collectionItems = [], missingCollectionItems = [], parentCollections = [],
 		albumTracks = [], artistAlbums = [], playlistItems = [], personMovies = [], personSeries = [],
-		filmography, loadMoreCollectionItems,
+		filmography, loadMoreCollectionItems, collectionMenu,
 		onSelectItem, onSelectPerson, onSelectStudio, onSelectSeerrCard,
 		handleChapterSelect, handleExtraSelect, handleTrackPlay,
 		onReorderPlaylistItem, onRemovePlaylistItem, canManagePlaylist, spotlightBackRef
@@ -157,11 +157,12 @@ const SpotlightDetailContent = (props) => {
 		playTrack: handleTrackPlay,
 		reorderTrack: onReorderPlaylistItem,
 		removeTrack: onRemovePlaylistItem,
-		loadMoreCollectionItems
+		loadMoreCollectionItems,
+		collectionMenu
 	}), [
 		onSelectItem, onSelectSeerrCard, onSelectPerson, onSelectStudio, handleChapterSelect,
 		handleExtraSelect, handleTrackPlay, onReorderPlaylistItem, onRemovePlaylistItem,
-		loadMoreCollectionItems
+		loadMoreCollectionItems, collectionMenu
 	]);
 
 	const cards = useMemo(() => spotlightCardsFor(cardState), [cardState]);

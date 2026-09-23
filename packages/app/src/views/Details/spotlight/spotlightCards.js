@@ -55,6 +55,9 @@ const joinSubtitle = (parts) => parts.filter(Boolean).join(' · ');
 const mediaSection = (title, items, aspect = 'portrait') =>
 	({kind: 'media', title, count: items.length, items, aspect});
 
+// A box set's own titles, which its menu can take out of it.
+const memberSection = (title, items) => ({...mediaSection(title, items), collectionMembers: true});
+
 const seerrSection = (title, items, showCredit = false) =>
 	({kind: 'seerr', title, count: items.length, items, showCredit});
 
@@ -497,9 +500,9 @@ class CardBuilder {
 			imageUrl: firstLandscapeImageUrl(serverUrl, items) || fallbackImageUrl,
 			icon: CARD_ICONS.collections,
 			sections: [
-				...(movies.length ? [mediaSection($L('Movies'), movies)] : []),
-				...(series.length ? [mediaSection($L('TV Shows'), series)] : []),
-				...(rest.length ? [mediaSection($L('Movies & Shows'), rest)] : [])
+				...(movies.length ? [memberSection($L('Movies'), movies)] : []),
+				...(series.length ? [memberSection($L('TV Shows'), series)] : []),
+				...(rest.length ? [memberSection($L('Movies & Shows'), rest)] : [])
 			]
 		};
 	}

@@ -68,6 +68,8 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 	const [seriesEpisodes, setSeriesEpisodes] = useState([]);
 	const [similar, setSimilar] = useState([]);
 	const [similarLoaded, setSimilarLoaded] = useState(false);
+	// Whether the lists Play picks from have come in, which is what an automatic start waits on.
+	const [playListsLoaded, setPlayListsLoaded] = useState(false);
 	const [extras, setExtras] = useState([]);
 	const [cast, setCast] = useState([]);
 	const [nextUp, setNextUp] = useState([]);
@@ -110,6 +112,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		setEpisodeRatings({});
 		setSimilar([]);
 		setSimilarLoaded(false);
+		setPlayListsLoaded(false);
 		setExtras([]);
 		setCast([]);
 		setNextUp([]);
@@ -336,6 +339,8 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 					if (playlistData) setPlaylistItems(tagWithServerInfo(withoutBlockedItems(playlistData.Items || [])));
 				}
 
+				setPlayListsLoaded(true);
+
 				const needsSimilar = data.Type !== 'Person' && data.Type !== 'BoxSet' &&
 					data.Type !== 'MusicAlbum' && data.Type !== 'MusicArtist' && data.Type !== 'Playlist';
 				const needsExtras = data.Type === 'Movie' || data.Type === 'Episode' || data.Type === 'Video';
@@ -502,6 +507,45 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		return () => { cancelled = true; };
 	}, [item]);
 
+	// Pulls one title out of this collection and out of every list that carries it, so the grid
+	// and the playlist stop showing it without a reload. The lists change first so the card goes on
+	// the press that confirmed it, and come back if the server says no, which the caller hears
+	// about through the rethrow.
+	const removeFromCollection = useCallback(async (member) => {
+		if (item?.Type !== 'BoxSet') return;
+		const previousCollection = collectionItems;
+		const previousPlaylist = playlistItems;
+		const previousIndex = collectionIndexRef.current;
+		const previousFetched = collectionFetchedRef.current;
+		const previousHasMore = collectionHasMoreRef.current;
+
+		// The playlist reads the index a page at a time, so its place only steps back when the
+		// hole opened behind it. Stepping one that sits ahead would read an id twice.
+		const position = previousIndex.indexOf(member.Id);
+		setCollectionItems(previousCollection.filter((entry) => entry.Id !== member.Id));
+		setPlaylistItems(previousPlaylist.filter((entry) => entry.Id !== member.Id));
+		collectionIndexRef.current = previousIndex.filter((id) => id !== member.Id);
+		if (position >= 0 && position < previousFetched) collectionFetchedRef.current = previousFetched - 1;
+		collectionHasMoreRef.current = collectionFetchedRef.current < collectionIndexRef.current.length;
+
+		try {
+			await effectiveApi.removeFromCollection(item.Id, [member.Id]);
+		} catch (err) {
+			setCollectionItems(previousCollection);
+			setPlaylistItems(previousPlaylist);
+			collectionIndexRef.current = previousIndex;
+			collectionFetchedRef.current = previousFetched;
+			collectionHasMoreRef.current = previousHasMore;
+			throw err;
+		}
+
+		// A saved order still naming it would put the title back on the next open.
+		const order = await effectiveApi.getCollectionOrder?.(item.Id).catch(() => null);
+		if (Array.isArray(order) && order.indexOf(member.Id) !== -1) {
+			await effectiveApi.saveCollectionOrder(item.Id, order.filter((id) => id !== member.Id)).catch(() => {});
+		}
+	}, [item, collectionItems, playlistItems, effectiveApi]);
+
 	const refreshItem = useCallback(async () => {
 		try {
 			const data = await effectiveApi.getItemForDetail(itemId);
@@ -543,7 +587,9 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		missingCollectionItems,
 		similarSource,
 		similarLoaded,
+		playListsLoaded,
 		loadMoreCollectionItems,
+		removeFromCollection,
 		setPlaylistItems,
 		episodeRatings,
 		selectedVersionIndex,

@@ -10,7 +10,7 @@ export const LONG_PRESS_MS = 600;
 // and a hold has to watch exactly the keys the click will arrive from. LG remotes send
 // the second one rather than Enter.
 const REMOTE_OK_KEY = 16777221;
-const isSelectKey = (e) => {
+export const isSelectKey = (e) => {
 	const code = e.which || e.keyCode;
 	return code === KEYS.ENTER || code === REMOTE_OK_KEY;
 };

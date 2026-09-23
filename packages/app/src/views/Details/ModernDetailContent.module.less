@@ -377,6 +377,7 @@
 }
 
 .actionLabel {
+	max-width: 175px;
 	font-size: 19px;
 	font-weight: 700;
 	line-height: 1.1;
@@ -422,6 +423,10 @@
 	max-width: none;
 	padding-left: 3px;
 	padding-right: 0;
+}
+
+.actionPrimary .actionLabel {
+	max-width: none;
 }
 
 .upNext {
@@ -843,34 +848,6 @@
 	text-align: center;
 }
 
-.detailsPanel {
-	display: flex;
-	flex-direction: column;
-	max-width: 900px;
-}
-
-.detailStream {
-	padding: 8px 16px;
-	margin: 0 -16px;
-	border-radius: 8px;
-	outline: none;
-}
-
-.detailStream:focus {
-	background: rgba(255, 255, 255, 0.12);
-}
-
-.detailStreamHeader {
-	font-size: 22px;
-	font-weight: 700;
-	opacity: 0.8;
-}
-
-.detailStreamLine {
-	font-size: 20px;
-	opacity: 0.7;
-}
-
 .seerrTab {
 	display: flex;
 	flex-direction: column;
@@ -887,8 +864,8 @@
 	margin: 0 0 12px;
 }
 
-// Gap fallbacks, see styles/mixins.less. .title, .episodeOverview and
-// .detailStream declare their own margin further up, so these have to stay last.
+// Gap fallbacks, see styles/mixins.less. .title and .episodeOverview declare their
+// own margin further up, so these have to stay last.
 // These two set the `margin` shorthand, so they have to land before the column
 // rules below, which put the top margin back.
 .metaRow              { .flex-wrap-gap(9px; 0); }
@@ -905,7 +882,6 @@
 .trackList            { .flex-col-gap(4px); }
 .trackRow             { .flex-row-gap(20px); }
 .studioCard           { .flex-col-gap(12px); }
-.detailsPanel         { .flex-col-gap(20px); }
 
 .grid                 { .flex-wrap-gap(30px); }
 
@@ -973,6 +949,10 @@
 	flex: 0 0 56px;
 	height: 56px;
 	width: 56px;
+}
+
+.overflowList .actionLabel {
+	max-width: none;
 }
 
 .overflowList .actionBtn .actionText {

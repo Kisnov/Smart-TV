@@ -9,6 +9,7 @@ import {useAuth} from '../../context/AuthContext';
 import {useSettings} from '../../context/SettingsContext';
 import * as connectionPool from '../../services/connectionPool';
 import useParentalFilter from '../../hooks/useParentalFilter';
+import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
 import {withoutBlocked} from '../../utils/parentalFilter';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import {getImageUrl, getBackdropId, getPrimaryImageId} from '../../utils/helpers';
@@ -330,6 +331,10 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 		}
 	}, []);
 
+	// Holding OK on a card opens its menu, found from the card the press landed on.
+	const itemAtCard = useCallback((target) => itemsRef.current[cardIndexOf(target)] || null, []);
+	const menuHold = useItemMenuHold(itemAtCard);
+
 	const renderItem = useCallback(({index, ...rest}) => {
 		const item = itemsRef.current[index];
 
@@ -489,7 +494,7 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 					) : items.length === 0 && !compactHasMore ? (
 						<div className={css.empty}>{$L('No items found')}</div>
 					) : (
-						<div className={css.gridWrapper}>
+						<div className={css.gridWrapper} {...menuHold}>
 						<VirtualGridList
 							className={css.grid}
 							dataSize={compact ? items.length + (compactHasMore ? 1 : 0) : serverTotalCount}

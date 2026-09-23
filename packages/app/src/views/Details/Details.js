@@ -63,7 +63,7 @@ import css from './Details.module.less';
 // draws the screen.
 const DETAIL_CONTENT = {v3: SpotlightDetailContent, v4: NouveauDetailContent, v5: MinimalistDetailContent};
 
-const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelectPerson, onSelectStudio, onItemDeleted, seerrNav, backHandlerRef}) => {
+const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelectPerson, onSelectStudio, onItemDeleted, autoPlay, onAutoPlayed, seerrNav, backHandlerRef}) => {
 	const {api, serverUrl, user} = useAuth();
 	// Kids Mode has its say before anything on this screen reads a setting, and every piece below
 	// takes what it is handed rather than reaching for the context itself. Held steady across
@@ -141,7 +141,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	});
 	const {
 		setItem, isLoading: libraryLoading, isBlocked: blockedByRating, isSeed, seasons, episodes, seriesEpisodes, similar, extras, cast, nextUp, nextEpisode,
-		collectionItems, missingCollectionItems, parentCollections, similarSource, similarLoaded, loadMoreCollectionItems, albumTracks, artistAlbums,
+		collectionItems, missingCollectionItems, parentCollections, similarSource, similarLoaded, playListsLoaded, loadMoreCollectionItems, removeFromCollection, albumTracks, artistAlbums,
 		playlistItems, setPlaylistItems, episodeRatings, refreshItem,
 		selectedVersionIndex, setSelectedVersionIndex,
 		selectedAudioIndex, setSelectedAudioIndex,
@@ -352,6 +352,15 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		if (!item) return;
 		onPlay?.(item, true, buildPlaybackOptions());
 	}, [item, onPlay, buildPlaybackOptions]);
+
+	// Play from a card's menu lands here and starts the way the Play button would, once the record
+	// and the lists it picks from are in, which keeps the next episode pick and the track choices.
+	useEffect(() => {
+		if (!autoPlay || isSeed || !playListsLoaded || !item) return;
+		onAutoPlayed?.();
+		if (item.UserData?.PlaybackPositionTicks > 0) handleResume();
+		else handlePlay();
+	}, [autoPlay, isSeed, playListsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const handleShuffle = useCallback(async () => {
 		if (!item) return;
@@ -795,6 +804,11 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		pageScrollToRef.current = fn;
 	}, []);
 
+	// A card on a collection's own page can be taken out of that collection from its menu.
+	const collectionMenu = useMemo(() => (item?.Type === 'BoxSet' ? {
+		collectionRemoval: {collectionName: item.Name || '', remove: removeFromCollection}
+	} : null), [item?.Type, item?.Name, removeFromCollection]);
+
 	// No artwork, name or retry on purpose, since a retry would read as an invitation.
 	if (!seerrOnly && blockedByRating) {
 		return (
@@ -1080,6 +1094,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					missingCollectionItems={missingCollectionItems}
 					parentCollections={parentCollections}
 					loadMoreCollectionItems={loadMoreCollectionItems}
+					collectionMenu={collectionMenu}
 					filmography={filmography}
 					canManagePlaylist={canManagePlaylist}
 					spotlightBackRef={spotlightBackRef}
@@ -1264,6 +1279,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		<DetailScrollPage backdrop={backdrop} scrollerRef={pageScrollerRef} onScrollTo={handlePageScrollTo} sidebarDocked={sidebarDocked} footer={overlays}>
 			<ClassicDetailScreen
 				item={item}
+				collectionMenu={collectionMenu}
 				serverUrl={effectiveServerUrl}
 				serverToken={initialItem?._serverAccessToken || jellyfinApi.getApiKey()}
 				settings={settings}

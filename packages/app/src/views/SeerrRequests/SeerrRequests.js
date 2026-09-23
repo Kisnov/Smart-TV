@@ -19,6 +19,7 @@ import SeerrStatusChip from '../../components/SeerrStatusChip';
 import SeerrMediaTypeBadge from '../../components/seerr/SeerrMediaTypeBadge';
 import SeerrDownloadProgress from '../../components/SeerrDownloadProgress';
 import SeerrIssueThread from '../../components/SeerrIssueThread';
+import LoopMarquee from '../../components/LoopMarquee';
 import {
 	REQUEST_STATUS,
 	ISSUE_STATUS,
@@ -53,15 +54,15 @@ const SpottableDiv = Spottable('div');
 const PillContainer = SpotlightContainerDecorator({enterTo: 'last-focused'}, 'div');
 
 // The requests grid. A tile is a whole 2:3 poster over a caption that reserves
-// room for the fullest case, a pending request a manager can approve or
-// decline, so posters stay level across a row.
+// room for the fullest case, a pending request and its action row, so posters
+// stay level across a row.
 const TILE_WIDTH = 232;
 const TILE_PADDING = 8;
 // A whole 2:3 poster of the width left inside the tile's own padding.
 const TILE_POSTER_HEIGHT = (TILE_WIDTH - TILE_PADDING * 2) * 1.5;
-// Title, status slot, the requester over two lines, date, and the action row a
-// pending request adds.
-const TILE_CAPTION_HEIGHT = 212;
+// Title, status slot, the requester's label and name on lines of their own, date,
+// and the action row a pending request adds.
+const TILE_CAPTION_HEIGHT = 242;
 const TILE_GAP = 24;
 
 // Timestamps arrive as ISO strings, so the set's own locale formats them.
@@ -121,6 +122,19 @@ const TabPill = memo(function TabPill({label, count, selected, onSelect, value})
 	);
 });
 
+// Two labeled buttons don't fit across a tile, so its actions are icons.
+const TILE_ACTION_ICONS = {
+	approve: 'M16.59 7.58L10 14.17l-3.59-3.58L5 12l5 5 8-8zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z',
+	decline: 'M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.59-13L12 10.59 8.41 7 7 8.41 10.59 12 7 15.59 8.41 17 12 13.41 15.59 17 17 15.59 13.41 12 17 8.41z',
+	retry: 'M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z'
+};
+
+const TileActionIcon = ({className, path, label, onClick}) => (
+	<SpottableDiv className={`${css.actionBtn} ${css.iconBtn} ${className}`} onClick={onClick} aria-label={label}>
+		<svg viewBox="0 0 24 24" aria-hidden="true"><path d={path} /></svg>
+	</SpottableDiv>
+);
+
 const RequestItem = memo(function RequestItem({request, index, canManage, myUserId, onSelect, onAction, ...rest}) {
 	const media = request.media;
 	// w342 like the other Seerr screens. w185 is too soft once the grid enlarges it.
@@ -159,6 +173,14 @@ const RequestItem = memo(function RequestItem({request, index, canManage, myUser
 		onAction('cancel', request);
 	}, [request, onAction]);
 
+	// The title scrolls while the tile or one of its buttons has focus, so only the tile being
+	// looked at moves rather than the whole grid.
+	const [focused, setFocused] = useState(false);
+	const handleFocus = useCallback(() => setFocused(true), []);
+	const handleBlur = useCallback((e) => {
+		if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false);
+	}, []);
+
 	const date = formatRequestDate(request.createdAt);
 
 	// The poster is what you scan and the band under it carries the status colour.
@@ -169,6 +191,8 @@ const RequestItem = memo(function RequestItem({request, index, canManage, myUser
 			className={css.tile}
 			data-spotlight-id={`request-${index}`}
 			onClick={handleClick}
+			onFocus={handleFocus}
+			onBlur={handleBlur}
 		>
 			<div className={css.tilePoster}>
 				{posterUrl ? (
@@ -180,22 +204,19 @@ const RequestItem = memo(function RequestItem({request, index, canManage, myUser
 				<div className={`${css.tileStripe} ${css[`stripe_${statusInfo.color}`] || css.stripe_approved}`} />
 			</div>
 			<div className={css.tileCaption}>
-				<div className={css.tileTitle}>{media?.title || media?.name || $L('Unknown')}</div>
+				<LoopMarquee className={css.tileTitle} text={media?.title || media?.name || $L('Unknown')} active={focused} />
 				<div className={css.tileStatus}>
 					{downloadSummary
 						? <SeerrDownloadProgress summary={downloadSummary} compact />
 						: <SeerrStatusChip label={statusInfo.label} color={statusInfo.color} />}
 				</div>
-				<div className={css.tileBy}>{$L('Requested by {name}').replace('{name}', requester)}</div>
+				<div className={css.tileBy}>{$L('Requested by')}</div>
+				<div className={css.tileRequester}>{requester}</div>
 				{date && <div className={css.tileDate}>{date}</div>}
 				{isPending && canManage && (
 					<div className={css.tileActions}>
-						<SpottableDiv className={`${css.actionBtn} ${css.approveBtn}`} onClick={handleApprove}>
-							{$L('Approve')}
-						</SpottableDiv>
-						<SpottableDiv className={`${css.actionBtn} ${css.declineBtn}`} onClick={handleDecline}>
-							{$L('Decline')}
-						</SpottableDiv>
+						<TileActionIcon className={css.approveBtn} path={TILE_ACTION_ICONS.approve} label={$L('Approve')} onClick={handleApprove} />
+						<TileActionIcon className={css.declineBtn} path={TILE_ACTION_ICONS.decline} label={$L('Decline')} onClick={handleDecline} />
 					</div>
 				)}
 				{isPending && !canManage && isOwn && (
@@ -207,9 +228,7 @@ const RequestItem = memo(function RequestItem({request, index, canManage, myUser
 				)}
 				{isFailed && canManage && (
 					<div className={css.tileActions}>
-						<SpottableDiv className={`${css.actionBtn} ${css.retryBtn}`} onClick={handleRetry}>
-							{$L('Retry')}
-						</SpottableDiv>
+						<TileActionIcon className={css.retryBtn} path={TILE_ACTION_ICONS.retry} label={$L('Retry')} onClick={handleRetry} />
 					</div>
 				)}
 			</div>

@@ -33,6 +33,7 @@ import searchCss from '../views/Search/Search.module.less';
 import detailsCss from '../views/Details/Details.module.less';
 import trackOptionCss from '../components/TrackOptionRow/TrackOptionRow.module.less';
 import modernDetailCss from '../views/Details/ModernDetailContent.module.less';
+import modernFileInfoCss from '../views/Details/ModernFileInformation.module.less';
 import spotlightCss from '../views/Details/spotlight/SpotlightDetailContent.module.less';
 import spotlightCardCss from '../views/Details/spotlight/SpotlightSummaryCard.module.less';
 import spotlightModalCss from '../views/Details/spotlight/SpotlightSectionModal.module.less';
@@ -50,6 +51,7 @@ import modernCardCss from '../components/MediaCard/ModernMediaCard.module.less';
 import mediaRowCss from '../components/MediaRow/MediaRow.module.less';
 import modernRowCss from '../components/MediaRow/ModernMediaRow.module.less';
 import ratingsCss from '../components/RatingsRow/RatingsRow.module.less';
+import itemMenuCss from '../components/ItemContextMenu/ItemContextMenu.module.less';
 
 const STYLE_ELEMENT_ID = 'moonfin-theme-overrides';
 
@@ -303,6 +305,9 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${modernDetailCss.episodeWatched}`, `background: ${badgeWatched}; border-color: ${onBadge};`);
 	rule(`.${modernDetailCss.episodeWatched} svg`, `fill: ${onBadge}; stroke: ${onBadge};`);
 	rule(`.${tabBarCss.tabBar}`, `background: ${os(0.08)};`);
+	rule(`.${modernFileInfoCss.trackActive}`, `border-color: ${accent};`);
+	rule(`.${modernFileInfoCss.showAll}, .${modernFileInfoCss.retry}, .${modernFileInfoCss.reasonHint}`, `color: ${accent};`);
+	rule(`.${modernFileInfoCss.showAll}:focus, .${modernFileInfoCss.retry}:focus`, `border-color: ${focusColor};`);
 
 	// Detail screens, spotlight layout
 	rule(`.${spotlightCss.metaRow}, .${spotlightCss.techSize}`, `color: ${os(0.75)};`);
@@ -326,6 +331,9 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${nouveauFooterCss.capabilityRetry}:focus`, `border-color: ${focusColor};`);
 	rule(`.${modernDetailCss.overflowPanel}`, `background: ${surfaceA(0.97)}; border-color: ${os(0.12)};`);
 	rule(`.${modernDetailCss.overflowTitle}`, `color: ${onBackground};`);
+	rule(`.${itemMenuCss.panel}`, `background: ${surfaceA(0.97)}; border-color: ${os(0.12)};`);
+	rule(`.${itemMenuCss.title}, .${itemMenuCss.row}, .${itemMenuCss.button}`, `color: ${onBackground};`);
+	rule(`.${itemMenuCss.row}:focus, .${itemMenuCss.button}:focus`, `background: ${os(0.1)}; border-color: ${focusColor};`);
 	rule(`.${tabBarCss.tab}`, `color: ${os(0.75)};`);
 	rule(`.${tabBarCss.tabActive}`, `background: ${accent}; color: ${onAccent};`);
 	rule(`.${tabBarCss.tab}:focus`, `border-color: ${focusColor};`);

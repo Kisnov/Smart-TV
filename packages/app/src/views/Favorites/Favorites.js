@@ -18,6 +18,7 @@ import {useStorage} from '../../hooks/useStorage';
 import useSortSettingsPanels from '../../hooks/useSortSettingsPanels';
 import useStartLetter from '../../hooks/useStartLetter';
 import {useUserDataList} from '../../hooks/useUserDataSync';
+import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
 import {GRID_DIRECTIONS, IMAGE_SIZES, IMAGE_TYPES, LETTERS, capitalize, createGridKeyDown, createToolbarKeyDown, cycleValue, stopPropagation} from '../../utils/gridChrome';
 import {keepFocusInView} from '../../utils/focusScroll';
 
@@ -154,6 +155,10 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 	// over it, so switching tabs cant rebuild them and drop the focus.
 	const itemsRef = useRef(displayItems);
 	itemsRef.current = displayItems;
+
+	// Holding OK on a card opens its menu, found from the card the press landed on.
+	const itemAtCard = useCallback((target) => itemsRef.current[cardIndexOf(target)] || null, []);
+	const menuHold = useItemMenuHold(itemAtCard);
 
 	const activeKeyRef = useRef(null);
 	activeKeyRef.current = activeTab?.key || null;
@@ -511,7 +516,7 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 					) : displayItems.length === 0 ? (
 						<div className={css.empty}>{emptyText}</div>
 					) : (
-						<div className={css.gridWrapper}>
+						<div className={css.gridWrapper} {...menuHold}>
 							<VirtualGridList
 								className={css.grid}
 								cbScrollTo={captureGridScrollTo}

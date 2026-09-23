@@ -4,6 +4,7 @@ import Spotlight from '@enact/spotlight';
 import {RowContainer} from '../../detailsSpottables';
 import {KEYS} from '../../../../utils/keys';
 import {expandedCardCount, initialCardCount} from '../../../../utils/rowWindow';
+import useItemMenuHold from '../../../../hooks/useItemMenuHold';
 
 import css from './NouveauSections.module.less';
 
@@ -23,13 +24,20 @@ const NEAR_END_CARDS = 8;
 //
 // Up and down belong to the page, so they are swallowed here and handed back through the callbacks.
 // Left and right belong to the rail, and only its two edges need deciding. The gap comes from the
-// caller because it is not the same on every rail.
+// caller because it isn't the same on every rail. A rail given `itemMenu`, true or the menu's
+// options, opens a card's long press menu when OK is held on it.
 const NouveauRail = ({
 	title, items = [], spotlightId, renderItem, gap = 32,
-	navbarPosition, onNavigateUp, onNavigateDown, onNearEnd
+	navbarPosition, onNavigateUp, onNavigateDown, onNearEnd, itemMenu
 }) => {
 	const trackRef = useRef(null);
 	const rectRef = useRef(null);
+
+	const itemAtCell = useCallback((target) => {
+		const cell = target.closest('[data-card-index]');
+		return cell ? items[parseInt(cell.getAttribute('data-card-index'), 10)] : null;
+	}, [items]);
+	const menuHold = useItemMenuHold(itemAtCell, itemMenu);
 
 	// Held in a ref so asking for the next page doesn't rebuild the focus handler, which would throw
 	// away the measurement it keeps.
@@ -131,7 +139,7 @@ const NouveauRail = ({
 	return (
 		<RowContainer className={css.rail} spotlightId={spotlightId} onKeyDown={handleKeyDown}>
 			{title && <h2 className={css.railTitle}>{title}</h2>}
-			<div className={css.track} ref={trackRef} onFocus={handleFocus}>
+			<div className={css.track} ref={trackRef} onFocus={handleFocus} {...(itemMenu ? menuHold : null)}>
 				<div
 					className={css.trackInner}
 					style={{paddingTop: FOCUS_CLEARANCE, paddingBottom: FOCUS_CLEARANCE}}

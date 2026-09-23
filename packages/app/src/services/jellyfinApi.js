@@ -297,17 +297,17 @@ const createCollectionVia = (send) => async (name, itemIds = []) => {
 	}
 };
 
-const addToCollectionVia = (send) => async (collectionId, itemIds) => {
+const collectionItemsVia = (send, method) => async (collectionId, itemIds) => {
 	const ids = itemIds.join(',');
 	const path = `/Collections/${collectionId}/Items`;
 	for (const key of ['Ids', 'ids']) {
 		try {
-			return await send(`${path}?${key}=${ids}`, {method: 'POST'});
+			return await send(`${path}?${key}=${ids}`, {method});
 		} catch (err) {
 			if (!canRetryCollection(err)) throw err;
 		}
 	}
-	return send(path, {method: 'POST', body: {Ids: itemIds}});
+	return send(path, {method, body: {Ids: itemIds}});
 };
 
 // The casing the remote search endpoint wants in its path.
@@ -527,6 +527,9 @@ export const api = {
 	// item ids. Absent plugin, absent order, and the caller falls back to release order.
 	getCollectionOrder: (collectionId) =>
 		request(`/Moonfin/Collections/${collectionId}/Order`),
+
+	saveCollectionOrder: (collectionId, itemIds) =>
+		request(`/Moonfin/Collections/${collectionId}/Order`, {method: 'POST', body: itemIds}),
 
 	getMusicGenres: (params = {}) => {
 		const merged = {UserId: currentUser, SortBy: 'SortName', SortOrder: 'Ascending', Recursive: 'true'};
@@ -816,7 +819,8 @@ export const api = {
 		}),
 
 	createCollection: createCollectionVia(request),
-	addToCollection: addToCollectionVia(request),
+	addToCollection: collectionItemsVia(request, 'POST'),
+	removeFromCollection: collectionItemsVia(request, 'DELETE'),
 
 	getRemoteImages: (itemId, imageType) =>
 		request(`/Items/${itemId}/RemoteImages?Type=${imageType}&IncludeAllLanguages=true`),
@@ -1037,6 +1041,9 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 		getCollectionOrder: (collectionId) =>
 			serverRequest(`/Moonfin/Collections/${collectionId}/Order`),
 
+		saveCollectionOrder: (collectionId, itemIds) =>
+			serverRequest(`/Moonfin/Collections/${collectionId}/Order`, {method: 'POST', body: itemIds}),
+
 		searchRemoteSubtitles: (itemId, language = 'eng', isPerfectMatch = null) => {
 			const query = isPerfectMatch === null ? '' : `?IsPerfectMatch=${isPerfectMatch}`;
 			return serverRequest(`/Items/${itemId}/RemoteSearch/Subtitles/${encodeURIComponent(language)}${query}`);
@@ -1144,7 +1151,8 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 			}),
 
 		createCollection: createCollectionVia(serverRequest),
-		addToCollection: addToCollectionVia(serverRequest),
+		addToCollection: collectionItemsVia(serverRequest, 'POST'),
+		removeFromCollection: collectionItemsVia(serverRequest, 'DELETE'),
 
 		removeFromPlaylist: (playlistId, entryIds) =>
 			serverRequest(`/Playlists/${playlistId}/Items?EntryIds=${entryIds.join(',')}`, {

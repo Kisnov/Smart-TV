@@ -6,6 +6,7 @@ import {SeerrSeasonDot} from '../seerr/SeerrStatusBadge';
 import {showsWatchedCheck} from '../../utils/playedState';
 import SeerrIcon from '../icons/SeerrIcon';
 import {AnimeCardPill} from '../AnimeMarkerPills';
+import useItemMenuHold from '../../hooks/useItemMenuHold';
 
 import css from './MediaCard.module.less';
 
@@ -96,7 +97,7 @@ const episodeArtwork = (item, serverUrl, imageType, useSeriesArt) => {
 	return preferred || still;
 };
 
-const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'poster', onSelect, onFocusItem, showServerBadge = false, eagerLoad = false, seerrSeasonStatus, spotlightId, onSpotlightLeft, onSpotlightRight}) => {
+const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'poster', onSelect, onFocusItem, showServerBadge = false, eagerLoad = false, seerrSeasonStatus, spotlightId, onSpotlightLeft, onSpotlightRight, menuOptions}) => {
 	const {settings} = useSettings();
 	const focusTimeoutRef = useRef(null);
 
@@ -193,6 +194,9 @@ const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'post
 		onSelect?.(item);
 	}, [item, onSelect]);
 
+	const itemAt = useCallback(() => item, [item]);
+	const menuHold = useItemMenuHold(itemAt, menuOptions);
+
 	const handleFocus = useCallback(() => {
 		if (focusTimeoutRef.current) {
 			clearTimeout(focusTimeoutRef.current);
@@ -254,7 +258,7 @@ const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'post
 		: imgSizeStyle;
 
 	return (
-		<SpottableDiv className={cardClass} data-media-card onClick={handleClick} onFocus={handleFocus} style={sizeStyle} spotlightId={spotlightId} onSpotlightLeft={onSpotlightLeft} onSpotlightRight={onSpotlightRight}>
+		<SpottableDiv {...menuHold} className={cardClass} data-media-card onClick={handleClick} onFocus={handleFocus} style={sizeStyle} spotlightId={spotlightId} onSpotlightLeft={onSpotlightLeft} onSpotlightRight={onSpotlightRight}>
 			<div className={css.imageContainer}>
 				{imageUrl ? (
 					<>

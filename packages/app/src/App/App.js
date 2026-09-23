@@ -36,6 +36,7 @@ import {ServerMessagesProvider, useServerMessages} from '../context/ServerMessag
 import {SyncPlayProvider, useSyncPlay} from '../context/SyncPlayContext';
 import {useVersionCheck} from '../hooks/useVersionCheck';
 import UpdateNotification from '../components/UpdateNotification';
+import {ItemMenuProvider} from '../components/ItemContextMenu';
 import SeerrNotificationToast from '../components/SeerrNotificationToast';
 import ServerMessagesDialog from '../components/ServerMessagesDialog';
 import DebugOverlay from '../components/DebugOverlay'; // Red Button on TV remote toggles this
@@ -222,7 +223,10 @@ const AppContent = (props) => {
 	const setupWizardBackRef = useRef(null);
 	const cleanupHandlersRef = useRef(null);
 	const backHandlerRef = useRef(null);
+	const itemMenuBackRef = useRef(null);
 	const detailsItemStackRef = useRef([]);
+	// Play from a card's menu opens the item's screen, which starts it once it knows what to play.
+	const [detailsAutoPlay, setDetailsAutoPlay] = useState(false);
 	const [seerrCollection, setSeerrCollection] = useState(null);
 	const prevUserIdRef = useRef(null);
 	const [photoViewerItem, setPhotoViewerItem] = useState(null);
@@ -702,6 +706,8 @@ const AppContent = (props) => {
 					return;
 				}
 
+				if (itemMenuBackRef.current?.()) return;
+
 				if (panelIndex === PANELS.BROWSE || panelIndex === PANELS.LOGIN) {
 					// Sign-in walks its own screens, and home returns a scrolled row
 					// list to the top, before back means exit
@@ -758,6 +764,7 @@ const AppContent = (props) => {
 	}, []);
 
 	const handleSelectItem = useCallback((item) => {
+		setDetailsAutoPlay(false);
 		if (item.Type === 'Photo') {
 			setPhotoViewerItem(item);
 			return;
@@ -783,6 +790,14 @@ const AppContent = (props) => {
 			navigateTo(PANELS.DETAILS);
 		}
 	}, [navigateTo, panelIndex, selectedItem]);
+
+	// A song plays as soon as it's picked, so only the rest wait for their screen to start them.
+	const handlePlayFromMenu = useCallback((item) => {
+		handleSelectItem(item);
+		if (item.Type !== 'Audio') setDetailsAutoPlay(true);
+	}, [handleSelectItem]);
+
+	const handleAutoPlayed = useCallback(() => setDetailsAutoPlay(false), []);
 
 	const handleViewPhoto = useCallback((item, siblings) => {
 		setPhotoViewerItem(item);
@@ -1397,253 +1412,257 @@ const AppContent = (props) => {
 					onMessages={handleOpenServerMessages}
 				/>
 			) : null}
-			<Suspense fallback={<PanelLoader />}>
-				<Panels index={panelIndex} noCloseButton noAnimation>
-					<Panel>
-						<Login onLoggedIn={handleLoggedIn} backHandlerRef={backHandlerRef} />
-					</Panel>
-					<Panel>
-						<Browse
-							onSelectItem={handleSelectItem}
-							onSelectLibrary={handleSelectLibrary}
-							onOpenRecordings={handleOpenRecordings}
-							onPlayRecording={handlePlayRecording}
-							onSelectGenre={handleSelectGenreFromBrowse}
-							onSelectSeerrItem={handleSelectSeerrItem}
-							onSelectSeerrGenre={handleSelectSeerrGenre}
-							onSelectSeerrStudio={handleSelectSeerrStudio}
-							onSelectSeerrNetwork={handleSelectSeerrNetwork}
-							onOpenSeerrShortcut={handleOpenSeerrShortcut}
-							isVisible={panelIndex === PANELS.BROWSE && !showSettingsPanel}
-							backHandlerRef={backHandlerRef}
-							onFocusItemThemeMusic={themeMusic.playThemeMusicDelayed}
-							onBlurItemThemeMusic={themeMusic.cancelDelayed}
-							onLeaveThemeMusic={themeMusic.stopThemeMusic}
-						/>
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.DETAILS && (
-							<Details
-								itemId={selectedItem?.Id}
-								initialItem={selectedItem}
-								onPlay={handlePlay}
+			<ItemMenuProvider onPlay={handlePlayFromMenu} onOpenItem={handleSelectItem} backRef={itemMenuBackRef}>
+				<Suspense fallback={<PanelLoader />}>
+					<Panels index={panelIndex} noCloseButton noAnimation>
+						<Panel>
+							<Login onLoggedIn={handleLoggedIn} backHandlerRef={backHandlerRef} />
+						</Panel>
+						<Panel>
+							<Browse
 								onSelectItem={handleSelectItem}
-								onSelectPerson={handleSelectPerson}
-								onSelectStudio={handleSelectStudio}
-								onItemDeleted={handleBack}
-								seerrNav={seerrNav}
-							backHandlerRef={backHandlerRef}
-						/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.LIBRARY && (
-							<Library
-							library={selectedLibrary}
-							genreFilter={genreFilter}
-							studioFilter={studioFilter}
-							onSelectItem={handleSelectItem}
-							onViewPhoto={handleViewPhoto}
-							onHome={handleHome}
+								onSelectLibrary={handleSelectLibrary}
+								onOpenRecordings={handleOpenRecordings}
+								onPlayRecording={handlePlayRecording}
+								onSelectGenre={handleSelectGenreFromBrowse}
+								onSelectSeerrItem={handleSelectSeerrItem}
+								onSelectSeerrGenre={handleSelectSeerrGenre}
+								onSelectSeerrStudio={handleSelectSeerrStudio}
+								onSelectSeerrNetwork={handleSelectSeerrNetwork}
+								onOpenSeerrShortcut={handleOpenSeerrShortcut}
+								isVisible={panelIndex === PANELS.BROWSE && !showSettingsPanel}
 								backHandlerRef={backHandlerRef}
-						/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SEARCH && (
-							<Search onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectPerson={handleSelectPerson} onSelectGame={handleSelectGame} onPlayChannel={handlePlayChannel} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SETTINGS && (
-							<Settings
-								onBack={handleBack}
-								onLibrariesChanged={fetchLibraries}
-								onRunSetupWizard={handleRunSetupWizard}
-								onSelectItem={handleSelectItemFromSettings}
+								onFocusItemThemeMusic={themeMusic.playThemeMusicDelayed}
+								onBlurItemThemeMusic={themeMusic.cancelDelayed}
+								onLeaveThemeMusic={themeMusic.stopThemeMusic}
 							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.PLAYER && playingItem && (
-							<Player
-								item={playingItem}
-								resume={isResume}
-								initialMediaSourceId={playbackOptions?.mediaSourceId}
-								initialAudioIndex={playbackOptions?.audioStreamIndex}
-								initialSubtitleIndex={playbackOptions?.subtitleStreamIndex}
-								initialStartPositionTicks={playbackOptions?.startPositionTicks}
-								initialQuality={playbackOptions?.forceBitrate}
-								forceTranscode={playbackOptions?.forceTranscode}
-								audioPlaylist={playbackOptions?.audioPlaylist}
-								videoQueue={playbackOptions?.videoQueue}
-								liveTvChannels={playbackOptions?.liveTvChannels}
-								onEnded={handlePlayerEnd}
-								onBack={handlePlayerEnd}
-								onGuide={handlePlayerGuide}
-								onPlayNext={handlePlayNext}
-								onSelectPerson={handleSelectPersonFromPlayer}
-								onPausedChange={setIsPlayerPaused}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.DETAILS && (
+								<Details
+									itemId={selectedItem?.Id}
+									initialItem={selectedItem}
+									onPlay={handlePlay}
+									onSelectItem={handleSelectItem}
+									onSelectPerson={handleSelectPerson}
+									onSelectStudio={handleSelectStudio}
+									onItemDeleted={handleBack}
+									autoPlay={detailsAutoPlay}
+									onAutoPlayed={handleAutoPlayed}
+									seerrNav={seerrNav}
+									backHandlerRef={backHandlerRef}
 							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.FAVORITES && (
-							<Favorites onSelectItem={handleSelectItem} onSelectPerson={handleSelectPerson} onHome={handleHome} backHandlerRef={backHandlerRef} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GENRES && (
-							<Genres onSelectGenre={handleSelectGenre} onHome={handleHome} backHandlerRef={backHandlerRef} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.PERSON && (
-							<Person personId={selectedPerson?.Id} onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectSeerrPerson={handleSelectSeerrPerson} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.LIVETV && (
-							<LiveTV onPlayChannel={handlePlayChannel} onRecordings={handleOpenRecordings} backHandlerRef={backHandlerRef} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SEERR_DISCOVER && (
-							<SeerrDiscover
-								backHandlerRef={backHandlerRef}
-								onSelectItem={handleSelectSeerrItem}
-								onSelectGenre={handleSelectSeerrGenre}
-								onSelectStudio={handleSelectSeerrStudio}
-								onSelectNetwork={handleSelectSeerrNetwork}
-								onOpenRequests={handleOpenSeerrRequests}
-								onOpenShortcut={handleOpenSeerrShortcut}
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SEERR_REQUESTS && (
-							<SeerrRequests
-								onSelectItem={handleSelectSeerrItem}
-								onClose={handleBack}
-								initialTab={seerrRequestsTab}
-								backHandlerRef={backHandlerRef}
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GENRE_BROWSE && (
-							<GenreBrowse
-								genre={selectedGenre}
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.LIBRARY && (
+								<Library
+								library={selectedLibrary}
+								genreFilter={genreFilter}
+								studioFilter={studioFilter}
 								onSelectItem={handleSelectItem}
-							backHandlerRef={backHandlerRef}
-						/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.RECORDINGS && (
-							<Recordings onPlayRecording={handlePlayRecording} onBack={handleBack} backHandlerRef={backHandlerRef} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SEERR_BROWSE && (
-							<SeerrBrowse
-								browseType={seerrBrowse?.browseType}
-								item={seerrBrowse?.item}
-								mediaType={seerrBrowse?.mediaType}
-								onSelectItem={handleSelectSeerrItem}
-							backHandlerRef={backHandlerRef}
-						/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SEERR_PERSON && (
-							<SeerrPerson
-								personId={seerrPerson?.id}
-								personName={seerrPerson?.name}
-								onSelectItem={handleSelectSeerrItem}
-								onBack={handleBack}
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.ADD_SERVER && (
-							<Login
-								onLoggedIn={handleLoggedIn}
-								onServerAdded={handleServerAdded}
-								backHandlerRef={backHandlerRef}
-								isAddingServer
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.ADD_USER && (
-							<Login
-								onLoggedIn={handleLoggedIn}
-								onServerAdded={handleServerAdded}
-								backHandlerRef={backHandlerRef}
-								isAddingUser
-								currentServerUrl={serverUrl}
-								currentServerName={serverName}
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GAMES && (
-							<Games
-								library={selectedGameLibrary}
-								onSelectSystem={handleSelectGameSystem}
+								onViewPhoto={handleViewPhoto}
 								onHome={handleHome}
+									backHandlerRef={backHandlerRef}
+							/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SEARCH && (
+								<Search onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectPerson={handleSelectPerson} onSelectGame={handleSelectGame} onPlayChannel={handlePlayChannel} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SETTINGS && (
+								<Settings
+									onBack={handleBack}
+									onLibrariesChanged={fetchLibraries}
+									onRunSetupWizard={handleRunSetupWizard}
+									onSelectItem={handleSelectItemFromSettings}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.PLAYER && playingItem && (
+								<Player
+									item={playingItem}
+									resume={isResume}
+									initialMediaSourceId={playbackOptions?.mediaSourceId}
+									initialAudioIndex={playbackOptions?.audioStreamIndex}
+									initialSubtitleIndex={playbackOptions?.subtitleStreamIndex}
+									initialStartPositionTicks={playbackOptions?.startPositionTicks}
+									initialQuality={playbackOptions?.forceBitrate}
+									forceTranscode={playbackOptions?.forceTranscode}
+									audioPlaylist={playbackOptions?.audioPlaylist}
+									videoQueue={playbackOptions?.videoQueue}
+									liveTvChannels={playbackOptions?.liveTvChannels}
+									onEnded={handlePlayerEnd}
+									onBack={handlePlayerEnd}
+									onGuide={handlePlayerGuide}
+									onPlayNext={handlePlayNext}
+									onSelectPerson={handleSelectPersonFromPlayer}
+									onPausedChange={setIsPlayerPaused}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.FAVORITES && (
+								<Favorites onSelectItem={handleSelectItem} onSelectPerson={handleSelectPerson} onHome={handleHome} backHandlerRef={backHandlerRef} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GENRES && (
+								<Genres onSelectGenre={handleSelectGenre} onHome={handleHome} backHandlerRef={backHandlerRef} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.PERSON && (
+								<Person personId={selectedPerson?.Id} onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectSeerrPerson={handleSelectSeerrPerson} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.LIVETV && (
+								<LiveTV onPlayChannel={handlePlayChannel} onRecordings={handleOpenRecordings} backHandlerRef={backHandlerRef} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SEERR_DISCOVER && (
+								<SeerrDiscover
+									backHandlerRef={backHandlerRef}
+									onSelectItem={handleSelectSeerrItem}
+									onSelectGenre={handleSelectSeerrGenre}
+									onSelectStudio={handleSelectSeerrStudio}
+									onSelectNetwork={handleSelectSeerrNetwork}
+									onOpenRequests={handleOpenSeerrRequests}
+									onOpenShortcut={handleOpenSeerrShortcut}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SEERR_REQUESTS && (
+								<SeerrRequests
+									onSelectItem={handleSelectSeerrItem}
+									onClose={handleBack}
+									initialTab={seerrRequestsTab}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GENRE_BROWSE && (
+								<GenreBrowse
+									genre={selectedGenre}
+									onSelectItem={handleSelectItem}
 								backHandlerRef={backHandlerRef}
 							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GAME_DETAILS && (
-							<GameDetails
-								library={selectedGameLibrary}
-								gameId={selectedGame?.id}
-								initialGame={selectedGame}
-								onPlay={handlePlayGame}
-								onSelectGame={handleSelectGame}
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.RECORDINGS && (
+								<Recordings onPlayRecording={handlePlayRecording} onBack={handleBack} backHandlerRef={backHandlerRef} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SEERR_BROWSE && (
+								<SeerrBrowse
+									browseType={seerrBrowse?.browseType}
+									item={seerrBrowse?.item}
+									mediaType={seerrBrowse?.mediaType}
+									onSelectItem={handleSelectSeerrItem}
 								backHandlerRef={backHandlerRef}
 							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GAME_PLAYER && selectedGame && (
-							<GamePlayer
-								library={selectedGameLibrary}
-								game={selectedGame}
-								startFresh={gameStartFresh}
-								onBack={handleBack}
-								backHandlerRef={backHandlerRef}
-							/>
-						)}
-					</Panel>
-					{/* Panels renders only children[panelIndex], so every Panel's position
-					    here has to match its PANELS value and a new one goes on the end. */}
-					<Panel>
-						{panelIndex === PANELS.SEERR_COLLECTION && (
-							<SeerrCollection
-								collectionId={seerrCollection?.collectionId}
-								onSelectItem={handleSelectSeerrItem}
-								backHandlerRef={backHandlerRef}
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GAME_SYSTEM && (
-							<GameSystem
-								library={selectedGameLibrary}
-								system={selectedGameSystem}
-								onSelectGame={handleSelectGame}
-								onBack={handleBack}
-								backHandlerRef={backHandlerRef}
-							/>
-						)}
-					</Panel>
-				</Panels>
-			</Suspense>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SEERR_PERSON && (
+								<SeerrPerson
+									personId={seerrPerson?.id}
+									personName={seerrPerson?.name}
+									onSelectItem={handleSelectSeerrItem}
+									onBack={handleBack}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.ADD_SERVER && (
+								<Login
+									onLoggedIn={handleLoggedIn}
+									onServerAdded={handleServerAdded}
+									backHandlerRef={backHandlerRef}
+									isAddingServer
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.ADD_USER && (
+								<Login
+									onLoggedIn={handleLoggedIn}
+									onServerAdded={handleServerAdded}
+									backHandlerRef={backHandlerRef}
+									isAddingUser
+									currentServerUrl={serverUrl}
+									currentServerName={serverName}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GAMES && (
+								<Games
+									library={selectedGameLibrary}
+									onSelectSystem={handleSelectGameSystem}
+									onHome={handleHome}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GAME_DETAILS && (
+								<GameDetails
+									library={selectedGameLibrary}
+									gameId={selectedGame?.id}
+									initialGame={selectedGame}
+									onPlay={handlePlayGame}
+									onSelectGame={handleSelectGame}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GAME_PLAYER && selectedGame && (
+								<GamePlayer
+									library={selectedGameLibrary}
+									game={selectedGame}
+									startFresh={gameStartFresh}
+									onBack={handleBack}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+						{/* Panels renders only children[panelIndex], so every Panel's position
+						    here has to match its PANELS value and a new one goes on the end. */}
+						<Panel>
+							{panelIndex === PANELS.SEERR_COLLECTION && (
+								<SeerrCollection
+									collectionId={seerrCollection?.collectionId}
+									onSelectItem={handleSelectSeerrItem}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GAME_SYSTEM && (
+								<GameSystem
+									library={selectedGameLibrary}
+									system={selectedGameSystem}
+									onSelectGame={handleSelectGame}
+									onBack={handleBack}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+					</Panels>
+				</Suspense>
+			</ItemMenuProvider>
 			<AccountModal
 				open={showAccountModal}
 				onClose={handleCloseAccountModal}

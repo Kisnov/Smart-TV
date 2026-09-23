@@ -11,6 +11,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import {getImageUrl, getBackdropId} from '../../utils/helpers';
 import {useStorage} from '../../hooks/useStorage';
 import useSortSettingsPanels from '../../hooks/useSortSettingsPanels';
+import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
 import {capitalize, createGridKeyDown, createToolbarKeyDown, cycleValue, stopPropagation} from '../../utils/gridChrome';
 
 import css from './Genres.module.less';
@@ -298,6 +299,13 @@ const Genres = ({onSelectGenre, onHome, backHandlerRef}) => {
 		setTimeout(() => Spotlight.focus('genres-grid'), 100);
 	}, [libraries, handleCloseSortPanel]);
 
+	// Holding OK on a genre opens its menu, which has the genre's artwork on it for an admin.
+	const genreAtCard = useCallback((target) => {
+		const genre = sortedGenresRef.current[cardIndexOf(target)];
+		return genre ? {...genre, Id: genre.id, Name: genre.name, Type: 'Genre'} : null;
+	}, []);
+	const menuHold = useItemMenuHold(genreAtCard);
+
 	const renderGenreCard = useCallback(({index, ...rest}) => {
 		const genre = sortedGenresRef.current[index];
 		if (!genre) return null;
@@ -373,7 +381,7 @@ const Genres = ({onSelectGenre, onHome, backHandlerRef}) => {
 					) : sortedGenres.length === 0 ? (
 						<div className={css.empty}>{$L('No genres found')}</div>
 					) : (
-						<div className={css.gridWrapper}>
+						<div className={css.gridWrapper} {...menuHold}>
 							<VirtualGridList
 								className={css.grid}
 								dataSize={sortedGenres.length}
