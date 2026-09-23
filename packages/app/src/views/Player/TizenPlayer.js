@@ -32,6 +32,7 @@ import {resolveInitialSubtitle} from './initialSubtitle';
 import {api as jellyfinApi, createApiForServer, getServerUrl} from '../../services/jellyfinApi';
 import PlayerControls, {usePlayerButtons} from './PlayerControls';
 import useLiveProgram from './useLiveProgram';
+import {hasTrickplayPreview} from '../../components/TrickplayPreview';
 import useChannelCarousel from './useChannelCarousel';
 import ChannelCarousel from './ChannelCarousel';
 import useSleepTimer from './useSleepTimer';
@@ -219,6 +220,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Deferred seek: only execute actual avplaySeek after user stops pressing arrows
 	const seekDebounceRef = useRef(null);
 	const pendingSeekMsRef = useRef(null);
+	// A scrub that paused playback to hold the preview still, and whether it was playing before.
+	const scrubHoldRef = useRef({active: false, wasPlaying: false});
 	const subtitleTimeoutRef = useRef(null);
 	const useNativeSubtitleRef = useRef(false);
 	// Ref for the Player container DOM element - used to walk up ancestors for transparency
@@ -1548,6 +1551,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			}
 			useNativeSubtitleRef.current = false;
 			pendingSeekMsRef.current = null;
+			scrubHoldRef.current = {active: false, wasPlaying: false};
 			pendingTracksRef.current = null;
 			activeNativeSubRef.current = null;
 			suspendedRef.current = null;
@@ -1706,7 +1710,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		skipSegment, showSkipCredits, showNextEpisode, nextEpisodeCountdown,
 		handleSkipSegment, handlePlayNextNow,
 		askStillWatching, handleStillWatchingContinue, handleStillWatchingStop, cancelNextEpisodeCountdown,
-		checkSegments, handlePopupKeyDown, resetPopups
+		checkSegments, handlePopupKeyDown, resetPopups, noteViewerActivity
 	} = useSegmentPopups({
 		mediaSegments, nextEpisode, settings, runTimeRef,
 		activeModal, controlsVisible, hideControls, showControls,
@@ -1861,7 +1865,70 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		}, RESUME_CHECK_MS);
 	}, []);
 
+	// The one real seek a scrub makes, once it's committed.
+	const executeDeferredSeek = useCallback(() => {
+		if (seekDebounceRef.current) {
+			clearTimeout(seekDebounceRef.current);
+			seekDebounceRef.current = null;
+		}
+		if (pendingSeekMsRef.current != null && avplayReadyRef.current) {
+			const seekMs = pendingSeekMsRef.current;
+			pendingSeekMsRef.current = null;
+			if (groupSeekTo(Math.floor(seekMs * 10000))) return;
+			avplaySeek(seekMs).catch(err => console.warn('[Player] Deferred seek failed:', err));
+		}
+	}, [groupSeekTo]);
+
+	const scheduleDeferredSeek = useCallback((targetMs) => {
+		pendingSeekMsRef.current = targetMs;
+		if (seekDebounceRef.current) {
+			clearTimeout(seekDebounceRef.current);
+		}
+		// A scrub that doesn't hold playback lands once the presses stop, and the preview goes with it.
+		seekDebounceRef.current = setTimeout(() => {
+			seekDebounceRef.current = null;
+			executeDeferredSeek();
+			setIsSeeking(false);
+		}, 500);
+	}, [executeDeferredSeek]);
+
+	// Play during a held scrub is what commits it, landing on the scrubbed spot and playing on
+	// from there.
+	const resumeHeldScrub = useCallback(() => {
+		if (!scrubHoldRef.current.active) return false;
+		scrubHoldRef.current = {active: false, wasPlaying: false};
+		noteViewerActivity();
+		executeDeferredSeek();
+		setIsSeeking(false);
+		avplayPlay();
+		setIsPaused(false);
+		healthMonitorRef.current?.setPaused(false);
+		verifyResumeHealthy();
+		playback.reportProgress(positionRef.current, { isPaused: false, eventName: 'unpause' });
+		return true;
+	}, [noteViewerActivity, executeDeferredSeek, verifyResumeHealthy]);
+
+	// A skip or a chapter jump lands somewhere the scrub knows nothing about, so a pending scrub is
+	// dropped rather than committed over it later, and a held one lets playback carry on.
+	const dropScrub = useCallback(() => {
+		if (seekDebounceRef.current) {
+			clearTimeout(seekDebounceRef.current);
+			seekDebounceRef.current = null;
+		}
+		pendingSeekMsRef.current = null;
+		setIsSeeking(false);
+		const held = scrubHoldRef.current;
+		scrubHoldRef.current = {active: false, wasPlaying: false};
+		if (held.active && held.wasPlaying) {
+			avplayPlay();
+			setIsPaused(false);
+			healthMonitorRef.current?.setPaused(false);
+		}
+	}, []);
+
 	const handlePlayPause = useCallback(() => {
+		if (resumeHeldScrub()) return;
+		noteViewerActivity();
 		const state = avplayGetState();
 		if (isInGroup && !syncPlayCommandRef.current) {
 			if (state === 'PLAYING') {
@@ -1890,26 +1957,30 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			verifyResumeHealthy();
 			playback.reportProgress(positionRef.current, { isPaused: false, eventName: 'unpause' });
 		}
-	}, [settings.unpauseRewind, isInGroup, verifyResumeHealthy]);
+	}, [settings.unpauseRewind, isInGroup, verifyResumeHealthy, noteViewerActivity, resumeHeldScrub]);
 
 	const handleRewind = useCallback(() => {
 		if (!avplayReadyRef.current) return;
+		noteViewerActivity();
+		dropScrub();
 		const step = skipBackSeconds(settings);
 		if (groupSeekTo(positionRef.current - step * 10000000)) return;
 		const ms = avplayGetCurrentTime();
 		const newMs = Math.max(0, ms - step * 1000);
 		avplaySeek(newMs).catch(e => console.warn('[Player] Seek failed:', e));
-	}, [settings, groupSeekTo]);
+	}, [settings, groupSeekTo, noteViewerActivity, dropScrub]);
 
 	const handleForward = useCallback(() => {
 		if (!avplayReadyRef.current) return;
+		noteViewerActivity();
+		dropScrub();
 		const step = skipForwardSeconds(settings);
 		if (groupSeekTo(positionRef.current + step * 10000000)) return;
 		const ms = avplayGetCurrentTime();
 		const durationMs = avplayGetDuration();
 		const newMs = Math.min(durationMs, ms + step * 1000);
 		avplaySeek(newMs).catch(e => console.warn('[Player] Seek failed:', e));
-	}, [settings, groupSeekTo]);
+	}, [settings, groupSeekTo, noteViewerActivity, dropScrub]);
 
 	// Modal handlers
 	const openModal = useCallback((modal) => {
@@ -2153,12 +2224,13 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const handleSelectChapter = useCallback((e) => {
 		const ticks = parseInt(e.currentTarget.dataset.ticks, 10);
 		if (isNaN(ticks)) return;
+		dropScrub();
 		if (avplayReadyRef.current && ticks >= 0 && !groupSeekTo(ticks)) {
 			const seekMs = Math.floor(ticks / 10000);
 			avplaySeek(seekMs).catch(err => console.warn('[Player] Chapter seek failed:', err));
 		}
 		closeModal();
-	}, [closeModal, groupSeekTo]);
+	}, [closeModal, groupSeekTo, dropScrub]);
 
 	// Progress bar seeking
 	const handleProgressClick = useCallback((e) => {
@@ -2170,31 +2242,32 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		avplaySeek(newTimeMs).catch(err => console.warn('[Player] Seek failed:', err));
 	}, [duration, groupSeekTo]);
 
-	// Deferred seek helpers: only execute the actual avplaySeek after the user
-	// stops pressing arrow keys (debounce) or presses OK/Enter to confirm.
-	const executeDeferredSeek = useCallback(() => {
-		if (seekDebounceRef.current) {
-			clearTimeout(seekDebounceRef.current);
-			seekDebounceRef.current = null;
+	// With a preview to look at, a scrub pauses playback so the preview holds still, and only play
+	// commits it. The viewer can turn that off, and without a preview playback carries on.
+	const beginScrub = useCallback(() => {
+		if (scrubHoldRef.current.active || settings.trickPlayPauseWhileScrubbing === false ||
+			settings.trickPlayEnabled === false || isInGroup || !hasTrickplayPreview(item.Id, mediaSourceId)) return;
+		const wasPlaying = avplayGetState() === 'PLAYING';
+		scrubHoldRef.current = {active: true, wasPlaying};
+		if (wasPlaying) {
+			avplayPause();
+			setIsPaused(true);
+			healthMonitorRef.current?.setPaused(true);
 		}
-		if (pendingSeekMsRef.current != null && avplayReadyRef.current) {
-			const seekMs = pendingSeekMsRef.current;
-			pendingSeekMsRef.current = null;
-			if (groupSeekTo(Math.floor(seekMs * 10000))) return;
-			avplaySeek(seekMs).catch(err => console.warn('[Player] Deferred seek failed:', err));
-		}
-	}, [groupSeekTo]);
+	}, [settings.trickPlayPauseWhileScrubbing, settings.trickPlayEnabled, isInGroup, item.Id, mediaSourceId]);
 
-	const scheduleDeferredSeek = useCallback((targetMs) => {
-		pendingSeekMsRef.current = targetMs;
-		if (seekDebounceRef.current) {
-			clearTimeout(seekDebounceRef.current);
-		}
-		seekDebounceRef.current = setTimeout(() => {
-			seekDebounceRef.current = null;
-			executeDeferredSeek();
-		}, 500);
-	}, [executeDeferredSeek]);
+	// One scrub step on from the pending target, or from where playback is when a scrub starts.
+	const scrubBy = useCallback((deltaSeconds) => {
+		if (!avplayReadyRef.current) return;
+		noteViewerActivity();
+		beginScrub();
+		setIsSeeking(true);
+		const baseMs = pendingSeekMsRef.current != null ? pendingSeekMsRef.current : avplayGetCurrentTime();
+		const newMs = Math.min(avplayGetDuration(), Math.max(0, baseMs + deltaSeconds * 1000));
+		setSeekPosition(Math.floor(newMs * 10000));
+		if (scrubHoldRef.current.active) pendingSeekMsRef.current = newMs;
+		else scheduleDeferredSeek(newMs);
+	}, [noteViewerActivity, beginScrub, scheduleDeferredSeek]);
 
 	// Progress bar keyboard control - deferred seeking
 	const handleProgressKeyDown = useCallback((e) => {
@@ -2204,22 +2277,13 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		if (e.key === 'ArrowLeft' || e.keyCode === 37) {
 			e.preventDefault();
-			setIsSeeking(true);
-			// Use pending position if user is still seeking, otherwise use current AVPlay time
-			const baseMs = pendingSeekMsRef.current != null ? pendingSeekMsRef.current : avplayGetCurrentTime();
-			const newMs = Math.max(0, baseMs - step * 1000);
-			setSeekPosition(Math.floor(newMs * 10000));
-			scheduleDeferredSeek(newMs);
+			scrubBy(-step);
 		} else if (e.key === 'ArrowRight' || e.keyCode === 39) {
 			e.preventDefault();
-			setIsSeeking(true);
-			const baseMs = pendingSeekMsRef.current != null ? pendingSeekMsRef.current : avplayGetCurrentTime();
-			const durationMs = avplayGetDuration();
-			const newMs = Math.min(durationMs, baseMs + step * 1000);
-			setSeekPosition(Math.floor(newMs * 10000));
-			scheduleDeferredSeek(newMs);
+			scrubBy(step);
 		} else if (e.key === 'Enter' || e.keyCode === 13) {
 			e.preventDefault();
+			if (resumeHeldScrub()) return;
 			executeDeferredSeek();
 			setIsSeeking(false);
 		} else if (e.key === 'ArrowUp' || e.keyCode === 38) {
@@ -2238,7 +2302,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				window.requestAnimationFrame(() => Spotlight.focus('play-pause-btn'));
 			}
 		}
-	}, [settings.seekStep, showControls, scheduleDeferredSeek, executeDeferredSeek, isAudioMode]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [settings.seekStep, showControls, scrubBy, executeDeferredSeek, resumeHeldScrub, isAudioMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const handleProgressBlur = useCallback(() => {
 		executeDeferredSeek();
@@ -2655,6 +2719,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				e.preventDefault();
 				e.stopPropagation();
 				showControls();
+				if (resumeHeldScrub()) return;
 				const state = avplayGetState();
 				if (state === 'PAUSED' || state === 'READY') {
 					// In a group the request goes to the server because acting
@@ -2761,21 +2826,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					if (isLiveTV) { showControls(); return; }
 					showControls();
 					setFocusRow('progress');
-					setIsSeeking(true);
-					const ms = avplayGetCurrentTime();
-					setSeekPosition(Math.floor(ms * 10000));
-					// Apply deferred seek step
-					const step = settings.seekStep;
-					if (key === 'ArrowLeft' || e.keyCode === 37) {
-						const newMs = Math.max(0, ms - step * 1000);
-						setSeekPosition(Math.floor(newMs * 10000));
-						scheduleDeferredSeek(newMs);
-					} else {
-						const durationMs = avplayGetDuration();
-						const newMs = Math.min(durationMs, ms + step * 1000);
-						setSeekPosition(Math.floor(newMs * 10000));
-						scheduleDeferredSeek(newMs);
-					}
+					scrubBy(key === 'ArrowLeft' || e.keyCode === 37 ? -settings.seekStep : settings.seekStep);
 					return;
 				}
 				e.preventDefault();
@@ -2821,7 +2872,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleForward, handleRewind, currentTime, duration, settings.seekStep, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, scheduleDeferredSeek, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, isInGroup, verifyResumeHealthy, carouselOpenRef, openCarousel]);
+	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleForward, handleRewind, settings.seekStep, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, scrubBy, resumeHeldScrub, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, isInGroup, verifyResumeHealthy, carouselOpenRef, openCarousel]);
 
 	// Calculate progress - use seekPosition when actively seeking for smooth scrubbing
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;
@@ -3004,7 +3055,6 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				progressPercent={progressPercent}
 				bufferedPercent={bufferedPercent}
 				isSeeking={isSeeking}
-				seekPosition={seekPosition}
 				item={item}
 				mediaSourceId={mediaSourceId}
 				playMethod={playMethod}
