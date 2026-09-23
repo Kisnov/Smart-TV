@@ -7,6 +7,7 @@ import {normalizeOverlayColorKey} from '../theme/overlayColors';
 import {noteAnsweredSettings, SETUP_QUESTION_KEYS} from '../utils/setupWizardGate';
 import {getAvailableThemeList, getAvailableThemes, isBuiltInThemeId, registerStoreTheme, removeStoreTheme, replaceCustomThemes, resolveThemeById} from '../theme/themeRegistry';
 import {applyOledMode} from '../utils/oledMode';
+import {normalizeRatingSources, ratingSourcesToServer} from '../utils/ratingSources';
 import {
 	IMAGES as LOADING_IMAGES,
 	POSITIONS as LOADING_POSITIONS,
@@ -205,6 +206,12 @@ const VALUE_CONVERSIONS = {
 		// A small number is the seconds an older build pushed before this was
 		// converted, rather than an interval of a few milliseconds.
 		fromServer: (v) => (typeof v === 'number' && v < MIN_INTERVAL_MS ? v : msToSeconds(v))
+	},
+	// A few ids are camelCase on the server, and a lowercase list here would otherwise
+	// neither match them nor stop the picker adding the same source a second time.
+	mdblistRatingSources: {
+		toServer: ratingSourcesToServer,
+		fromServer: normalizeRatingSources
 	}
 	// homeRows is missing on purpose. The home layout is two server fields that have to
 	// move together, so it gets resolved whole rather than a key at a time.
@@ -584,15 +591,15 @@ export function SettingsProvider({children}) {
 					stored.mdblistRatingSources = ['stars', ...stored.mdblistRatingSources];
 					migrated = true;
 				}
-				if (Array.isArray(stored.mdblistRatingSources) &&
-					stored.mdblistRatingSources.some((s) => s === 'popcorn' || s === 'rtAudience')) {
-					// Stored selections can still hold the old `popcorn` or `rtAudience`
-					// ids. Map both to the shared `tomatoes_audience` key so they keep
-					// matching what the ratings row filters on.
-					stored.mdblistRatingSources = stored.mdblistRatingSources.map(
-						(s) => (s === 'popcorn' || s === 'rtAudience' ? 'tomatoes_audience' : s)
-					);
-					migrated = true;
+				if (Array.isArray(stored.mdblistRatingSources)) {
+					// Stored selections can still hold the old RT audience ids, or a server's
+					// camelCase ids taken before they were converted, possibly twice over.
+					// Put them in the form the ratings row filters on.
+					const sources = normalizeRatingSources(stored.mdblistRatingSources);
+					if (!sameSyncedValue(sources, stored.mdblistRatingSources)) {
+						stored.mdblistRatingSources = sources;
+						migrated = true;
+					}
 				}
 				if (!stored.screensaverClockMode && 'screensaverShowClock' in stored) {
 					// The clock toggle became a mode picker. The logo screensaver always
@@ -897,14 +904,6 @@ export function SettingsProvider({children}) {
 			// A value the profile carries was chosen somewhere, on this device or
 			// another, so the setup wizard has nothing left to ask about it.
 			noteAnsweredSettings(SETUP_QUESTION_KEYS.filter((key) => resolved[key] !== undefined));
-			// Synced profiles can still contain the old `rtAudience`/`popcorn` ids,
-			// which would never match the `tomatoes_audience` key the ratings row
-			// filters on.
-			if (Array.isArray(resolved.mdblistRatingSources)) {
-				resolved.mdblistRatingSources = resolved.mdblistRatingSources.map(
-					(s) => (s === 'popcorn' || s === 'rtAudience' ? 'tomatoes_audience' : s)
-				);
-			}
 			setSettings(prev => {
 				const nextValues = {};
 				for (const key of SYNCABLE_KEYS) {

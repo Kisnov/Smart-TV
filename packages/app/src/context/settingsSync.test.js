@@ -83,6 +83,24 @@ describe('profileToLocal', () => {
 		expect(local.screensaverExcludedGenres).toEqual(['Horror']);
 	});
 
+	test('takes the dashboard camelCase rating sources in this app spelling, once each', () => {
+		// A real TV profile. The picker didn't recognise myAnimeList, so ticking it added a
+		// second entry, and the ratings row drew MyAnimeList twice.
+		const local = profileToLocal({
+			mdblistRatingSources: ['myAnimeList', 'imdb', 'tomatoes_audience', 'metacriticUser',
+				'tmdb', 'letterboxd', 'trakt', 'myanimelist']
+		});
+
+		expect(local.mdblistRatingSources).toEqual(['myanimelist', 'imdb', 'tomatoes_audience',
+			'metacriticuser', 'tmdb', 'letterboxd', 'trakt']);
+	});
+
+	test('folds the old RT audience ids into tomatoes_audience', () => {
+		const local = profileToLocal({mdblistRatingSources: ['popcorn', 'imdb', 'rtAudience']});
+
+		expect(local.mdblistRatingSources).toEqual(['tomatoes_audience', 'imdb']);
+	});
+
 	test('takes the loading animation stored in the profile', () => {
 		const local = profileToLocal({
 			loadingAnimationImage: 'neonfinPhases',
@@ -148,6 +166,17 @@ describe('localToProfile', () => {
 		const profile = localToProfile({...defaultSettings, screensaverContentType: 'tv'}, ['screensaverContentType']);
 
 		expect(profile).toEqual({screensaverContentType: 'tvshows'});
+	});
+
+	test('sends rating sources in the camelCase the dashboard and Core use', () => {
+		const profile = localToProfile({
+			...defaultSettings,
+			mdblistRatingSources: ['stars', 'myanimelist', 'metacriticuser', 'rogerebert', 'tomatoes_audience']
+		}, ['mdblistRatingSources']);
+
+		expect(profile).toEqual({
+			mdblistRatingSources: ['stars', 'myAnimeList', 'metacriticUser', 'rogerEbert', 'tomatoes_audience']
+		});
 	});
 
 	test('sends the loading animation under the names the other clients read', () => {
