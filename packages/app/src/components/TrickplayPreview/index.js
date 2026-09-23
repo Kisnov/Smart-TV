@@ -1,2 +1,2 @@
 export {default} from './TrickplayPreview';
-export {getTrickplayManifest} from './TrickplayPreview';
+export {getTrickplayManifest, hasTrickplayPreview} from './TrickplayPreview';

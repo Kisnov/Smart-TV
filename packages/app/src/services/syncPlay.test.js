@@ -2,7 +2,8 @@ jest.mock('./jellyfinApi', () => ({
 	getServerUrl: () => 'https://server',
 	getAuthHeader: () => 'MediaBrowser Token="t"',
 	getApiKey: () => 'key',
-	getDeviceId: () => 'device'
+	getDeviceId: () => 'device',
+	getServerType: () => 'jellyfin'
 }));
 
 const pingCount = () => global.fetch.mock.calls.filter(([url]) => url === 'https://server/SyncPlay/Ping').length;
@@ -10,6 +11,7 @@ const pingCount = () => global.fetch.mock.calls.filter(([url]) => url === 'https
 describe('SyncPlay ping', () => {
 	let socket;
 	let service;
+	let serverSocket;
 
 	const groupUpdate = (type) => socket.onmessage({
 		data: JSON.stringify({MessageType: 'SyncPlayGroupUpdate', Data: {Type: type, Data: {GroupId: 'g1'}}})
@@ -28,13 +30,16 @@ describe('SyncPlay ping', () => {
 		// rather than inheriting whichever group the one before it joined.
 		jest.isolateModules(() => {
 			service = require('./syncPlay');
+			serverSocket = require('./serverSocket');
 		});
-		service.connectWebSocket();
+		serverSocket.connect();
+		service.start();
 		socket.onopen();
 	});
 
 	afterEach(() => {
-		service.disconnectWebSocket();
+		service.stop();
+		serverSocket.disconnect();
 		jest.useRealTimers();
 		delete global.fetch;
 		delete global.WebSocket;
@@ -58,6 +63,16 @@ describe('SyncPlay ping', () => {
 		expect(pingCount()).toBe(onJoin + 3);
 	});
 
+	// The socket stays up for the rest of the session, so switching SyncPlay off has to stop it
+	// hearing the group as well as stop the timers.
+	test('hears nothing once switched off, though the socket stays up', () => {
+		service.stop();
+		groupUpdate('GroupJoined');
+		jest.advanceTimersByTime(60000);
+		expect(pingCount()).toBe(0);
+		expect(serverSocket.isConnected()).toBe(true);
+	});
+
 	test.each(['GroupLeft', 'NotInGroup', 'GroupDoesNotExist'])('goes quiet again on %s', (type) => {
 		groupUpdate('GroupJoined');
 		groupUpdate(type);
@@ -67,75 +82,10 @@ describe('SyncPlay ping', () => {
 	});
 });
 
-describe('SyncPlay socket keep-alive', () => {
-	let socket;
-	let service;
-
-	const keepAliveCount = () => socket.send.mock.calls.filter(([data]) => JSON.parse(data).MessageType === 'KeepAlive').length;
-	const forceKeepAlive = (timeout) => socket.onmessage({data: JSON.stringify({MessageType: 'ForceKeepAlive', Data: timeout})});
-
-	beforeEach(() => {
-		jest.useFakeTimers();
-		global.WebSocket = function FakeSocket () {
-			socket = this;
-			this.readyState = 1;
-			this.send = jest.fn();
-			this.close = () => {};
-		};
-		global.fetch = jest.fn(() => Promise.resolve({ok: true, status: 204, json: () => Promise.resolve({})}));
-		jest.isolateModules(() => {
-			service = require('./syncPlay');
-		});
-		service.connectWebSocket();
-		socket.onopen();
-	});
-
-	afterEach(() => {
-		service.disconnectWebSocket();
-		jest.useRealTimers();
-		delete global.fetch;
-		delete global.WebSocket;
-	});
-
-	test('sends nothing until the server asks', () => {
-		jest.advanceTimersByTime(60000);
-		expect(keepAliveCount()).toBe(0);
-	});
-
-	// The server disposes a socket 60s after the last KeepAlive it received and
-	// ends the session with it, which takes the set out of its group.
-	test('answers ForceKeepAlive at once and then every half timeout', () => {
-		forceKeepAlive(60);
-		expect(keepAliveCount()).toBe(1);
-		jest.advanceTimersByTime(29999);
-		expect(keepAliveCount()).toBe(1);
-		jest.advanceTimersByTime(1);
-		expect(keepAliveCount()).toBe(2);
-		jest.advanceTimersByTime(60000);
-		expect(keepAliveCount()).toBe(4);
-	});
-
-	test('a repeated ForceKeepAlive restarts the timer rather than doubling it', () => {
-		forceKeepAlive(60);
-		forceKeepAlive(60);
-		expect(keepAliveCount()).toBe(2);
-		jest.advanceTimersByTime(30000);
-		expect(keepAliveCount()).toBe(3);
-	});
-
-	test('stops once the socket closes', () => {
-		// The reconnect that follows opens a fresh socket, so count on this one.
-		const first = socket;
-		forceKeepAlive(60);
-		first.onclose();
-		jest.advanceTimersByTime(120000);
-		expect(first.send).toHaveBeenCalledTimes(1);
-	});
-});
-
 describe('SyncPlay Ready reports', () => {
 	let socket;
 	let service;
+	let serverSocket;
 
 	const readyCount = () => global.fetch.mock.calls.filter(([url]) => url === 'https://server/SyncPlay/Ready').length;
 	const sample = () => ({isPlaying: true, positionTicks: 0});
@@ -153,13 +103,16 @@ describe('SyncPlay Ready reports', () => {
 		global.fetch = jest.fn(() => Promise.resolve({ok: true, status: 204, json: () => Promise.resolve({})}));
 		jest.isolateModules(() => {
 			service = require('./syncPlay');
+			serverSocket = require('./serverSocket');
 		});
-		service.connectWebSocket();
+		serverSocket.connect();
+		service.start();
 		socket.onopen();
 	});
 
 	afterEach(() => {
-		service.disconnectWebSocket();
+		service.stop();
+		serverSocket.disconnect();
 		delete global.fetch;
 		delete global.WebSocket;
 	});
@@ -202,6 +155,7 @@ describe('SyncPlay Ready reports', () => {
 describe('SyncPlay group position', () => {
 	let socket;
 	let service;
+	let serverSocket;
 
 	const groupUpdate = (type, data) => socket.onmessage({
 		data: JSON.stringify({MessageType: 'SyncPlayGroupUpdate', Data: {Type: type, Data: data}})
@@ -221,14 +175,17 @@ describe('SyncPlay group position', () => {
 		global.fetch = jest.fn(() => Promise.resolve({ok: true, status: 204, json: () => Promise.resolve({})}));
 		jest.isolateModules(() => {
 			service = require('./syncPlay');
+			serverSocket = require('./serverSocket');
 		});
-		service.connectWebSocket();
+		serverSocket.connect();
+		service.start();
 		socket.onopen();
 		groupUpdate('GroupJoined', {GroupId: 'g1', State: 'Playing'});
 	});
 
 	afterEach(() => {
-		service.disconnectWebSocket();
+		service.stop();
+		serverSocket.disconnect();
 		delete global.fetch;
 		delete global.WebSocket;
 	});

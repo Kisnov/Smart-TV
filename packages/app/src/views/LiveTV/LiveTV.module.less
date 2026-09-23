@@ -1,13 +1,13 @@
 @import '../../styles/variables.less';
 @import '../../styles/mixins.less';
 
-// Every dimension here is one of moonfin-core's scaled by 1.5, because a TV renders
-// core's Flutter logical pixels at roughly that size against this app's 1920 wide
-// design space (Apple TV pins 1324 logical, common Android TV panels sit near 1280).
-@channel-column-width: 240px;
-@row-height: 126px;
-// The chip border color moonfin-core draws both guide dividers with.
+// Every size is the other clients' canvas point value times 1.45, the scale a 1080p panel paints
+// that canvas at, so the guide lands at the same painted size in this 1920 wide design space.
 @guide-divider: rgba(142, 200, 240, 0.33);
+@guide-accent: #00a4dc;
+@row-height: 87px;
+@channel-column-width: 296px;
+@channel-logo-width: 91px;
 
 .page {
 	position: fixed;
@@ -18,7 +18,7 @@
 	background: #000;
 	display: flex;
 	flex-direction: column;
-	padding: 30px 24px 24px;
+	padding: 12px 35px 23px;
 	overflow: hidden;
 }
 
@@ -36,353 +36,398 @@
 	}
 }
 
-.toolbar {
-	display: flex;
-	align-items: center;
-	flex-shrink: 0;
-	padding: 12px 24px 0;
-}
-
-.pill {
+.stateMessage {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	flex-shrink: 0;
-	padding: 10px 21px;
-	border: none;
-	border-radius: 30px;
-	background: rgba(255, 255, 255, 0.1);
-	color: rgba(255, 255, 255, 0.8);
-	font-size: 20px;
-	cursor: pointer;
-	transition: background 0.15s ease, color 0.15s ease;
-	outline: none;
-
-	svg {
-		width: 27px;
-		height: 27px;
-		fill: currentColor;
-	}
-
-	&:focus {
-		background: @accent-color;
-		color: #fff;
-	}
-}
-
-.pillText {
-	margin-left: 9px;
-
-	&:first-child {
-		margin-left: 0;
-	}
-}
-
-.pillWithLabel svg {
-	width: 24px;
-	height: 24px;
-}
-
-.gapXs {
-	margin-left: 6px;
-}
-
-.gapSm {
-	margin-left: 12px;
-}
-
-.toolbarLabel {
 	flex: 1;
-	min-width: 0;
-	margin-left: 18px;
-	font-size: 21px;
-	color: rgba(255, 255, 255, 0.8);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+	font-size: 20px;
+	color: rgba(255, 255, 255, 0.7);
 }
 
 .filterRail {
-	display: flex;
-	align-items: center;
 	flex-shrink: 0;
-	padding: 9px 24px;
-	overflow: hidden;
-	.flex-row-gap(12px);
+	padding: 0 12px;
 }
 
-.filterChip {
+.filterRailScroller {
+	display: flex;
+	padding: 0 3px;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.chip {
 	flex-shrink: 0;
-	padding: 10px 24px;
+	margin-right: 6px;
+	padding: 7px 17px;
 	border: 3px solid rgba(255, 255, 255, 0.12);
-	border-radius: 20px;
+	border-radius: 19px;
 	background: rgba(26, 26, 26, 0.55);
 	color: rgba(255, 255, 255, 0.85);
-	font-size: 21px;
+	font-size: 20px;
 	font-weight: 500;
-	letter-spacing: 0.15px;
-	cursor: pointer;
-	transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 	outline: none;
+	transition: background 0.15s ease, border-color 0.15s ease;
 
 	&:focus {
-		border-color: @accent-color;
+		border-color: @guide-accent;
 	}
+}
 
-	&.selected {
-		background: @accent-color;
-		border-color: transparent;
-		color: #10242e;
-		font-weight: 600;
+.chipSelected {
+	border-color: transparent;
+	background: @guide-accent;
+	color: #10242e;
+	font-weight: 600;
+
+	&:focus {
+		border-color: rgba(255, 255, 255, 0.9);
 	}
 }
 
 .hero {
 	display: flex;
-	align-items: center;
 	flex-shrink: 0;
-	height: 186px;
-	margin-top: 12px;
-	padding: 24px 30px;
+	height: 209px;
+	margin-top: 3px;
+	border-radius: 23px;
 	background: rgba(26, 26, 26, 0.45);
-	border-radius: 24px;
-	box-sizing: border-box;
 	overflow: hidden;
 }
 
-.heroInfo {
-	flex: 1;
-	min-width: 0;
-}
-
-.heroTitle {
-	font-size: 33px;
-	color: #fff;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.heroMeta {
-	margin-top: 9px;
-	font-size: 21px;
-	color: rgba(255, 255, 255, 0.7);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.heroSynopsis {
-	margin-top: 12px;
-	font-size: 18px;
-	line-height: 1.35;
-	color: rgba(255, 255, 255, 0.6);
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-}
-
-.heroChannel {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	flex-shrink: 0;
-	margin-left: 30px;
-	max-width: 300px;
-}
-
-.heroChannelLogo {
-	width: 69px;
-	height: 69px;
-	object-fit: contain;
-	border-radius: 12px;
-}
-
-.heroChannelFallback {
-	width: 69px;
-	height: 69px;
+.heroPlate {
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	flex-shrink: 0;
+	width: 157px;
+	height: 100%;
+	background: rgba(53, 57, 64, 0.94);
+}
+
+.heroPlateArtwork {
+	background: transparent;
+}
+
+.heroLogo {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+.heroArtwork {
+	width: 100%;
+	height: 100%;
+	background-size: cover;
+	background-position: center;
+}
+
+.heroText {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	flex: 1;
+	min-width: 0;
+	padding: 3px 17px;
+}
+
+.heroTextWithPlate {
+	padding-left: 12px;
+}
+
+.heroChannelLine {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	white-space: nowrap;
+}
+
+.heroChannelTitle {
+	flex-shrink: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-size: 23px;
+	font-weight: 600;
+	color: #fff;
+}
+
+.heroBadge {
+	flex-shrink: 0;
+	margin-left: 12px;
+	padding: 3px 9px;
+	border: 1.5px solid rgba(0, 164, 220, 0.5);
+	border-radius: 6px;
+	background: rgba(0, 164, 220, 0.18);
+	color: @guide-accent;
+	font-size: 14.5px;
+	font-weight: 700;
+	letter-spacing: 0.6px;
+}
+
+.heroMeta {
+	flex-shrink: 1;
+	min-width: 0;
+	margin-left: 14px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-size: 20px;
+	color: rgba(255, 255, 255, 0.7);
+}
+
+.heroProgramTitle {
+	margin-top: 3px;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: 35px;
+	font-weight: 600;
+	color: #fff;
+}
+
+.heroProgramSubtitle {
+	font-size: 29px;
+	font-weight: 400;
+	color: rgba(255, 255, 255, 0.7);
+}
+
+.heroTitleLarge {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: 32px;
+	color: #fff;
+}
+
+.heroMetaLine {
+	margin-top: 6px;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: 20px;
+	color: rgba(255, 255, 255, 0.7);
+}
+
+.heroSynopsis {
+	margin-top: 6px;
+	font-size: 23px;
+	line-height: 1.2;
+	color: rgba(255, 255, 255, 0.72);
+}
+
+.windowBar {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+	margin-top: 3px;
+	padding: 0 12px 3px;
+}
+
+.barButton {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+	padding: 7px 17px;
+	border: none;
+	border-radius: 29px;
+	background: rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.8);
+	font-size: 19px;
+	outline: none;
+	transition: background 0.15s ease, color 0.15s ease;
 
 	svg {
-		width: 30px;
-		height: 30px;
-		fill: rgba(255, 255, 255, 0.4);
+		width: 26px;
+		height: 26px;
+		fill: currentColor;
+	}
+
+	&:focus {
+		background: @guide-accent;
+		color: #fff;
 	}
 }
 
-.heroChannelName {
-	margin-top: 15px;
-	max-width: 100%;
-	font-size: 21px;
-	font-weight: 500;
-	color: #fff;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+.barButtonLabelled svg {
+	width: 23px;
+	height: 23px;
+	margin-right: 9px;
 }
 
-.heroChannelNumber {
-	margin-top: 3px;
-	font-size: 18px;
-	font-weight: 500;
-	color: rgba(255, 255, 255, 0.7);
+.barGapXs {
+	margin-left: 3px;
+}
+
+.barGapSm {
+	margin-left: 6px;
+}
+
+.windowLabel {
+	flex: 1;
+	min-width: 0;
+	margin: 0 12px;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: 20px;
+	color: rgba(255, 255, 255, 0.8);
 }
 
 .guideSection {
-	flex: 1;
 	display: flex;
 	flex-direction: column;
-	margin-top: 12px;
+	flex: 1;
 	min-height: 0;
-}
-
-.timelineTitle {
-	flex-shrink: 0;
-	padding: 0 12px 3px;
-	font-size: 18px;
-	font-weight: 600;
-	color: rgba(255, 255, 255, 0.7);
 }
 
 .timeRuler {
 	display: flex;
 	flex-shrink: 0;
-	height: 60px;
-	margin-top: 3px;
+	height: 34px;
 }
 
 .rulerSpacer {
-	width: @channel-column-width;
 	flex-shrink: 0;
+	width: @channel-column-width + 1px;
 }
 
 .timeSlot {
-	width: 270px;
 	flex-shrink: 0;
-	display: flex;
-	align-items: center;
-	padding-left: 12px;
 	box-sizing: border-box;
-	font-size: 18px;
+	padding-left: 12px;
+	overflow: hidden;
+	white-space: nowrap;
+	line-height: 34px;
+	font-size: 17px;
 	color: rgba(255, 255, 255, 0.7);
 }
 
 .rulerDivider {
-	height: 1px;
 	flex-shrink: 0;
+	height: 1px;
 	background: @guide-divider;
 }
 
 .gridWrap {
-	flex: 1;
-	min-height: 0;
 	display: flex;
 	flex-direction: column;
+	flex: 1;
+	min-height: 0;
 }
 
 .gridBody {
 	flex: 1;
 	min-height: 0;
-	overflow-y: auto;
-	overflow-x: hidden;
-	position: relative;
-	// Scroll anchoring fights the virtualization spacers. When the top spacer grows
-	// the browser re-anchors to it and throws scrollTop deep into empty space, which
-	// reads as the whole guide vanishing after scrolling far enough.
-	overflow-anchor: none;
+	overflow: hidden;
 }
 
 .guideRow {
 	display: flex;
 	height: @row-height;
-	box-sizing: border-box;
 }
 
-.channelCellWrap {
-	width: @channel-column-width;
+.channelSlot {
 	flex-shrink: 0;
-	padding: 9px;
 	box-sizing: border-box;
-	border-right: 1px solid @guide-divider;
+	width: @channel-column-width;
+	height: @row-height;
+	padding: 0 9px;
+	outline: none;
 }
 
 .channelCell {
-	height: 100%;
 	display: flex;
 	align-items: center;
-	padding: 9px 12px;
-	border: 2px solid transparent;
-	border-radius: 15px;
 	box-sizing: border-box;
-	cursor: pointer;
-	transition: background 0.15s ease, border-color 0.15s ease;
-	outline: none;
+	height: 100%;
+	padding: 0 12px;
+	border: 1.5px solid transparent;
+	border-radius: 14.5px;
+	background: rgba(53, 57, 64, 0.94);
+}
 
-	&:focus {
-		background: rgba(var(--theme-accent-rgb, 0, 164, 220), 0.16);
-		border-color: rgba(var(--theme-accent-rgb, 0, 164, 220), 0.7);
+.channelCellFocused {
+	border-color: rgba(0, 164, 220, 0.7);
+	background: rgba(0, 164, 220, 0.16);
+
+	.channelName {
+		font-weight: 600;
 	}
 }
 
 .channelLogo {
-	width: 45px;
-	height: 45px;
-	object-fit: contain;
-	border-radius: 9px;
-	flex-shrink: 0;
-}
-
-.channelLogoFallback {
-	width: 45px;
-	height: 45px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	flex-shrink: 0;
+	width: @channel-logo-width;
+	height: 100%;
 
-	svg {
-		width: 24px;
-		height: 24px;
-		fill: rgba(255, 255, 255, 0.4);
+	img {
+		max-width: 100%;
+		max-height: 100%;
 	}
+}
+
+.channelLogoFallback {
+	width: 23px;
+	height: 23px;
+	fill: rgba(255, 255, 255, 0.5);
 }
 
 .channelText {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	justify-content: center;
 	flex: 1;
 	min-width: 0;
-	margin-left: 15px;
+	margin-left: 9px;
+}
+
+.channelTopRow {
+	display: flex;
+	align-items: center;
+	margin-bottom: 4px;
+}
+
+.channelFavorite {
+	width: 15px;
+	height: 15px;
+	margin-right: 6px;
+	fill: #f44336;
 }
 
 .channelNumberChip {
-	display: inline-block;
-	margin-bottom: 4px;
-	padding: 2px 10px;
+	padding: 0 9px;
 	border-radius: 10px;
 	background: rgba(255, 255, 255, 0.12);
-	font-size: 14px;
-	font-weight: 600;
 	color: rgba(255, 255, 255, 0.85);
+	font-size: 19px;
+	font-weight: 700;
+}
 
-	.channelCell:focus & {
-		background: @accent-color;
-		color: #062430;
-	}
+.channelNumberChipFocused {
+	background: @guide-accent;
+	color: #062430;
 }
 
 .channelName {
-	font-size: 21px;
+	width: 100%;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	text-align: right;
+	font-size: 17.5px;
 	font-weight: 500;
 	color: #fff;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+}
 
-	.channelCell:focus & {
-		font-weight: 600;
-	}
+.columnDivider {
+	flex-shrink: 0;
+	width: 1px;
+	height: 100%;
+	background: @guide-divider;
 }
 
 .programsArea {
@@ -391,129 +436,186 @@
 	height: 100%;
 }
 
-.programCell {
+.cellSlot {
 	position: absolute;
 	top: 3px;
 	bottom: 3px;
-	display: flex;
-	align-items: center;
-	border: 3px solid transparent;
-	border-radius: 9px;
 	box-sizing: border-box;
-	overflow: hidden;
-	cursor: pointer;
+	padding-right: 1.5px;
 	outline: none;
+}
 
-	&.focused {
-		border-color: @accent-color;
-	}
+.programCell {
+	position: relative;
+	height: 100%;
+	border-radius: 9px;
+	overflow: hidden;
+}
+
+.programCellFocused {
+	box-shadow: inset 0 0 0 3px @guide-accent;
+}
+
+.programCellPast {
+	opacity: 0.55;
 }
 
 .genreBar {
 	position: absolute;
-	left: 0;
 	top: 0;
 	bottom: 0;
-	width: 6px;
+	left: 0;
+	width: 4px;
 }
 
-.programBody {
+.cellText {
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
+	height: 100%;
+	padding: 6px 12px 6px 17px;
+}
+
+.cellTextNarrow {
+	padding: 6px 3px;
+}
+
+.cellTitleRow {
+	display: flex;
+	align-items: flex-start;
+}
+
+.cellTitleBox {
 	flex: 1;
 	min-width: 0;
-	padding: 9px 12px 9px 18px;
 }
 
-.programTitleRow {
-	display: flex;
-	align-items: center;
-	min-width: 0;
-}
-
-.liveBadge {
-	flex-shrink: 0;
-	margin-right: 9px;
-	padding: 2px 8px;
-	border-radius: 6px;
-	font-size: 13px;
-	font-weight: 700;
-	color: #fff;
-}
-
-.programTitle {
-	font-size: 21px;
-	color: #fff;
-	white-space: nowrap;
+.cellTitle {
 	overflow: hidden;
+	white-space: nowrap;
 	text-overflow: ellipsis;
+	line-height: 1.17;
+	font-size: 26px;
+	font-weight: 400;
+	color: #fff;
 }
 
-.programTitleStrong {
-	font-weight: 600;
+.cellTitleWrap {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	white-space: normal;
+}
+
+.continuesIcon {
+	flex-shrink: 0;
+	width: 21px;
+	height: 21px;
+	margin: 5px 6px 0 0;
+	fill: rgba(255, 255, 255, 0.7);
 }
 
 .timerDot {
 	flex-shrink: 0;
-	margin-left: 9px;
-	width: 14px;
-	height: 14px;
+	width: 21px;
+	height: 21px;
+	margin: 3px 0 0 9px;
 	fill: #e0685c;
 }
 
-.programMeta {
-	margin-top: 4px;
-	font-size: 16px;
-	font-weight: 500;
-	letter-spacing: 0.75px;
-	color: rgba(255, 255, 255, 0.55);
-	white-space: nowrap;
+.cellMeta {
 	overflow: hidden;
-	text-overflow: ellipsis;
+	white-space: nowrap;
+	line-height: 1.17;
+	font-size: 20px;
+	color: rgba(255, 255, 255, 0.55);
 }
 
-.liveProgressTrack {
-	position: absolute;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	height: 4px;
-	background: rgba(255, 255, 255, 0.12);
-}
-
-.liveProgressFill {
-	height: 100%;
-}
-
-.skeleton {
-	position: absolute;
-	left: 9px;
-	right: 9px;
-	top: 36px;
-	bottom: 36px;
-	border-radius: 9px;
-	background: rgba(255, 255, 255, 0.06);
-}
-
-.empty {
+.cellCentered {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	height: 200px;
-	font-size: 30px;
-	color: @text-muted;
+	height: 100%;
+}
+
+.cellSpinner {
+	color: rgba(255, 255, 255, 0.55);
+}
+
+.gapLabel {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: 26px;
+	color: rgba(255, 255, 255, 0.55);
+}
+
+.cellProgressTrack {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	left: 16px;
+	height: 6px;
+	background: #404040;
+}
+
+.cellProgressFill {
+	height: 100%;
+	background: @guide-accent;
 }
 
 .channelNumberOverlay {
 	position: fixed;
-	top: 50%;
+	top: 60px;
+	right: 60px;
+	padding: 18px 36px;
+	border-radius: 18px;
+	background: rgba(0, 0, 0, 0.85);
+	color: #fff;
+	font-size: 54px;
+	font-weight: 700;
+	z-index: 40;
+}
+
+.toast {
+	position: fixed;
+	bottom: 60px;
 	left: 50%;
-	transform: translate(-50%, -50%);
-	background: rgba(var(--theme-background-rgb, 16, 16, 16), 0.95);
-	padding: 48px 80px;
-	border-radius: 16px;
-	font-size: 72px;
-	font-weight: 600;
-	z-index: 100;
-	box-shadow: 0 8px 32px rgba(var(--theme-scrim-rgb, 0, 0, 0), 0.5);
+	-webkit-transform: translateX(-50%);
+	transform: translateX(-50%);
+	padding: 14px 28px;
+	border-radius: 12px;
+	background: rgba(30, 30, 40, 0.9);
+	color: #fff;
+	font-size: 20px;
+	z-index: 60;
+	pointer-events: none;
+}
+
+.dialogChips {
+	display: flex;
+	flex-wrap: wrap;
+	margin-top: 18px;
+}
+
+.optionLabel {
+	flex: 1;
+}
+
+.radio {
+	flex-shrink: 0;
+	box-sizing: border-box;
+	width: 27px;
+	height: 27px;
+	margin-right: 24px;
+	border: 3px solid rgba(255, 255, 255, 0.7);
+	border-radius: 50%;
+}
+
+.radioSelected {
+	border-color: @guide-accent;
+	box-shadow: inset 0 0 0 5px #1a1a1a;
+	background: @guide-accent;
 }
 
 .dialogScrim {
@@ -570,12 +672,6 @@
 	font-size: 20px;
 	line-height: 1.5;
 	color: rgba(255, 255, 255, 0.6);
-}
-
-.chipRow {
-	display: flex;
-	flex-wrap: wrap;
-	margin-top: 18px;
 }
 
 .genreChip {

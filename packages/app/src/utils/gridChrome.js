@@ -5,23 +5,25 @@
 
 import Spotlight from '@enact/spotlight';
 
-import {KEYS} from './keys';
 import {foldAccents} from './accentFolding';
+import {KEYS} from './keys';
 
 export const LETTERS = ['#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 
+const LEADING_LETTER = /^[A-Z]/;
+
 // The alphabet strip filters on the name the server sorts by, falling back to the display
-// name when it sent no sort name. Hash collects everything that doesn't start with a letter,
-// which is where numbers and non-latin titles land.
+// name when it sent no sort name. Accents fold away first, since an accent doesn't make it a
+// different word and the viewer looking for Ángel reaches for A. Hash collects everything
+// that doesn't start with a letter, which is where numbers and non-latin titles land.
 export const filterByStartLetter = (items, startLetter) => {
 	if (!startLetter) return items;
 
 	return items.filter((item) => {
-		// An accent does not make it a different word, so "Ángel" files under A
-		// rather than in the bucket kept for titles that start with a symbol.
-		const firstChar = foldAccents((item.SortName || item.Name || '').charAt(0)).toUpperCase();
-		if (startLetter === '#') return !/[A-Z]/.test(firstChar);
-		return firstChar === startLetter;
+		const name = foldAccents((item.SortName || item.Name || '').trim()).toUpperCase();
+		if (!name) return false;
+		if (startLetter === '#') return !LEADING_LETTER.test(name);
+		return name.indexOf(startLetter) === 0;
 	});
 };
 

@@ -39,9 +39,17 @@ const includeTypesFromContentType = (contentType) => {
 	}
 };
 
-const supportsLibraryForContent = (library, contentType) => {
-	const collectionType = String(library?.CollectionType || '').toLowerCase();
+const EXCLUDED_LIBRARY_NAMES = new Set(['folders', 'recordings']);
+// A mixed content library holds movies and shows together, and the server says so by sending
+// no collection type.
+const MIXED_LIBRARY_TYPES = new Set(['', 'mixed', 'unknown']);
+
+export const supportsLibraryForContent = (library, contentType) => {
+	const collectionType = String(library?.CollectionType || '').trim().toLowerCase();
 	if (EXCLUDED_LIBRARY_TYPES.has(collectionType)) return false;
+	// Checked ahead of the mixed ones, since these come with no collection type either.
+	if (EXCLUDED_LIBRARY_NAMES.has(String(library?.Name || '').trim().toLowerCase())) return false;
+	if (MIXED_LIBRARY_TYPES.has(collectionType)) return true;
 	if (contentType === 'movies') return collectionType === 'movies';
 	if (contentType === 'tv') return collectionType === 'tvshows';
 	return collectionType === 'movies' || collectionType === 'tvshows';

@@ -7,6 +7,7 @@ import {isPaused} from '@enact/spotlight/Pause';
 import {useAuth} from '../../context/AuthContext';
 import {pointerHover} from '../../utils/focusScroll';
 import {isKidsMode} from '../../utils/kidsMode';
+import {withoutBlockedItems} from '../../services/parentalControls';
 import {useSettings} from '../../context/SettingsContext';
 import {useSeerr} from '../../context/SeerrContext';
 import * as connectionPool from '../../services/connectionPool';
@@ -189,7 +190,8 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 			]);
 			if (requestId !== requestIdRef.current) return;
 
-			const items = [...(libraryResult.Items || []), ...filterByName(channels, q)];
+			// Suggestions come from these results, so this keeps blocked titles out of both.
+			const items = [...withoutBlockedItems(libraryResult.Items || []), ...filterByName(channels, q)];
 			lastResultNamesRef.current = items.map((found) => found.Name).filter(Boolean);
 			setGroups(groupSearchResults(items));
 			setActiveRowIndex(0);

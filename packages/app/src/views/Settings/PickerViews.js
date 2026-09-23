@@ -2,10 +2,12 @@
 import $L from '@enact/i18n/$L';
 import Button from '@enact/sandstone/Button';
 
+import LoadingSpinner from '../../components/LoadingSpinner';
 import SpottableInput from '../../components/SpottableInput/SpottableInput';
 import {KEYS} from '../../utils/keys';
 import {getRatingSourceOptions, getImageTypeOptions} from './settingsOptions';
 import {renderToggle} from './settingsIcons';
+import {ratingIsRanked} from '../../utils/parentalFilter';
 import {SpottableDiv} from './settingsSpottables';
 import {SectionTitle} from './settingsRows';
 import SettingsView from './SettingsView';
@@ -71,31 +73,50 @@ export const RatingSourcesView = ({selected, onToggleSource, onMoveSource, onRes
 	);
 };
 
-export const BlockedRatingsView = ({ratings, blocked, loading, onToggleRating}) => (
-	<SettingsView spotlightId='blocked-ratings-view'>
-		<SectionTitle>{$L('Parental Controls')}</SectionTitle>
-		<div className={css.viewDescription}>
-			{$L('Blocked ratings are hidden from home screen rows. The list comes from what your libraries hold.')}
+const BlockedRatingRow = ({rating, isBlocked, onToggleRating}) => (
+	<SpottableDiv
+		className={css.listItem}
+		onClick={() => onToggleRating(rating)}
+		spotlightId={`blocked-rating-${rating}`}
+	>
+		<div className={css.listItemBody}>
+			<div className={css.listItemHeading}>{rating}</div>
 		</div>
-		{loading && <div className={css.viewDescription}>{$L('Loading ratings...')}</div>}
-		{!loading && ratings.length === 0 && (
-			<div className={css.viewDescription}>{$L('No ratings found in your libraries')}</div>
-		)}
-		{ratings.map((rating) => (
-			<SpottableDiv
-				key={rating}
-				className={css.listItem}
-				onClick={() => onToggleRating(rating)}
-				spotlightId={`blocked-rating-${rating}`}
-			>
-				<div className={css.listItemBody}>
-					<div className={css.listItemHeading}>{rating}</div>
-				</div>
-				<div className={css.listItemTrailing}>{renderToggle(blocked.includes(rating))}</div>
-			</SpottableDiv>
-		))}
-	</SettingsView>
+		<div className={css.listItemTrailing}>{renderToggle(isBlocked)}</div>
+	</SpottableDiv>
 );
+
+// Ratings that can't be ranked sit apart, since they only ever block themselves.
+export const BlockedRatingsView = ({ratings, blocked, loading, loadFailed, onToggleRating}) => {
+	const ranked = ratings.filter(ratingIsRanked);
+	const unranked = ratings.filter((rating) => !ratingIsRanked(rating));
+	return (
+		<SettingsView spotlightId='blocked-ratings-view'>
+			<SectionTitle>{$L('Parental Controls')}</SectionTitle>
+			<div className={css.viewDescription}>{$L('Block content with the following ratings:')}</div>
+			<div className={css.viewCaption}>{$L('Blocking a rating also blocks everything stronger than it.')}</div>
+			{loading && <div className={css.viewSpinner}><LoadingSpinner /></div>}
+			{!loading && ratings.length === 0 && (
+				<div className={css.viewDescription}>
+					{loadFailed
+						? $L('Could not load server ratings. Showing saved ratings only.')
+						: $L('No content ratings were found on this server yet.')}
+				</div>
+			)}
+			{!loading && ratings.length > 0 && loadFailed && (
+				<div className={`${css.statusMessage} ${css.statusError}`}>{$L('Could not refresh ratings from server. Showing saved ratings.')}</div>
+			)}
+			{!loading && ranked.length > 0 && <SectionTitle>{$L('Ratings')}</SectionTitle>}
+			{!loading && ranked.map((rating) => (
+				<BlockedRatingRow key={rating} rating={rating} isBlocked={blocked.includes(rating)} onToggleRating={onToggleRating} />
+			))}
+			{!loading && unranked.length > 0 && <SectionTitle>{$L('Only blocks itself')}</SectionTitle>}
+			{!loading && unranked.map((rating) => (
+				<BlockedRatingRow key={rating} rating={rating} isBlocked={blocked.includes(rating)} onToggleRating={onToggleRating} />
+			))}
+		</SettingsView>
+	);
+};
 
 // One row per enabled home section. Clicking cycles Default and the four
 // image types, writing through immediately like the plain settings rows do.
