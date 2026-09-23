@@ -2,6 +2,7 @@ import {useCallback, useEffect, useState} from 'react';
 import $L from '@enact/i18n/$L';
 
 import serverLogger from '../../services/serverLogger';
+import {acceptsReports} from '../../services/clientLogUpload';
 
 const LOG_CATEGORIES = serverLogger.LOG_CATEGORIES;
 const LOG_LEVELS = serverLogger.LOG_LEVELS;
@@ -28,12 +29,16 @@ export const logLevelColor = (level) => {
 	return '#fff';
 };
 
-const useDiagnosticsLog = ({currentViewName, pushView}) => {
+const useDiagnosticsLog = ({currentViewName, pushView, serverType, pluginInfo}) => {
 	const [logEntries, setLogEntries] = useState([]);
 	const [logFilter, setLogFilter] = useState('all');
 	const [logRenderLimit, setLogRenderLimit] = useState(LOG_RENDER_STEP);
 	const [logMessage, setLogMessage] = useState('');
 	const [sendingReport, setSendingReport] = useState(false);
+
+	const sendUnavailableReason = acceptsReports(serverType, pluginInfo?.clientLogSupported)
+		? null
+		: $L('This Emby server needs the Moonfin plugin, with client log upload turned on.');
 
 	const openDiagnostics = useCallback(() => {
 		setLogEntries(serverLogger.getBuffer());
@@ -77,6 +82,7 @@ const useDiagnosticsLog = ({currentViewName, pushView}) => {
 		setLogRenderLimit,
 		logMessage,
 		sendingReport,
+		sendUnavailableReason,
 		openDiagnostics,
 		handleClearLogs,
 		handleSendReport

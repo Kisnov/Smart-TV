@@ -153,7 +153,7 @@ const PANELS = {
 const AppContent = (props) => {
 	const {isAuthenticated, isLoading, logout, serverUrl, serverName, api, user, hasMultipleServers, accessToken, connectionState, revalidateSession} = useAuth();
 	const {settings, activeTheme, syncOnLogin, updateSettings, loaded: settingsLoaded} = useSettings();
-	const {streamNotification, dismissStreamNotification} = useSeerr();
+	const {streamNotification, dismissStreamNotification, pluginInfo} = useSeerr();
 	const {pendingPopups, markPopupsRead} = useServerMessages();
 	const themeMusic = useThemeMusic();
 	const {openDialog: openSyncPlay, closeDialog: closeSyncPlay, isDialogOpen: syncPlayDialogOpen, playQueueUpdate: syncPlayQueueUpdate, isInGroup: isSyncPlayInGroup, setNewQueue: syncPlaySetNewQueue, displayMessage: syncPlayMessage, clearDisplayMessage: clearSyncPlayMessage, getGroupPositionTicks: getSyncPlayPositionTicks} = useSyncPlay();
@@ -279,9 +279,18 @@ const AppContent = (props) => {
 	// again. Following the settings here is what makes them survive a restart.
 	useEffect(() => {
 		serverLogger.init({
-			getAuth: () => ({serverUrl: jellyfinApi.getServerUrl(), accessToken: jellyfinApi.getApiKey()})
+			getAuth: () => ({
+				serverUrl: jellyfinApi.getServerUrl(),
+				accessToken: jellyfinApi.getApiKey(),
+				serverType: jellyfinApi.getServerType(),
+				authHeader: jellyfinApi.getAuthHeader()
+			})
 		});
 	}, []);
+
+	useEffect(() => {
+		serverLogger.setClientLogSupported(pluginInfo?.clientLogSupported === true);
+	}, [pluginInfo]);
 
 	useEffect(() => {
 		serverLogger.setEnabled(settings.serverLogging === true);

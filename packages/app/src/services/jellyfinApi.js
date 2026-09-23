@@ -7,6 +7,7 @@ import {platformFetch} from './secureFetch';
 import {isTizen} from '../platform';
 import {makeUserRoutes, trimQuerySeparator, legacyAuthHeader, buildUserImageUrl} from '../utils/serverRoutes';
 import * as userDataSync from './userDataSync';
+import {withEmbyNextUpSweep} from './embyNextUp';
 const APP_VERSION = packageJson.version;
 
 const APP_NAME = isTizen() ? 'Moonfin for Tizen' : 'Moonfin for webOS';
@@ -442,11 +443,18 @@ export const api = {
 	getResumeAudioItems: (limit = 20) =>
 		request(`${userRoutes.resume()}Limit=${limit}&MediaTypes=Audio&Fields=${encodeURIComponent(HOME_ROW_ITEM_FIELDS)}`),
 
-	getNextUp: (limit = 24, seriesId = null, maxDays = 0) => {
-		let url = `/Shows/NextUp?UserId=${currentUser}&Limit=${limit}&Fields=${encodeURIComponent(HOME_ROW_ITEM_FIELDS)}`;
+	getNextUp: async (limit = 24, seriesId = null, maxDays = 0) => {
+		const fields = encodeURIComponent(HOME_ROW_ITEM_FIELDS);
+		let url = `/Shows/NextUp?UserId=${currentUser}&Limit=${limit}&Fields=${fields}`;
 		if (seriesId) url += `&SeriesId=${seriesId}`;
 		url += nextUpCutoffQuery(seriesId, maxDays, serverType);
-		return request(url);
+		const answer = await request(url);
+		if (serverType !== 'emby' || seriesId) return answer;
+		return withEmbyNextUpSweep(request, answer, {
+			itemsRoute: userRoutes.items(),
+			seriesNextUpUrl: (id) => `/Shows/NextUp?UserId=${currentUser}&SeriesId=${id}&Limit=1&Fields=${fields}`,
+			limit
+		});
 	},
 
 	getPlaybackInfo: (itemId, body = {}) => {
@@ -974,11 +982,18 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 		getResumeItems: () =>
 			serverRequest(`${serverUserRoutes.resume()}Limit=12&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,ProviderIds&MediaTypes=Video&EnableTotalRecordCount=false&ExcludeItemTypes=Book`),
 
-		getNextUp: (limit = 12, seriesId = null, maxDays = 0) => {
-			let endpoint = `/Shows/NextUp?UserId=${userId}&Limit=${limit}&Fields=PrimaryImageAspectRatio,Overview,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,ParentLogoItemId,ParentLogoImageTag,ProviderIds`;
+		getNextUp: async (limit = 12, seriesId = null, maxDays = 0) => {
+			const fields = 'PrimaryImageAspectRatio,Overview,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,ParentLogoItemId,ParentLogoImageTag,ProviderIds';
+			let endpoint = `/Shows/NextUp?UserId=${userId}&Limit=${limit}&Fields=${fields}`;
 			if (seriesId) endpoint += `&SeriesId=${seriesId}`;
 			endpoint += nextUpCutoffQuery(seriesId, maxDays, serverTypeOverride);
-			return serverRequest(endpoint);
+			const answer = await serverRequest(endpoint);
+			if (serverTypeOverride !== 'emby' || seriesId) return answer;
+			return withEmbyNextUpSweep(serverRequest, answer, {
+				itemsRoute: serverUserRoutes.items(),
+				seriesNextUpUrl: (id) => `/Shows/NextUp?UserId=${userId}&SeriesId=${id}&Limit=1&Fields=${fields}`,
+				limit
+			});
 		},
 
 		getLatestMedia: (libraryId = null, limit = 16) => {

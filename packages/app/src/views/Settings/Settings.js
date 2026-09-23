@@ -75,7 +75,7 @@ const PROFILE_CHIPS = [
 
 
 const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, panelMode }) => {
-	const { api, serverUrl, accessToken, hasMultipleServers, logoutAll, activeServerInfo, user } = useAuth();
+	const { api, serverUrl, accessToken, hasMultipleServers, logoutAll, activeServerInfo, user, serverType } = useAuth();
 	const { settings, updateSetting, updateSettings, resetSettings, restoreSyncedDefaults, availableThemes, activeThemeId, selectThemeById, saveStoreTheme, deleteStoreTheme } = useSettings();
 	const { capabilities } = useDeviceInfo();
 	const seerr = useSeerr();
@@ -782,8 +782,8 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 
 	const {
 		logEntries, logFilter, setLogFilter, logRenderLimit, setLogRenderLimit,
-		logMessage, sendingReport, openDiagnostics, handleClearLogs, handleSendReport
-	} = useDiagnosticsLog({currentViewName: currentView.view, pushView});
+		logMessage, sendingReport, sendUnavailableReason, openDiagnostics, handleClearLogs, handleSendReport
+	} = useDiagnosticsLog({currentViewName: currentView.view, pushView, serverType, pluginInfo: seerr.pluginInfo});
 
 
 
@@ -1359,6 +1359,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 					onShowMore={showMoreLogs}
 					logMessage={logMessage}
 					sendingReport={sendingReport}
+					sendUnavailableReason={sendUnavailableReason}
 					onClearLogs={handleClearLogs}
 					onSendReport={handleSendReport}
 				/>

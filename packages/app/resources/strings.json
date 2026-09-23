@@ -477,6 +477,7 @@
 	"Subtitle format ({codec}) is not supported directly and must be burned in.": "Subtitle format ({codec}) is not supported directly and must be burned in.",
 	"Subtitle format is not supported (requires burning).": "Subtitle format is not supported (requires burning).",
 	"This isn't available": "This isn't available",
+	"This Emby server needs the Moonfin plugin, with client log upload turned on.": "This Emby server needs the Moonfin plugin, with client log upload turned on.",
 	"Tip: Adjust 'Max Audio Channels' or multichannel downmixing in Audio Preferences.": "Tip: Adjust 'Max Audio Channels' or multichannel downmixing in Audio Preferences.",
 	"Tip: Enable 'Direct play ASS/SSA subtitles' in Subtitle Preferences to play directly without transcoding.": "Tip: Enable 'Direct play ASS/SSA subtitles' in Subtitle Preferences to play directly without transcoding.",
 	"Tip: Enable 'Direct play PGS subtitles' in Subtitle Preferences to play directly without transcoding.": "Tip: Enable 'Direct play PGS subtitles' in Subtitle Preferences to play directly without transcoding.",

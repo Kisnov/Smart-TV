@@ -17,6 +17,13 @@ import {
 	cancelPendingCacheSave, clearMemoryCache, isCacheValid, loadBrowseCache, memoryCache, saveBrowseCache
 } from './browseCache';
 
+// A row that quietly loses its source looks the same as a server with nothing to offer, so the
+// failure is logged before the row carries on empty.
+const emptyRowAfter = (label, err) => {
+	console.warn(`[Browse] Failed to load ${label}:`, err);
+	return {Items: []};
+};
+
 // Everything the home screen shows and how it gets there. Rows come from three places, the
 // in memory cache, the stored cache and the server, and each one dispatches as it arrives so
 // the screen fills in rather than waiting for the slowest.
@@ -292,8 +299,8 @@ const useBrowseData = ({
 				} else {
 					const results = await Promise.all([
 						api.getLibraries().catch(() => ({Items: []})),
-						api.getResumeItems().catch(() => ({Items: []})),
-						api.getNextUp(24, null, settings.nextUpMaxDays).catch(() => ({Items: []})),
+						api.getResumeItems().catch((err) => emptyRowAfter('resume', err)),
+						api.getNextUp(24, null, settings.nextUpMaxDays).catch((err) => emptyRowAfter('next up', err)),
 						api.getUserConfiguration().catch(() => null),
 						mergesContinueWatchingNextUp(settings) ? api.getItems({
 							IncludeItemTypes: 'Episode',
