@@ -103,6 +103,7 @@ export const buildEmbyAuthHeader = (token) => buildAuthHeader('emby', token);
 // Past roughly this much of a query string, servers and the proxies in front of them start
 // refusing the URL outright, so a long list of ids travels in a body instead.
 const CHANNEL_IDS_URL_LIMIT = 1800;
+const LIVE_TV_CATEGORY_FLAGS = {movies: 'IsMovie', series: 'IsSeries', sports: 'IsSports', news: 'IsNews', kids: 'IsKids'};
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const PLAYBACK_TIMEOUT_MS = 120000;
@@ -624,7 +625,7 @@ export const api = {
 	getLiveTvChannels: (startIndex = 0, limit) =>
 		request(`/LiveTv/Channels?UserId=${currentUser}&EnableFavoriteSorting=true&Fields=ImageTags,UserData&EnableTotalRecordCount=false&StartIndex=${startIndex}${limit ? `&Limit=${limit}` : ''}`),
 
-	getLiveTvPrograms: (channelIds, startDate, endDate) => {
+	getLiveTvPrograms: (channelIds, startDate, endDate, {category} = {}) => {
 		const ids = Array.isArray(channelIds) ? channelIds : [channelIds];
 		const joined = ids.join(',');
 		// A program already under way when the guide opens starts before the window, so ask
@@ -639,6 +640,10 @@ export const api = {
 			EnableUserData: false,
 			EnableTotalRecordCount: false
 		};
+		// A category the server can match itself, so the guide can walk a sparse genre across the
+		// whole lineup without pulling every channel's schedule.
+		const categoryFlag = LIVE_TV_CATEGORY_FLAGS[category];
+		if (categoryFlag) params[categoryFlag] = true;
 
 		// A batch of channel ids runs past what some servers accept in a URL, and they
 		// answer with an error rather than a shorter guide, so those travel in a body.

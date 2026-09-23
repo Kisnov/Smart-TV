@@ -18,9 +18,10 @@ import {
 	formatTime, getQualityPresets,
 	IconPlay, IconPause, IconRewind, IconForward, IconSubtitle, IconSubtitleOff, IconAudio,
 	IconChapters, IconPrevious, IconNext, IconQuality, IconInfo, IconCast, IconZoom,
-	IconShuffle, IconRepeat, IconRepeatOne, IconSleep, IconGuide
+	IconShuffle, IconRepeat, IconRepeatOne, IconSleep, IconGuide, IconChannels
 } from './PlayerConstants';
 import {formatClockTime} from '../../utils/clock';
+import {episodeLine} from '../../utils/liveTvGuide';
 import {keepFocusInView} from '../../utils/focusScroll';
 import {SLEEP_TIMER_MINUTES} from './useSleepTimer';
 import {arrange, OSD_ORDER_KEY, OSD_HIDDEN_KEY} from '../../utils/buttonLayout';
@@ -81,6 +82,7 @@ export const usePlayerButtons = ({
 		// The live row's order comes from moonfin-core's live player.
 		if (isLiveTV) {
 			return arrange([
+				{id: 'channels', icon: <IconChannels />, label: $L('Channels'), action: 'channels'},
 				{id: 'guide', icon: <IconGuide />, label: $L('Guide'), action: 'guide'},
 				...(audioStreams.length > 1 ? [{id: 'audio', icon: <IconAudio />, label: $L('Audio'), action: 'audio'}] : []),
 				...((subtitleStreams.length > 0 || canDownloadRemoteSubtitles) ? [{id: 'subtitles', icon: (selectedSubtitleIndex >= 0 ? <IconSubtitle /> : <IconSubtitleOff />), label: $L('Subtitles'), action: 'subtitle'}] : []),
@@ -325,10 +327,11 @@ const PlayerControls = ({
 						const progress = start && end
 							? Math.max(0, Math.min(1, (now - start.getTime()) / (end.getTime() - start.getTime())))
 							: 0;
+						const programEpisodeLine = episodeLine(liveProgram);
 						return (
 							<div className={css.liveTimeline}>
-								{liveProgram?.EpisodeTitle && (
-									<div className={css.liveEpisodeTitle}>{liveProgram.EpisodeTitle}</div>
+								{programEpisodeLine && (
+									<div className={css.liveEpisodeTitle}>{programEpisodeLine}</div>
 								)}
 								<div className={css.liveProgressTrack}>
 									{liveProgram && (

@@ -915,6 +915,9 @@ const AppContent = (props) => {
 			if (prev?.videoQueue?.some(e => e.Id === item.Id)) {
 				return {videoQueue: prev.videoQueue};
 			}
+			if (prev?.liveTvChannels?.some(c => c.Id === item.Id)) {
+				return {liveTvChannels: prev.liveTvChannels};
+			}
 			return null;
 		});
 		setIsResume(false);
@@ -1061,9 +1064,10 @@ const AppContent = (props) => {
 		navigateTo(PANELS.PERSON, false);
 	}, [navigateTo, settings.detailScreenStyle]);
 
-	const handlePlayChannel = useCallback((channel) => {
+	// The guide hands over its lineup, in its own order, for the player's channel carousel.
+	const handlePlayChannel = useCallback((channel, lineup) => {
 		setPlayingItem(channel);
-		setPlaybackOptions(null);
+		setPlaybackOptions(lineup?.length ? {liveTvChannels: lineup} : null);
 		setIsResume(false);
 		navigateTo(PANELS.PLAYER);
 	}, [navigateTo]);
@@ -1473,6 +1477,7 @@ const AppContent = (props) => {
 								forceTranscode={playbackOptions?.forceTranscode}
 								audioPlaylist={playbackOptions?.audioPlaylist}
 								videoQueue={playbackOptions?.videoQueue}
+								liveTvChannels={playbackOptions?.liveTvChannels}
 								onEnded={handlePlayerEnd}
 								onBack={handlePlayerEnd}
 								onGuide={handlePlayerGuide}

@@ -258,6 +258,7 @@ export const defaultSettings = {
 	showSyncPlayButton: true,
 	videoStartDelay: 0,
 	liveTvSkipGuide: false,
+	liveTvChannelSortBy: 'number',
 	stereoUpmixEnabled: false,
 	ac3Passthrough: true,
 	eac3Passthrough: true,
