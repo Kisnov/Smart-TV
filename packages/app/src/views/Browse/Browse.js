@@ -11,7 +11,7 @@ import {useSeerr} from '../../context/SeerrContext';
 import {ClassicMediaRow, ModernMediaRow} from '../../components/MediaRow';
 import SeerrTileRow from '../../components/SeerrTileRow';
 import LibraryButtonRow from '../../components/LibraryButtonRow';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import {SkeletonShimmer, skeletonTitleWidths} from '../../components/Skeleton';
 import {getImageUrl, getBackdropId} from '../../utils/helpers';
 import {focusedCardIndex, cardToRestore, focusedRowIndex} from '../../utils/rowFocusMemory';
 import {radiusToCss, shadowToCss, toCssColor} from '../../theme/themeSpec';
@@ -32,6 +32,8 @@ import css from './Browse.module.less';
 
 const FOCUS_DELAY_MS = 100;
 const TRANSITION_DELAY_MS = 450;
+
+const LOADING_ROW_TITLE_WIDTHS = skeletonTitleWidths(4, 24);
 
 let lastFocusState = null;
 
@@ -71,13 +73,14 @@ const Browse = ({
 	const {isEnabled: seerrEnabled, isAuthenticated: seerrAuthenticated, user: seerrUser, pluginInfo} = useSeerr();
 	const recommendationsSupported = pluginInfo?.recommendationsSupported === true;
 	const seerrUserId = seerrUser?.seerrUserId;
-	const seerrRows = useSeerrRows({
+	const {rows: seerrRows, pending: seerrPending} = useSeerrRows({
 		seerrEnabled,
 		seerrAuthenticated,
 		seerrUserId,
 		homeRows: homeRowsConfig
 	});
-	const externalRows = useExternalRows({settings, homeRows: homeRowsConfig, kidsMode});
+	const {rows: externalRows, pending: externalPending} = useExternalRows({settings, homeRows: homeRowsConfig, kidsMode});
+	const pendingRows = useMemo(() => [...seerrPending, ...externalPending], [seerrPending, externalPending]);
 	const unifiedMode = settings.unifiedLibraryMode && hasMultipleServers;
 	const isLegacy = typeof document !== 'undefined' && (' ' + document.documentElement.className + ' ').indexOf(' legacy ') >= 0;
 	const [focusedItemForBackdrop, setFocusedItemForBackdrop] = useState(null);
@@ -97,7 +100,6 @@ const Browse = ({
 	const lastFocusedRowRef = useRef(null);
 	const wasVisibleRef = useRef(true);
 	const prevFilteredRowsRef = useRef([]);
-	const filteredRowsLengthRef = useRef(0);
 	const filteredRowsRef = useRef([]);
 	const rowRefsMap = useRef(new Map());
 	const initialFocusSetRef = useRef(false);
@@ -145,7 +147,7 @@ const Browse = ({
 		: Math.max(0, settings.classicHomeRowsPadding ?? 30);
 
 	const {
-		isLoading, browseMode, allRowData, featuredItems: loadedFeaturedItems,
+		isLoading, browseMode, allRowData, featuredItems: loadedFeaturedItems, pendingSections,
 		setBrowseMode, fetchFreshFeaturedItems, refreshVolatileData
 	} = useBrowseData({
 		api,
@@ -205,16 +207,19 @@ const Browse = ({
 			externalRows,
 			homeRowsConfig,
 			pluginSectionsConfig,
-			settings: rowBuildSettings
+			settings: rowBuildSettings,
+			pendingSections,
+			pendingRows
 		});
 		const prev = prevFilteredRowsRef.current;
 		if (sameRowList(prev, result)) return prev;
 		prevFilteredRowsRef.current = result;
 		return result;
-	}, [allRowData, seerrRows, externalRows, homeRowsConfig, pluginSectionsConfig, rowBuildSettings]);
+	}, [allRowData, seerrRows, externalRows, homeRowsConfig, pluginSectionsConfig, rowBuildSettings, pendingSections, pendingRows]);
 	// The rows can come back from a cache built before the watched state last moved, so what's
 	// known now is laid over them rather than fetched again.
 	const filteredRows = useUserDataRows(builtRows);
+	const hasFocusableRow = filteredRows.some((row) => !row.isPlaceholder);
 
 	const focusRow = useCallback((rowIndex, cardIndex) => {
 		const card = cardToRestore(`row-${rowIndex}`, cardIndex);
@@ -292,8 +297,19 @@ const Browse = ({
 		}
 	}, [focusRow, restRowScroll]);
 
+	// A placeholder holds a loading section's place but has nothing to focus, so moving between
+	// rows steps over it.
+	const focusableRowFrom = useCallback((fromRowIndex, step) => {
+		const rows = filteredRowsRef.current;
+		for (let i = fromRowIndex; i >= 0 && i < rows.length; i += step) {
+			if (!rows[i].isPlaceholder) return i;
+		}
+		return -1;
+	}, []);
+
 	const handleNavigateUp = useCallback((fromRowIndex) => {
-		if (fromRowIndex === 0) {
+		const targetIndex = focusableRowFrom(fromRowIndex - 1, -1);
+		if (targetIndex < 0) {
 			if (showFeaturedBar !== false) {
 				setBrowseMode('featured');
 				setTimeout(() => Spotlight.focus('featured-banner'), 50);
@@ -302,18 +318,16 @@ const Browse = ({
 			}
 			return;
 		}
-		const targetIndex = fromRowIndex - 1;
 		scrollToRow(targetIndex, true);
-	}, [showFeaturedBar, settings.navbarPosition, scrollToRow, setBrowseMode]);
+	}, [showFeaturedBar, settings.navbarPosition, scrollToRow, setBrowseMode, focusableRowFrom]);
 
 	filteredRowsRef.current = filteredRows;
-	filteredRowsLengthRef.current = filteredRows.length;
 
 	const handleNavigateDown = useCallback((fromRowIndex) => {
-		const targetIndex = fromRowIndex + 1;
-		if (targetIndex >= filteredRowsLengthRef.current) return;
+		const targetIndex = focusableRowFrom(fromRowIndex + 1, 1);
+		if (targetIndex < 0) return;
 		scrollToRow(targetIndex, true);
-	}, [scrollToRow]);
+	}, [scrollToRow, focusableRowFrom]);
 
 	useEffect(() => {
 		if (showFeaturedBar === false) {
@@ -326,7 +340,7 @@ const Browse = ({
 			wasVisibleRef.current = false;
 			return;
 		}
-		if (isLoading || filteredRows.length === 0) return;
+		if (isLoading || !hasFocusableRow) return;
 		// The panel is built again on the way back in, so the ref that marks a first run
 		// starts over with it. A place to return to is what tells the two apart.
 		if (wasVisibleRef.current && lastFocusState === null) return;
@@ -340,18 +354,19 @@ const Browse = ({
 			// rather than handing the screen to the banner.
 			if (lastFocusState && lastFocusState.rowIndex >= 0) {
 				const {rowIndex, cardIndex} = lastFocusState;
-				const targetRowIndex = Math.min(rowIndex, filteredRows.length - 1);
+				const nearest = Math.min(rowIndex, filteredRows.length - 1);
+				const above = focusableRowFrom(nearest, -1);
 				setBrowseMode('rows');
-				scrollToRow(targetRowIndex, true, cardIndex);
+				scrollToRow(above >= 0 ? above : focusableRowFrom(nearest, 1), true, cardIndex);
 			} else if (showFeaturedBar !== false && featuredItems.length > 0) {
 				setBrowseMode('featured');
 				setTimeout(() => Spotlight.focus('featured-banner'), 50);
 			} else {
-				scrollToRow(0, true);
+				scrollToRow(focusableRowFrom(0, 1), true);
 			}
 			lastFocusState = null;
 		}, FOCUS_DELAY_MS);
-	}, [isVisible, isLoading, filteredRows.length, fetchFreshFeaturedItems, refreshVolatileData, showFeaturedBar, featuredItems.length, scrollToRow, setBrowseMode]);
+	}, [isVisible, isLoading, filteredRows.length, hasFocusableRow, fetchFreshFeaturedItems, refreshVolatileData, showFeaturedBar, featuredItems.length, scrollToRow, setBrowseMode, focusableRowFrom]);
 
 	useEffect(() => {
 		if (!isVisible) return;
@@ -363,13 +378,13 @@ const Browse = ({
 				if (showFeaturedBar !== false && featuredItems.length > 0) {
 					Spotlight.focus('featured-banner');
 					initialFocusSetRef.current = true;
-				} else if (filteredRows.length > 0) {
-					Spotlight.focus('row-0');
+				} else if (hasFocusableRow) {
+					Spotlight.focus(`row-${focusableRowFrom(0, 1)}`);
 					initialFocusSetRef.current = true;
 				}
 			}, FOCUS_DELAY_MS);
 		}
-	}, [isVisible, isLoading, featuredItems.length, filteredRows.length, showFeaturedBar, setBrowseMode]);
+	}, [isVisible, isLoading, featuredItems.length, hasFocusableRow, showFeaturedBar, setBrowseMode, focusableRowFrom]);
 
 	useEffect(() => {
 		initialFocusSetRef.current = false;
@@ -473,24 +488,25 @@ const Browse = ({
 	const handleNavigateDownFromFeatured = useCallback(() => {
 		setBrowseMode('rows');
 		setTimeout(() => {
-			scrollToRow(0, true);
+			scrollToRow(focusableRowFrom(0, 1), true);
 		}, TRANSITION_DELAY_MS);
-	}, [scrollToRow, setBrowseMode]);
+	}, [scrollToRow, setBrowseMode, focusableRowFrom]);
 
 	// Back below the top row returns the list to it rather than leaving, so the exit
 	// prompt only shows from the top of the screen.
 	useEffect(() => {
 		if (!backHandlerRef || !isVisible) return undefined;
 		const handler = () => {
-			if (browseMode === 'featured' || focusedRowIndex(document.activeElement) === 0) return false;
-			scrollToRow(0, true);
+			const top = focusableRowFrom(0, 1);
+			if (browseMode === 'featured' || focusedRowIndex(document.activeElement) === top) return false;
+			scrollToRow(top, true);
 			return true;
 		};
 		backHandlerRef.current = handler;
 		return () => {
 			if (backHandlerRef.current === handler) backHandlerRef.current = null;
 		};
-	}, [backHandlerRef, isVisible, browseMode, scrollToRow]);
+	}, [backHandlerRef, isVisible, browseMode, scrollToRow, focusableRowFrom]);
 
 	const handleFeaturedFocusCallback = useCallback(() => {
 		setBrowseMode('featured');
@@ -535,12 +551,18 @@ const Browse = ({
 		}
 	}, [onFocusItemThemeMusic, onBlurItemThemeMusic, showTopInfoArea, useModernRows, pinMainScroll]);
 
+	const navOffsetClass = settings.navbarPosition === 'left' ? css.sidebarOffset : css.topbarOffset;
+	const rowsClipClass = showTopInfoArea ? '' : css.rowsClipTop;
+
 	if (isLoading) {
 		return (
 			<div className={css.page}>
-				<div className={css.loadingContainer}>
-					<LoadingSpinner />
-					<p>{$L('Loading your library...')}</p>
+				<div className={`${css.mainContent} ${navOffsetClass}`}>
+					<SkeletonShimmer className={`${css.contentRows} ${rowsClipClass}`}>
+						{LOADING_ROW_TITLE_WIDTHS.map((titleWidth, index) => (
+							<RowComponent key={index} loading titleWidth={titleWidth} rowSpacing={rowSpacing} />
+						))}
+					</SkeletonShimmer>
 				</div>
 			</div>
 		);
@@ -548,7 +570,7 @@ const Browse = ({
 
 	return (
 		<div className={css.page}>
-			<div className={`${css.mainContent} ${settings.navbarPosition === 'left' ? css.sidebarOffset : css.topbarOffset}`} ref={mainContentRef}>
+			<div className={`${css.mainContent} ${navOffsetClass}`} ref={mainContentRef}>
 				<BackdropLayer
 					targetUrl={targetBackdropUrl}
 					blurAmount={settings.backdropBlurHome}
@@ -648,9 +670,21 @@ const Browse = ({
 
 				<div
 					ref={contentRowsRef}
-					className={`${css.contentRows} ${browseMode === 'rows' ? css.rowsMode : ''} ${showTopInfoArea ? '' : css.rowsClipTop}`}
+					className={`${css.contentRows} ${browseMode === 'rows' ? css.rowsMode : ''} ${rowsClipClass}`}
 				>
 					{filteredRows.map((row, index) => {
+						if (row.isPlaceholder) {
+							return (
+								<RowComponent
+									key={row.id}
+									loading
+									title={row.title}
+									subtitle={row.subtitle}
+									cardType={row.type}
+									rowSpacing={rowSpacing}
+								/>
+							);
+						}
 						if (row.isButtonRow) {
 							return (
 								<LibraryButtonRow

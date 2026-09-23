@@ -189,7 +189,39 @@ const filterBlockedRatings = (rows, parentalFilter) => {
 		.filter((row) => !Array.isArray(row.items) || row.items.length > 0);
 };
 
-export const buildBrowseRows = ({allRowData, seerrRows, externalRows, homeRowsConfig, pluginSectionsConfig, settings}) => {
+// Rows of music show square cards, so a section of them waits on square placeholders.
+const AUDIO_SECTIONS = ['audioartists', 'audioalbums', 'audioplaylists'];
+
+const sectionTitle = (id, homeRowsConfig, pluginSection, favoriteLabelMap) => {
+	if (ROW_TITLES[id]) return ROW_TITLES[id]();
+	if (favoriteLabelMap.has(id)) return favoriteLabelMap.get(id);
+	if (id.startsWith('sinceyouwatched')) return $L('Since you watched');
+	if (pluginSection) return pluginSection.name || pluginSection.displayText || $L('Plugin Section');
+	const config = homeRowsConfig.find((row) => row.id === id);
+	return config ? $L(config.name) : id;
+};
+
+// A section still loading holds its place with its title over placeholder cards, then gives way
+// to whatever rows it turns out to have. [pendingRows] come already titled from the sources that
+// only ever report enabled rows.
+const placeholderRows = ({pendingSections, pendingRows, placedIds, gates, homeRowsConfig, pluginSectionsConfig, favoriteLabelMap}) => {
+	const fromSections = pendingSections
+		.map((id) => {
+			const pluginSection = pluginSectionsConfig.find((section) => section.id === id);
+			return {id, isPluginRow: Boolean(pluginSection), title: sectionTitle(id, homeRowsConfig, pluginSection, favoriteLabelMap)};
+		})
+		.filter((row) => isRowEnabled(row, gates));
+	return [...fromSections, ...pendingRows]
+		.filter((row) => !placedIds.has(row.id))
+		.map((row) => ({
+			...row,
+			items: [],
+			type: AUDIO_SECTIONS.includes(row.id) ? 'square' : 'portrait',
+			isPlaceholder: true
+		}));
+};
+
+export const buildBrowseRows = ({allRowData, seerrRows, externalRows, homeRowsConfig, pluginSectionsConfig, settings, pendingSections = [], pendingRows = []}) => {
 	const enabledRowIdsSet = buildEnabledIds(homeRowsConfig);
 	const enabledPluginIds = pluginSectionsConfig.filter((section) => section.enabled).map((section) => section.id);
 	const rowOrderMap = buildRowOrder(homeRowsConfig, pluginSectionsConfig);
@@ -241,10 +273,17 @@ export const buildBrowseRows = ({allRowData, seerrRows, externalRows, homeRowsCo
 		return subtitle && subtitle !== row.subtitle ? {...row, subtitle} : row;
 	};
 
-	return orderRows(
-		filterBlockedRatings([...result, ...seerrRows, ...externalRows].map(withSubtitles), settings.parentalFilter),
-		rowOrderMap
-	);
+	const rows = filterBlockedRatings([...result, ...seerrRows, ...externalRows].map(withSubtitles), settings.parentalFilter);
+	const placeholders = placeholderRows({
+		pendingSections,
+		pendingRows,
+		placedIds: new Set(rows.map((row) => row.id)),
+		gates,
+		homeRowsConfig,
+		pluginSectionsConfig,
+		favoriteLabelMap
+	});
+	return orderRows([...rows, ...placeholders.map(withSubtitles)], rowOrderMap);
 };
 
 // Rebuilding produces a new array every time, which would reload every card on screen. Only

@@ -218,6 +218,7 @@ const useBrowseData = ({
 		};
 
 		const loadData = async () => {
+			dispatch({type: 'SET_PENDING_SECTIONS', sections: []});
 			// Recommendation rows are only built by fetchAllData, so treat an enabled one
 			// as dynamic config. Otherwise enabling it shows nothing until the cache expires.
 			const hasEnabledRecommendationRow = homeRowsConfig.some(
@@ -480,19 +481,28 @@ const useBrowseData = ({
 					}
 				};
 
+				const loaderContext = buildLoaderContext({
+					api,
+					settings,
+					homeRowsConfig,
+					eligibleLibraries,
+					seerrEnabled,
+					seerrAuthenticated,
+					recommendationsSupported,
+					appendRows
+				});
+				const loaderSections = BROWSE_ROW_LOADERS.map(({sections}) => sections(loaderContext));
+				if (!cancelled) {
+					dispatch({type: 'SET_PENDING_SECTIONS', sections: [].concat(...loaderSections)});
+				}
 				dispatch({type: 'SET_LOADING', value: false});
 				if (!cancelled) {
-					const loaderContext = buildLoaderContext({
-						api,
-						settings,
-						homeRowsConfig,
-						eligibleLibraries,
-						seerrEnabled,
-						seerrAuthenticated,
-						recommendationsSupported,
-						appendRows
+					BROWSE_ROW_LOADERS.forEach(({load}, index) => {
+						const done = () => {
+							if (!cancelled) dispatch({type: 'SECTIONS_DONE', sections: loaderSections[index]});
+						};
+						Promise.resolve(load(loaderContext)).then(done, done);
 					});
-					BROWSE_ROW_LOADERS.forEach((loader) => loader(loaderContext));
 				}
 
 			} catch (err) {
@@ -564,6 +574,7 @@ const useBrowseData = ({
 		browseMode: state.browseMode,
 		allRowData: state.allRowData,
 		featuredItems: state.featuredItems,
+		pendingSections: state.pendingSections,
 		setBrowseMode,
 		fetchFreshFeaturedItems,
 		refreshVolatileData

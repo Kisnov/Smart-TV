@@ -6,6 +6,8 @@ import {KEYS} from '../../utils/keys';
 import {sameCardUserData} from '../../utils/playedState';
 import {useSettings} from '../../context/SettingsContext';
 import {getPlatform} from '../../platform';
+import {modernCardMetrics} from '../MediaCard/modernCardLayout';
+import PlaceholderRow from './PlaceholderRow';
 
 import css from './ModernMediaRow.module.less';
 
@@ -28,7 +30,10 @@ const ModernMediaRow = ({
 	subtitle,
 	rowSpacing,
 	className,
-	registerRowRef
+	registerRowRef,
+	loading,
+	titleWidth,
+	cardType
 }) => {
 	const {settings} = useSettings();
 	const scrollerRef = useRef(null);
@@ -146,8 +151,6 @@ const ModernMediaRow = ({
 		Spotlight.focus(`media-${keyPrefix}-${items[0].Id}`);
 	}, [items, keyPrefix]);
 
-	if (!items || items.length === 0) return null;
-
 	const rowClassName = [
 		css.row,
 		className || '',
@@ -157,6 +160,29 @@ const ModernMediaRow = ({
 		typeof document !== 'undefined' && document.documentElement.classList.contains('legacy') ? css.platformLegacy : ''
 	].filter(Boolean).join(' ');
 	const rowStyle = typeof rowSpacing === 'number' ? {marginBottom: rowSpacing + 'px'} : undefined;
+
+	if (loading) {
+		const {cardWidth, imageHeight} = modernCardMetrics({
+			posterSize: settings.homeRowsPosterSize,
+			platform,
+			isSquareItem: cardType === 'square'
+		});
+		return (
+			<PlaceholderRow
+				classes={css}
+				className={rowClassName}
+				style={rowStyle}
+				title={title}
+				titleWidth={titleWidth}
+				subtitle={subtitle}
+				cardWidth={cardWidth}
+				imageHeight={imageHeight}
+				isModern
+			/>
+		);
+	}
+
+	if (!items || items.length === 0) return null;
 
 	return (
 		<RowContainer
@@ -209,6 +235,7 @@ const areRowPropsEqual = (prev, next) => {
 	if (prev.subtitle !== next.subtitle) return false;
 	if (prev.rowSpacing !== next.rowSpacing) return false;
 	if (prev.className !== next.className) return false;
+	if (prev.loading !== next.loading || prev.titleWidth !== next.titleWidth || prev.cardType !== next.cardType) return false;
 	if (prev.items === next.items) return true;
 	if (prev.items?.length !== next.items?.length) return false;
 	for (let i = 0; i < prev.items.length; i++) {

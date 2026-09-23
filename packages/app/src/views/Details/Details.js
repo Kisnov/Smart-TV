@@ -8,8 +8,8 @@ import {useSettings} from '../../context/SettingsContext';
 import {useSeerr} from '../../context/SeerrContext';
 import {useSyncPlay} from '../../context/SyncPlayContext';
 import * as jellyfinApi from '../../services/jellyfinApi';
-import LoadingSpinner from '../../components/LoadingSpinner';
 import ModernDetailContent from './ModernDetailContent';
+import DetailSkeleton from './DetailSkeleton';
 import {formatDuration, getImageUrl, getBackdropId, getLogoUrl} from '../../utils/helpers';
 import {KEYS} from '../../utils/keys';
 import {MATERIAL_ICON_PATHS} from '../Settings/materialIconMap';
@@ -826,9 +826,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	if (isLoading || !item) {
 		return (
 			<div className={css.page}>
-				<div className={css.loading}>
-					<LoadingSpinner />
-				</div>
+				<DetailSkeleton detailStyle={settings.detailScreenStyle} sidebar={settings.navbarPosition === 'left'} />
 			</div>
 		);
 	}

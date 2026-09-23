@@ -6,7 +6,6 @@ import Spotlight from '@enact/spotlight';
 import {VirtualGridList} from '@enact/sandstone/VirtualList';
 import {useAuth} from '../../context/AuthContext';
 import {createApiForServer} from '../../services/jellyfinApi';
-import LoadingSpinner from '../../components/LoadingSpinner';
 import MusicBrowse from '../MusicBrowse';
 import BackdropLayer from '../../components/BackdropLayer';
 import {getImageUrl, getPrimaryImageId, formatDuration} from '../../utils/helpers';
@@ -30,6 +29,7 @@ import useStartLetter from '../../hooks/useStartLetter';
 import {useUserDataList} from '../../hooks/useUserDataSync';
 import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
 import {GRID_DIRECTIONS, IMAGE_SIZES, IMAGE_TYPES, LETTERS, capitalize, createGridKeyDown, createToolbarKeyDown, cycleValue, focusOverhang, horizontalCellPad, stopPropagation} from '../../utils/gridChrome';
+import LibrarySkeleton from './LibrarySkeleton';
 
 import css from './Library.module.less';
 
@@ -1348,8 +1348,16 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 				<GridContainer className={css.gridContainer}>
 					{isLoading && items.length === 0 ? (
-						<div className={css.loading}>
-							<LoadingSpinner />
+						<div className={css.gridWrapper}>
+							<LibrarySkeleton
+								gridWidth={window.innerWidth - GRID_INSET}
+								cardWidth={cardWidth}
+								posterHeight={posterHeight}
+								padX={cellPadX}
+								minRowGap={MIN_ROW_GAP}
+								showText={showCardText}
+								horizontal={gridDirection === 'horizontal'}
+							/>
 						</div>
 					) : items.length === 0 ? (
 						<div className={css.empty}>{$L('No items found')}</div>

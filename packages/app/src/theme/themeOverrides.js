@@ -52,6 +52,7 @@ import mediaRowCss from '../components/MediaRow/MediaRow.module.less';
 import modernRowCss from '../components/MediaRow/ModernMediaRow.module.less';
 import ratingsCss from '../components/RatingsRow/RatingsRow.module.less';
 import itemMenuCss from '../components/ItemContextMenu/ItemContextMenu.module.less';
+import skeletonCss from '../components/Skeleton/Skeleton.module.less';
 
 const STYLE_ELEMENT_ID = 'moonfin-theme-overrides';
 
@@ -349,7 +350,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${browseCss.ayaIndicatorActive}`, `background: ${onSurface};`);
 	rule(`.${backdropCss.globalBackdropOverlay}`, `background: ${toCssColor(c.scrim)};`);
 	rule(`.${browseCss.featuredGradient}`, `background: -webkit-linear-gradient(top, ${scrim(0.3)} 0%, ${scrim(0.1)} 40%, ${scrim(0.8)} 100%); background: linear-gradient(to bottom, ${scrim(0.3)} 0%, ${scrim(0.1)} 40%, ${scrim(0.8)} 100%);`);
-	rule(`.${browseCss.loadingContainer} p, .${browseCss.detailPlaceholder} p, .${browseCss.empty}`, `color: ${os(0.7)};`);
+	rule(`.${browseCss.detailPlaceholder} p, .${browseCss.empty}`, `color: ${os(0.7)};`);
 	// The card takes the media bar's own overlay color at three quarters of its
 	// opacity, outlined with the theme's card border.
 	const mediaBarFill = toCssColorWithAlpha(
@@ -377,6 +378,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${browseCss.galleryPillOutlined}`, `background: transparent; border-color: ${os(0.55)};`);
 	rule(`.${browseCss.galleryCreditLabel}`, `color: ${accent};`);
 	rule(`.${browseCss.galleryShimmer} span`, `background: ${os(0.1)};`);
+	rule(`.${skeletonCss.box}`, `background-color: ${theme.isGlass ? 'rgba(255, 255, 255, 0.16)' : os(0.14)};`);
 	rule(`.${browseCss.bannerCard}:focus`, `border-color: ${focusColor}; box-shadow: ${glowOr(`0 0 18px ${accentA(0.4)}`)};`);
 	rule(`.${browseCss.bannerGradient}`, `background: linear-gradient(to right, ${scrim(0.9)}, ${scrim(0)});`);
 	rule(`.${browseCss.bannerMeta}`, `color: ${os(0.75)};`);

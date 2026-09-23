@@ -230,6 +230,7 @@ export const parseThemeSpec = (json) => {
 		// The stair-step bevel chrome the other clients paint from this has no
 		// equivalent here, the tokens carry the look on their own.
 		isPixel: !!json.isPixel,
+		isGlass: !!json.isGlass,
 		colors,
 		borders: {
 			cardBorder: parseBorderSide(bordersSource.cardBorder, 'borders.cardBorder'),

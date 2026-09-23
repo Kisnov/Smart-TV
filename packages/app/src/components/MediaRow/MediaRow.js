@@ -3,6 +3,8 @@ import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDeco
 import Spotlight from '@enact/spotlight';
 import Spottable from '@enact/spotlight/Spottable';
 import MediaCard from '../MediaCard';
+import {classicCardSize} from '../MediaCard/MediaCard';
+import PlaceholderRow from './PlaceholderRow';
 import {KEYS} from '../../utils/keys';
 import {sameCardUserData} from '../../utils/playedState';
 import {useSettings} from '../../context/SettingsContext';
@@ -39,7 +41,9 @@ const MediaRow = ({
 	onSeeAll,
 	seeAllLabel,
 	spotlightId: rowSpotlightId,
-	menuOptions
+	menuOptions,
+	loading,
+	titleWidth
 }) => {
 	const {settings} = useSettings();
 	const scrollerRef = useRef(null);
@@ -126,8 +130,6 @@ const MediaRow = ({
 		Spotlight.focus(`media-${keyPrefix}-${items[0].Id}`);
 	}, [items, keyPrefix]);
 
-	if (!items || items.length === 0) return null;
-
 	const rowClassName = [
 		css.row,
 		className || '',
@@ -137,6 +139,24 @@ const MediaRow = ({
 	// The padding slider owns the space below each row. Custom properties do not
 	// survive the build for the older sets, so it arrives as an inline style.
 	const rowStyle = typeof rowSpacing === 'number' ? {marginBottom: rowSpacing + 'px'} : undefined;
+
+	if (loading) {
+		const cardSize = classicCardSize(cardType === 'square' ? 'square' : 'portrait', settings.homeRowsPosterSize);
+		return (
+			<PlaceholderRow
+				classes={css}
+				className={rowClassName}
+				style={rowStyle}
+				title={title}
+				titleWidth={titleWidth}
+				subtitle={subtitle}
+				cardWidth={cardSize.width}
+				imageHeight={cardSize.height}
+			/>
+		);
+	}
+
+	if (!items || items.length === 0) return null;
 
 	return (
 		<RowContainer
@@ -205,6 +225,7 @@ const areRowPropsEqual = (prev, next) => {
 	if (prev.seeAllLabel !== next.seeAllLabel) return false;
 	if (prev.menuOptions !== next.menuOptions) return false;
 	if (prev.spotlightId !== next.spotlightId) return false;
+	if (prev.loading !== next.loading || prev.titleWidth !== next.titleWidth) return false;
 	// Compare presence, not identity: an inline arrow from a caller would defeat
 	// the whole comparator.
 	if (!prev.onSeeAll !== !next.onSeeAll) return false;
