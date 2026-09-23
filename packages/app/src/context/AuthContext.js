@@ -9,6 +9,7 @@ import {resetLibraryScope} from '../services/libraryScope';
 import {resetBlockedContentGate} from '../services/blockedContentGate';
 import * as serverSocket from '../services/serverSocket';
 import * as userDataSync from '../services/userDataSync';
+import * as remoteControl from '../services/remoteControl';
 
 import {clearProxiedImageCache} from '../hooks/useProxiedImage';
 import {parseUrl} from '../utils/urlCompat';
@@ -513,13 +514,20 @@ export const AuthProvider = ({children}) => {
 		}
 	}, [isAuthenticated]);
 
-	// The session socket, and the watched state it keeps in step, belong to whoever is signed in,
-	// so both start over when the account or the server changes.
+	// The session socket, and the watched state and remote control it carries, belong to whoever
+	// is signed in, so all of it starts over when the account or the server changes. A server that
+	// restarts forgets what this session can do, so it's told again on every connect.
 	useEffect(() => {
 		if (!isAuthenticated) return undefined;
 		serverSocket.connect();
 		userDataSync.bindTo(serverSocket.onMessage, jellyfinApi.getUserId());
+		remoteControl.bindTo(serverSocket.onMessage);
+		const stopReporting = serverSocket.onConnectionChange((open) => {
+			if (open) jellyfinApi.reportCapabilities();
+		});
 		return () => {
+			stopReporting();
+			remoteControl.reset();
 			userDataSync.reset();
 			serverSocket.disconnect();
 		};

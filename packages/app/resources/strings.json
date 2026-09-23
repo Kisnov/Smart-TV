@@ -470,6 +470,7 @@
 	"PGS subtitles require transcoding because direct play is turned off.": "PGS subtitles require transcoding because direct play is turned off.",
 	"Remove from Collection": "Remove from Collection",
 	"Remove from Favorites": "Remove from Favorites",
+	"Remote message": "Remote message",
 	"Remove {item} from {collection}? The item stays in your library.": "Remove {item} from {collection}? The item stays in your library.",
 	"Secondary audio stream requires transcoding.": "Secondary audio stream requires transcoding.",
 	"Show All ({count}) Audio Tracks": "Show All ({count}) Audio Tracks",

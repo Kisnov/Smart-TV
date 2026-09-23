@@ -363,9 +363,6 @@ const handleWebSocketMessage = (msg) => {
 		case 'SyncPlayCommand':
 			handlePlaybackCommand(Data); // eslint-disable-line no-use-before-define
 			break;
-		case 'GeneralCommand':
-			handleGeneralCommand(Data); // eslint-disable-line no-use-before-define
-			break;
 		default:
 			break;
 	}
@@ -455,33 +452,6 @@ const handlePlaybackCommand = (data) => {
 		trackGroupPosition(data.PositionTicks, data.Command === 'Unpause', whenToServerMs(data.When)); // eslint-disable-line no-use-before-define
 	}
 	emit('playbackCommand', data);
-};
-
-const getCommandArgument = (args, key) => {
-	if (!args || typeof args !== 'object') return null;
-	const direct = args[key];
-	if (typeof direct === 'string') return direct;
-
-	const matchKey = Object.keys(args).find((k) => k.toLowerCase() === key.toLowerCase());
-	if (!matchKey) return null;
-
-	const value = args[matchKey];
-	return typeof value === 'string' ? value : null;
-};
-
-const handleGeneralCommand = (data) => {
-	if (!data || typeof data !== 'object') return;
-
-	const name = data.Name || data.name;
-	if (typeof name !== 'string' || name.toLowerCase() !== 'displaymessage') return;
-
-	const args = data.Arguments || data.arguments;
-	const text = getCommandArgument(args, 'Text')?.trim();
-	if (!text) return;
-
-	const headerRaw = getCommandArgument(args, 'Header');
-	const header = typeof headerRaw === 'string' ? headerRaw.trim() : '';
-	emit('displayMessage', header ? {text, header} : {text});
 };
 
 export const getDelayToWhen = (when) => {

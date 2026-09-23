@@ -19,6 +19,7 @@ import * as jellyfinApi from '../services/jellyfinApi';
 import {adoptLegacyBlockedRatings, loadParentalControls, parentalScopeKey, setParentalScope} from '../services/parentalControls';
 import {libraryIdOf, seerrDetailStub} from '../utils/seerrTarget';
 import serverLogger from '../services/serverLogger';
+import * as remoteControl from '../services/remoteControl';
 import {isBackKey, KEYS} from '../utils/keys';
 import {applyPerfTier} from '../utils/perfTier';
 import {isLiveTvLibrary} from '../utils/liveTvLibrary';
@@ -93,6 +94,8 @@ import css from './App.module.less';
 const MAX_HISTORY_LENGTH = 10;
 const SpottableButton = Spottable('button');
 
+const isAudioItem = (item) => item?.MediaType === 'Audio' || item?.Type === 'Audio';
+
 const normalizeSeerrSelection = (item) => {
 	if (!item) return null;
 
@@ -156,16 +159,11 @@ const AppContent = (props) => {
 	const {streamNotification, dismissStreamNotification, pluginInfo} = useSeerr();
 	const {pendingPopups, markPopupsRead} = useServerMessages();
 	const themeMusic = useThemeMusic();
-	const {openDialog: openSyncPlay, closeDialog: closeSyncPlay, isDialogOpen: syncPlayDialogOpen, playQueueUpdate: syncPlayQueueUpdate, isInGroup: isSyncPlayInGroup, setNewQueue: syncPlaySetNewQueue, displayMessage: syncPlayMessage, clearDisplayMessage: clearSyncPlayMessage, getGroupPositionTicks: getSyncPlayPositionTicks} = useSyncPlay();
+	const {openDialog: openSyncPlay, closeDialog: closeSyncPlay, isDialogOpen: syncPlayDialogOpen, playQueueUpdate: syncPlayQueueUpdate, isInGroup: isSyncPlayInGroup, setNewQueue: syncPlaySetNewQueue, getGroupPositionTicks: getSyncPlayPositionTicks} = useSyncPlay();
 	const handledSyncPlayQueueRef = useRef(null);
 
-	const syncPlayToast = useMemo(() => (
-		syncPlayMessage ? {
-			key: `syncplay-${Date.now()}`,
-			title: syncPlayMessage.header || $L('SyncPlay'),
-			body: syncPlayMessage.text
-		} : null
-	), [syncPlayMessage]);
+	const [remoteMessage, setRemoteMessage] = useState(null);
+	const clearRemoteMessage = useCallback(() => setRemoteMessage(null), []);
 	const unifiedMode = settings.unifiedLibraryMode && hasMultipleServers;
 
 	// Blocked ratings belong to whoever is signed in on this server.
@@ -721,6 +719,8 @@ const AppContent = (props) => {
 					// Sign-in walks its own screens, and home returns a scrolled row
 					// list to the top, before back means exit
 					if (backHandlerRef.current?.()) return;
+					// Another client pressing back never closes the app on the viewer.
+					if (e.fromRemote) return;
 					if (settings.exitConfirmation === false) {
 						performAppCleanup();
 						exitApp();
@@ -1124,6 +1124,67 @@ const AppContent = (props) => {
 		window.dispatchEvent(new CustomEvent('moonfin:browseRefresh'));
 		setPanelIndex(PANELS.BROWSE);
 	}, []);
+
+	const showRemoteMessage = useCallback((text, header) => {
+		setRemoteMessage({key: Date.now(), title: header?.trim() || $L('Remote message'), body: text});
+	}, []);
+
+	// Another client sending something to play here. It starts where that client asked rather than
+	// at this one's resume point, and a run of items plays as a queue of the kind the first one is.
+	// Over a player already running, the new item takes its place the way the next one would.
+	const playFromRemote = useCallback(async (itemIds, options) => {
+		const loaded = await Promise.all(itemIds.map((id) => api.getItem(id).catch(() => null)));
+		const items = loaded.filter(Boolean);
+		if (!items.length) return;
+		const item = items[Math.min(Math.max(options.startIndex, 0), items.length - 1)];
+		const queue = items.filter((entry) => isAudioItem(entry) === isAudioItem(item));
+		const playOptions = {
+			startPositionTicks: options.startPositionTicks || 0,
+			audioStreamIndex: options.audioStreamIndex,
+			subtitleStreamIndex: options.subtitleStreamIndex,
+			mediaSourceId: options.mediaSourceId,
+			...(queue.length > 1 ? {[isAudioItem(item) ? 'audioPlaylist' : 'videoQueue']: queue} : {})
+		};
+		if (panelIndex !== PANELS.PLAYER) {
+			handlePlay(item, false, playOptions);
+			return;
+		}
+		await remoteControl.releasePlayer();
+		setPlayingItem(item);
+		setPlaybackOptions(playOptions);
+		setIsResume(false);
+	}, [api, panelIndex, handlePlay]);
+
+	// Queued from another client onto what's playing, music onto the playlist and video onto the
+	// queue, so what comes next follows the same order it would if it had been queued here.
+	const queueFromRemote = useCallback(async (itemIds, playNext) => {
+		if (!playingItem) return;
+		const loaded = await Promise.all(itemIds.map((id) => api.getItem(id).catch(() => null)));
+		const items = loaded.filter((entry) => entry && isAudioItem(entry) === isAudioItem(playingItem));
+		if (!items.length) return;
+		const key = isAudioItem(playingItem) ? 'audioPlaylist' : 'videoQueue';
+		setPlaybackOptions((prev) => {
+			const queue = prev?.[key]?.length ? prev[key] : [playingItem];
+			const at = queue.findIndex((entry) => entry.Id === playingItem.Id);
+			const next = playNext && at >= 0
+				? [...queue.slice(0, at + 1), ...items, ...queue.slice(at + 1)]
+				: [...queue, ...items];
+			return {...prev, [key]: next};
+		});
+	}, [api, playingItem]);
+
+	const remoteAppRef = useRef(null);
+	remoteAppRef.current = {
+		goHome: () => {
+			setShowSettingsPanel(false);
+			handleHome();
+		},
+		showMessage: showRemoteMessage,
+		playItems: playFromRemote,
+		queueItems: queueFromRemote
+	};
+
+	useEffect(() => remoteControl.setAppControls(remoteAppRef), []);
 
 	const [seerrRequestsTab, setSeerrRequestsTab] = useState('requests');
 
@@ -1711,8 +1772,8 @@ const AppContent = (props) => {
 				onDismiss={dismissStreamNotification}
 			/>
 			<SeerrNotificationToast
-				notification={syncPlayToast}
-				onDismiss={clearSyncPlayMessage}
+				notification={remoteMessage}
+				onDismiss={clearRemoteMessage}
 			/>
 			<ServerMessagesDialog
 				open={showServerMessages}

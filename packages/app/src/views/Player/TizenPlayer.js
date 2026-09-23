@@ -60,6 +60,7 @@ import {mapJellyfinTrackToTizen} from './tizenTrackUtils';
 import serverLogger from '../../services/serverLogger';
 import {summarizeAvplayTracks, describeSubtitleStream, describeSubtitleStreams} from './subtitleDiagnostics';
 import {describeVideoStream, readVideoSupport} from './videoDiagnostics';
+import useRemotePlayerControls from './useRemotePlayerControls';
 
 import css from './TizenPlayer.module.less';
 
@@ -204,6 +205,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const lastFocusedElementRef = useRef(null);
 	const timeUpdateIntervalRef = useRef(null);
 	const avplayReadyRef = useRef(false);
+	// Read through a ref when an item loads, so the queue growing while it plays doesn't load it again.
+	const videoQueueRef = useRef(videoQueue);
+	videoQueueRef.current = videoQueue;
 	// Whether the pipeline is really running, and the segment skip waiting on it.
 	const playbackMovingRef = useRef(false);
 	// Whether this stream ever ran, and whether it has been reopened since it did.
@@ -264,7 +268,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 	const {
 		shuffleMode, repeatMode, hasNextTrack, hasPrevTrack,
-		handleToggleShuffle, handleToggleRepeat, handleNextTrack, handlePrevTrack,
+		handleToggleShuffle, handleToggleRepeat, setShuffleMode, setRepeatMode, handleNextTrack, handlePrevTrack,
 		handleSelectQueueTrack, handleSeekToLyric, handleEnterAudioPanel, getNextStep
 	} = useAudioTransport({
 		item, audioPlaylist, isAudioMode, onPlayNext, positionRef,
@@ -1431,7 +1435,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 					// A queue sets its own order. Running off the end of one, or playing a
 					// lone episode, falls back to the air order lookup.
-					const queued = videoQueue?.length ? nextInQueue(videoQueue, item) : null;
+					const queued = nextInQueue(videoQueueRef.current, item);
 					if (queued) {
 						if (stillCurrent()) setNextEpisode(queued);
 					} else if (item.Type === 'Episode') {
@@ -1496,7 +1500,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			} catch (err) {
 				console.error('[Player] Failed to load media:', err);
 				// A pre-roll that cant even load gets skipped, not surfaced.
-				const skipTo = isPreroll(item) ? nextInQueue(videoQueue, item) : null;
+				const skipTo = isPreroll(item) ? nextInQueue(videoQueueRef.current, item) : null;
 				if (stillCurrent()) {
 					if (skipTo && onPlayNext) {
 						onPlayNext(skipTo);
@@ -1561,7 +1565,13 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			burnInSubtitleRef.current = null;
 		};
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [item, resume, videoQueue, onPlayNext, selectedQuality, settings.maxBitrate, settings.preferTranscode, settings.forceDirectPlay, forceTranscode, settings.subtitleMode, settings.introAction, settings.outroAction]);
+	}, [item, resume, onPlayNext, selectedQuality, settings.maxBitrate, settings.preferTranscode, settings.forceDirectPlay, forceTranscode, settings.subtitleMode, settings.introAction, settings.outroAction]);
+
+	// Another client can queue more while this plays, and what it puts behind this plays next.
+	useEffect(() => {
+		const queued = nextInQueue(videoQueue, item);
+		if (queued) setNextEpisode(queued);
+	}, [videoQueue, item]);
 
 	useEffect(() => {
 		if (typeof window === 'undefined') return () => {};
@@ -2020,15 +2030,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		closeModal();
 	}, [startSleepTimer, closeModal]);
 
-	// Track selection - using data attributes to avoid arrow functions in JSX
-	const handleSelectAudio = useCallback(async (e) => {
-		const index = parseInt(e.currentTarget.dataset.index, 10);
-		if (isNaN(index)) return;
+	const applyAudioSelection = useCallback(async (index, shouldClose = true) => {
 		setSelectedAudioIndex(index);
 		// Saved here rather than after the switch, because switching leaves by several
 		// routes and the choice was made either way.
 		saveAudioPref(item, index, audioStreams || []);
-		closeModal();
+		if (shouldClose) closeModal();
 
 		try {
 			// AVPlay: try switching audio track natively first
@@ -2076,6 +2083,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			console.error('[Player] Failed to change audio:', err);
 		}
 	}, [item, playMethod, closeModal, restartFromResult, audioStreams]);
+
+	// Track selection - using data attributes to avoid arrow functions in JSX
+	const handleSelectAudio = useCallback((e) => {
+		const index = parseInt(e.currentTarget.dataset.index, 10);
+		if (!isNaN(index)) applyAudioSelection(index);
+	}, [applyAudioSelection]);
 
 	const applySubtitleSelection = useCallback(async (index, streamList = subtitleStreams, shouldClose = true) => {
 		if (pgsRendererRef.current) {
@@ -2213,6 +2226,38 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (isNaN(index)) return;
 		await applySubtitleSelection(index, subtitleStreams, true);
 	}, [applySubtitleSelection, subtitleStreams]);
+
+	// What another client's remote reaches while this plays. It goes through the same handlers as
+	// the buttons, so a group, a scrub or the next episode behaves as it would for the viewer.
+	useRemotePlayerControls({
+		pause: () => {
+			if (avplayGetState() === 'PLAYING') handlePlayPause();
+		},
+		resume: () => {
+			if (avplayGetState() !== 'PLAYING') handlePlayPause();
+		},
+		playPause: handlePlayPause,
+		stop: handleBack,
+		release: teardownPlayback,
+		seek: (ticks) => {
+			dropScrub();
+			if (avplayReadyRef.current && !groupSeekTo(ticks)) {
+				avplaySeek(Math.floor(ticks / 10000)).catch((err) => console.warn('[Player] Remote seek failed:', err));
+			}
+		},
+		next: () => (isAudioMode ? handleNextTrack() : handlePlayNextNow()),
+		previous: handlePrevTrack,
+		rewind: handleRewind,
+		fastForward: handleForward,
+		setAudioStream: (index) => {
+			if ((audioStreams || []).some((s) => s.index === index)) applyAudioSelection(index, false);
+		},
+		setSubtitleStream: (index) => {
+			if (index === -1 || subtitleStreams.some((s) => s.index === index)) applySubtitleSelection(index, subtitleStreams, false);
+		},
+		setRepeatMode,
+		setShuffle: setShuffleMode
+	});
 
 	const handleSelectQuality = useCallback((e) => {
 		const valueStr = e.currentTarget.dataset.value;

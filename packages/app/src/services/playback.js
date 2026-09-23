@@ -8,6 +8,7 @@ import {TEXT_SUBTITLE_CODECS, isAssSubtitleCodec, isPgsSubtitleCodec, isBurnInSu
 import {applyProfileTuning} from '../utils/deviceProfileTuning';
 import {findNextInSeason, findNextSeason, firstPlayableEpisode} from '../utils/nextEpisode';
 import {videoRangeTypeOf} from '../utils/videoRange';
+import {getVolumeState, lastVolumeState} from './systemVolume';
 
 export const PlayMethod = {
 	DirectPlay: 'DirectPlay',
@@ -1084,6 +1085,14 @@ export const changeSubtitleStream = async (streamIndex) => {
 	return newInfo;
 };
 
+// Where the TV's volume sits, so a client controlling this one shows the level it's really at. It's
+// read again each time, so a change made on the set's own remote reaches the next report.
+const volumeReport = () => {
+	const state = lastVolumeState();
+	getVolumeState();
+	return state ? {VolumeLevel: Math.round(state.volume), IsMuted: state.muted} : {IsMuted: false};
+};
+
 export const reportStart = async (positionTicks = 0) => {
 	if (!currentSession) return;
 
@@ -1104,7 +1113,7 @@ export const reportStart = async (positionTicks = 0) => {
 			PositionTicks: positionTicks,
 			CanSeek: true,
 			IsPaused: false,
-			IsMuted: false,
+			...volumeReport(),
 			PlayMethod: currentSession.reportedPlayMethod || currentSession.playMethod,
 			RepeatMode: 'RepeatNone'
 		});
@@ -1133,7 +1142,7 @@ export const reportProgress = async (positionTicks, options = {}) => {
 			PositionTicks: positionTicks,
 			CanSeek: true,
 			IsPaused: options.isPaused || false,
-			IsMuted: options.isMuted || false,
+			...volumeReport(),
 			PlayMethod: currentSession.reportedPlayMethod || currentSession.playMethod,
 			AudioStreamIndex: currentSession.audioStreamIndex,
 			SubtitleStreamIndex: currentSession.subtitleStreamIndex

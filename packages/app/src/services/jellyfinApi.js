@@ -8,6 +8,7 @@ import {isTizen} from '../platform';
 import {makeUserRoutes, trimQuerySeparator, legacyAuthHeader, buildUserImageUrl} from '../utils/serverRoutes';
 import * as userDataSync from './userDataSync';
 import {withEmbyNextUpSweep} from './embyNextUp';
+import {SUPPORTED_COMMANDS} from './remoteControl';
 const APP_VERSION = packageJson.version;
 
 const APP_NAME = isTizen() ? 'Moonfin for Tizen' : 'Moonfin for webOS';
@@ -216,8 +217,8 @@ export function reportCapabilities() {
 		method: 'POST',
 		body: {
 			PlayableMediaTypes: ['Video', 'Audio'],
-			SupportedCommands: [],
-			SupportsMediaControl: false,
+			SupportedCommands: SUPPORTED_COMMANDS,
+			SupportsMediaControl: true,
 			SupportsPersistentIdentifier: false
 		}
 	}).catch(() => {});

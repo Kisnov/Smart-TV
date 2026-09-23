@@ -66,6 +66,7 @@ import {
 } from './remoteSubtitleUtils';
 import {getVideoDisplayAspectRatio, getZoomDisplayRect} from './aspectRatioUtils';
 import {describeVideoStream, readVideoSupport} from './videoDiagnostics';
+import useRemotePlayerControls from './useRemotePlayerControls';
 
 import css from './WebOSPlayer.module.less';
 
@@ -183,6 +184,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const lastFocusedElementRef = useRef(null);
 
 	const videoRef = useRef(null);
+	// Read through a ref when an item loads, so the queue growing while it plays doesn't load it again.
+	const videoQueueRef = useRef(videoQueue);
+	videoQueueRef.current = videoQueue;
 	// Whether the pipeline has stalled: set by waiting, cleared once frames
 	// move again. readyState is no use for this on webOS, which sits at
 	// HAVE_CURRENT_DATA while playing perfectly well, so a test on it reported
@@ -279,7 +283,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 	const {
 		shuffleMode, repeatMode, hasNextTrack, hasPrevTrack,
-		handleToggleShuffle, handleToggleRepeat, handleNextTrack, handlePrevTrack,
+		handleToggleShuffle, handleToggleRepeat, setShuffleMode, setRepeatMode, handleNextTrack, handlePrevTrack,
 		handleSelectQueueTrack, handleSeekToLyric, handleEnterAudioPanel, getNextStep
 	} = useAudioTransport({
 		item, audioPlaylist, isAudioMode, onPlayNext, positionRef,
@@ -956,7 +960,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 					// A queue sets its own order. Running off the end of one, or playing a
 					// lone episode, falls back to the air order lookup.
-					const queued = videoQueue?.length ? nextInQueue(videoQueue, item) : null;
+					const queued = nextInQueue(videoQueueRef.current, item);
 					if (queued) {
 						setNextEpisode(queued);
 					} else if (item.Type === 'Episode') {
@@ -968,7 +972,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			} catch (err) {
 				console.error('[Player] Failed to load media:', err);
 				// A pre-roll that cant even load gets skipped, not surfaced.
-				const skipTo = isPreroll(item) ? nextInQueue(videoQueue, item) : null;
+				const skipTo = isPreroll(item) ? nextInQueue(videoQueueRef.current, item) : null;
 				if (skipTo && onPlayNext) {
 					onPlayNext(skipTo);
 				} else {
@@ -1035,7 +1039,13 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			}
 		};
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [item, resume, videoQueue, onPlayNext, selectedQuality, settings.maxBitrate, settings.preferTranscode, settings.forceDirectPlay, settings.forceTruehdPassthrough, forceTranscode, settings.subtitleMode, settings.introAction, settings.outroAction, initialAudioIndex, initialSubtitleIndex]);
+	}, [item, resume, onPlayNext, selectedQuality, settings.maxBitrate, settings.preferTranscode, settings.forceDirectPlay, settings.forceTruehdPassthrough, forceTranscode, settings.subtitleMode, settings.introAction, settings.outroAction, initialAudioIndex, initialSubtitleIndex]);
+
+	// Another client can queue more while this plays, and what it puts behind this plays next.
+	useEffect(() => {
+		const queued = nextInQueue(videoQueue, item);
+		if (queued) setNextEpisode(queued);
+	}, [videoQueue, item]);
 
 	useEffect(() => {
 		if (mediaUrl) {
@@ -2286,15 +2296,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		}
 	}, [remoteSubtitleResults, item, subtitleStreams, mediaSourceId, selectedAudioIndex, selectedSubtitleIndex, selectedQuality, settings.maxBitrate, applySubtitleSelection]);
 
-	// Track selection - using data attributes to avoid arrow functions in JSX
-	const handleSelectAudio = useCallback(async (e) => {
-		const index = parseInt(e.currentTarget.dataset.index, 10);
-		if (isNaN(index)) return;
+	const applyAudioSelection = useCallback(async (index, shouldClose = true) => {
 		setSelectedAudioIndex(index);
 		// Saved here rather than after the switch, because switching leaves by several
 		// routes and the choice was made either way.
 		saveAudioPref(item, index, audioStreams || []);
-		closeModal();
+		if (shouldClose) closeModal();
 
 		setHasTriedTranscode(false);
 		forceHlsJsRef.current = false;
@@ -2351,11 +2358,47 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		}
 	}, [item, playMethod, closeModal, audioStreams]);
 
+	// Track selection - using data attributes to avoid arrow functions in JSX
+	const handleSelectAudio = useCallback((e) => {
+		const index = parseInt(e.currentTarget.dataset.index, 10);
+		if (!isNaN(index)) applyAudioSelection(index);
+	}, [applyAudioSelection]);
+
 	const handleSelectSubtitle = useCallback(async (e) => {
 		const index = parseInt(e.currentTarget.dataset.index, 10);
 		if (isNaN(index)) return;
 		await applySubtitleSelection(index, subtitleStreams, true);
 	}, [applySubtitleSelection, subtitleStreams]);
+
+	// What another client's remote reaches while this plays. It goes through the same handlers as
+	// the buttons, so a group, a scrub or the next episode behaves as it would for the viewer.
+	useRemotePlayerControls({
+		pause: () => {
+			if (!isPaused) handlePlayPause();
+		},
+		resume: () => {
+			if (isPaused) handlePlayPause();
+		},
+		playPause: handlePlayPause,
+		stop: handleBack,
+		release: teardownPlayback,
+		seek: (ticks) => {
+			dropScrub();
+			if (!groupSeekTo(ticks)) seekToTicks(ticks);
+		},
+		next: () => (isAudioMode ? handleNextTrack() : handlePlayNextNow()),
+		previous: handlePrevTrack,
+		rewind: handleRewind,
+		fastForward: handleForward,
+		setAudioStream: (index) => {
+			if ((audioStreams || []).some((s) => s.index === index)) applyAudioSelection(index, false);
+		},
+		setSubtitleStream: (index) => {
+			if (index === -1 || subtitleStreams.some((s) => s.index === index)) applySubtitleSelection(index, subtitleStreams, false);
+		},
+		setRepeatMode,
+		setShuffle: setShuffleMode
+	});
 
 	const handleSelectQuality = useCallback((e) => {
 		const valueStr = e.currentTarget.dataset.value;
