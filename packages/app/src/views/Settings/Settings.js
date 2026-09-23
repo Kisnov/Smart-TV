@@ -45,6 +45,10 @@ import {ThemesView, ThemeStoreView} from './ThemeViews';
 import AchievementsScreens, {ACHIEVEMENT_VIEWS} from './achievements/AchievementsScreens';
 import {isConfirmSpendOpen} from './achievements/ConfirmSpendDialog';
 import {kidsModeNeedsPin} from '../../utils/kidsMode';
+import {sortRatingsBySeverity} from '../../utils/parentalFilter';
+import {readServerRatings} from './serverRatings';
+import {getBlockedRatings, setBlockedRatings} from '../../services/parentalControls';
+import useParentalFilter from '../../hooks/useParentalFilter';
 import {SeerrHomeRowsView, ImdbListsView} from './HomeRowToggleViews';
 import {ExternalTmdbListsView, ExternalCalendarsView, ExternalCustomRowsView} from './ExternalRowViews';
 import {RatingSourcesView, ExcludedGenresView, PinCodeView, BlockedRatingsView, RowImageTypesView} from './PickerViews';
@@ -130,8 +134,11 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 	const [serverVersion, setServerVersion] = useState(null);
 	const [clearDataDialogOpen, setClearDataDialogOpen] = useState(false);
 	const [imageCacheCleared, setImageCacheCleared] = useState(false);
-	// Null until the first open fetches what ratings the libraries actually hold.
+	// Null while an open is reading what ratings the libraries actually hold.
 	const [availableRatings, setAvailableRatings] = useState(null);
+	const [ratingsLoadFailed, setRatingsLoadFailed] = useState(false);
+	const ratingsRequestRef = useRef(0);
+	const {blockedRatings} = useParentalFilter();
 	const [customRowsRefreshing, setCustomRowsRefreshing] = useState(false);
 	const [customRowsRefreshMessage, setCustomRowsRefreshMessage] = useState('');
 	const [updateCheckState, setUpdateCheckState] = useState('idle');
@@ -501,26 +508,40 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		updateSetting('homeRowImageTypes', updated);
 	}, [settings.homeRowImageTypes, updateSetting]);
 
+	// Read on every open, so a rating the server picked up since shows without a restart. Only the
+	// latest open gets to answer.
 	const openParentalControls = useCallback(() => {
 		pushView({view: 'blockedRatings', returnFocusTo: 'setting-parentalControls'});
-		if (availableRatings === null) {
-			api.getRatingFilters()
-				.then((result) => {
-					const ratings = (result?.OfficialRatings || [])
-						.map((rating) => String(rating).trim().toUpperCase())
-						.filter(Boolean);
-					setAvailableRatings([...new Set(ratings)]);
-				})
-				.catch(() => setAvailableRatings([]));
-		}
-	}, [pushView, api, availableRatings]);
+		const request = ++ratingsRequestRef.current;
+		setAvailableRatings(null);
+		setRatingsLoadFailed(false);
+		readServerRatings(api)
+			.then((ratings) => {
+				if (request === ratingsRequestRef.current) setAvailableRatings(ratings);
+			})
+			.catch(() => {
+				if (request !== ratingsRequestRef.current) return;
+				setRatingsLoadFailed(true);
+				setAvailableRatings([]);
+			});
+	}, [pushView, api]);
 
+	// The screen opens on a spinner with nothing to focus, so the first rating takes focus once the
+	// list is in.
+	const onBlockedRatings = currentView.view === 'blockedRatings';
+	const ratingsLoaded = availableRatings !== null;
+	useEffect(() => {
+		if (onBlockedRatings && ratingsLoaded) Spotlight.focus('blocked-ratings-view');
+	}, [onBlockedRatings, ratingsLoaded]);
+
+	// Read from the store rather than the render, so two quick presses can't drop each other's
+	// change.
 	const toggleBlockedRating = useCallback((rating) => {
-		const current = Array.isArray(settings.blockedRatings) ? settings.blockedRatings : [];
-		updateSetting('blockedRatings', current.includes(rating)
+		const current = getBlockedRatings();
+		setBlockedRatings(current.includes(rating)
 			? current.filter((value) => value !== rating)
 			: [...current, rating]);
-	}, [settings.blockedRatings, updateSetting]);
+	}, []);
 
 	const openRatingSources = useCallback(() => {
 		setTempRatingSources(Array.isArray(settings.mdblistRatingSources) ? [...settings.mdblistRatingSources] : []);
@@ -1420,9 +1441,10 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			)}
 			{viewName === 'blockedRatings' && (
 				<BlockedRatingsView
-					ratings={[...new Set([...(availableRatings || []), ...(settings.blockedRatings || [])])].sort()}
-					blocked={settings.blockedRatings || []}
+					ratings={sortRatingsBySeverity([...new Set([...(availableRatings || []), ...blockedRatings])])}
+					blocked={blockedRatings}
 					loading={availableRatings === null}
+					loadFailed={ratingsLoadFailed}
 					onToggleRating={toggleBlockedRating}
 				/>
 			)}

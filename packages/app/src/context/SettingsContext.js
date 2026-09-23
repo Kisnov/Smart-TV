@@ -246,7 +246,7 @@ export const SYNCABLE_KEYS = [
 	'exitConfirmation',
 	'diagnosticLoggingEnabled',
 	'uiLanguage',
-	'blockedRatings',
+	// blockedRatings is left out on purpose, since it's kept per server and user and never syncs.
 	'mergeRadarrSonarrCalendars',
 	'radarrCalendarShowCinema', 'radarrCalendarShowDigital', 'radarrCalendarShowPhysical',
 	'radarrCalendarShowDate', 'sonarrCalendarShowDate', 'sonarrCalendarShowEpisodeInfo',

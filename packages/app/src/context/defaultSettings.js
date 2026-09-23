@@ -265,7 +265,6 @@ export const defaultSettings = {
 	dtshdPassthrough: true,
 	truehdPassthrough: true,
 	forceTruehdPassthrough: false,
-	blockedRatings: [],
 	showSeerrButton: true,
 	seerrShowMissingCollectionItems: true,
 	showSeerrAvailabilityBadges: true,

@@ -5,6 +5,7 @@ jest.mock('@enact/i18n/$L', () => ({__esModule: true, default: (str) => str}));
 import {buildBrowseRows, sameRowList} from './buildBrowseRows';
 import {FAVORITE_ROW_CONFIGS} from './browseFilters';
 import {FAVORITE_ROW_IDS} from '../../utils/homeRowGates';
+import {parentalFilterFromRatings} from '../../utils/parentalFilter';
 
 const row = (id, items = [], extra = {}) => ({id, items, title: id, ...extra});
 const item = (Id, extra = {}) => ({Id, ...extra});
@@ -197,7 +198,7 @@ describe('blocked ratings', () => {
 		const rows = build({
 			allRowData: rowsWithRatings(),
 			homeRowsConfig: config,
-			settings: settings({blockedRatings: ['R']})
+			settings: settings({parentalFilter: parentalFilterFromRatings(['R'])})
 		});
 
 		expect(rows[0].items.map((i) => i.Id)).toEqual(['2', '3']);
@@ -207,7 +208,7 @@ describe('blocked ratings', () => {
 		const rows = build({
 			allRowData: [row('collections', [item('1', {OfficialRating: ' r '})])],
 			homeRowsConfig: config,
-			settings: settings({blockedRatings: ['R']})
+			settings: settings({parentalFilter: parentalFilterFromRatings(['R'])})
 		});
 
 		expect(rows).toEqual([]);
@@ -217,10 +218,24 @@ describe('blocked ratings', () => {
 		const rows = build({
 			allRowData: rowsWithRatings(),
 			homeRowsConfig: config,
-			settings: settings({blockedRatings: []})
+			settings: settings({parentalFilter: parentalFilterFromRatings([])})
 		});
 
 		expect(rows[0].items).toHaveLength(3);
+	});
+
+	test('blocking a rating also drops everything stronger than it', () => {
+		const rows = build({
+			allRowData: [row('collections', [
+				item('1', {OfficialRating: 'NC-17'}),
+				item('2', {OfficialRating: 'TV-MA'}),
+				item('3', {OfficialRating: 'PG-13'})
+			])],
+			homeRowsConfig: config,
+			settings: settings({parentalFilter: parentalFilterFromRatings(['R'])})
+		});
+
+		expect(rows[0].items.map((i) => i.Id)).toEqual(['3']);
 	});
 });
 

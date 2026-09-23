@@ -33,14 +33,13 @@ const KIDS_MODE_DETAILS = {
 export const kidsModeSettings = (settings) =>
 	(isKidsMode(settings) ? {...settings, ...KIDS_MODE_DETAILS} : settings);
 
-// The only rows the mode leaves standing: the way into the libraries, and what arrived in them
-// lately. An allow list rather than a block list, so a row added later stays hidden until someone
-// decides a child should see it. Everything else pulls from somewhere this mode cannot vouch for,
-// whether that is a request queue, an outside catalogue no parental rating reaches, or the watch
-// history of whoever used the account last.
-const KIDS_MODE_ROWS = ['library-tiles', 'librarybuttons', 'latest-media'];
+// An allow list, so a row added later stays hidden until someone decides a child should see it.
+// My Media rather than its small variant, since kids pick a library by its artwork. Continue
+// Watching and Next Up read the account's own history, so anything an adult started shows up
+// too, and blocked ratings are what hold that back.
+const KIDS_MODE_ROWS = ['library-tiles', 'latest-media', 'resume', 'nextup'];
 
-const LIBRARY_ROWS = ['library-tiles', 'librarybuttons'];
+const LIBRARY_ROW = 'library-tiles';
 
 // Ahead of every saved row, which start at zero.
 const LEADING_ORDER = -1;
@@ -52,17 +51,20 @@ export const kidsModeRows = (rows, kidsMode) => {
 
 	const kept = (rows || []).filter((row) => KIDS_MODE_ROWS.indexOf(row.id) >= 0);
 
-	// The mode drops the libraries entry from the navbar, so the library row is the only way into a
-	// library and it leads, wherever the user had put it. Switched on in place rather than added
-	// again, so the list never carries the same row twice.
-	const existing = kept.find((row) => LIBRARY_ROWS.indexOf(row.id) >= 0);
+	// The navbar loses its libraries entry in this mode, so My Media is the only way in and it
+	// leads. Switched on in place rather than added again, so it never shows up twice.
+	const existing = kept.find((row) => row.id === LIBRARY_ROW);
 	if (existing) {
 		return kept.map((row) => (
 			row === existing ? {...row, enabled: true, order: LEADING_ORDER} : row
 		));
 	}
-	return [{id: 'library-tiles', name: 'My Media', enabled: true, order: LEADING_ORDER}, ...kept];
+	return [{id: LIBRARY_ROW, name: 'My Media', enabled: true, order: LEADING_ORDER}, ...kept];
 };
+
+// Kids get one row to carry on from whatever the account chose. Applied on read, like the rows.
+export const mergesContinueWatchingNextUp = (settings) =>
+	isKidsMode(settings) || Boolean(settings?.mergeContinueWatchingNextUp);
 
 // The only buttons Kids Mode offers, alongside the play and restart every details screen puts in
 // front of them. An allow list rather than a block list, so a button added later stays out until

@@ -180,14 +180,9 @@ export const SETTINGS_SCHEMA = [
 					{
 						kind: KIND.NAV,
 						id: 'parentalControls',
-						label: () => $L('Parental Controls'),
-						desc: (ctx) => {
-							const count = Array.isArray(ctx.settings.blockedRatings) ? ctx.settings.blockedRatings.length : 0;
-							return count > 0
-								? $L('{count} ratings blocked').replace('{count}', String(count))
-								: $L('Block content by age rating');
-						},
-						icon: 'shield',
+						label: () => $L('Blocked Ratings'),
+						desc: () => $L('Content rating restrictions'),
+						icon: 'family_restroom',
 						action: (ctx) => ctx.actions.openParentalControls()
 					},
 					{kind: KIND.TOGGLE, key: 'exitConfirmation', label: () => $L('Confirm Exit'), desc: () => $L('Show confirmation before exiting'), icon: 'exit'},

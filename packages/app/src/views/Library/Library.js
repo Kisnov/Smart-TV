@@ -13,6 +13,7 @@ import {getImageUrl, getPrimaryImageId, formatDuration} from '../../utils/helper
 import useQuickReturnGrid from '../../hooks/useQuickReturnGrid';
 import {useSettings} from '../../context/SettingsContext';
 import {isMdblistEnabled} from '../../services/mdblistApi';
+import {withoutBlockedItems} from '../../services/parentalControls';
 import MediaRow from '../../components/MediaRow';
 import {LIBRARY_GROUP_OPTIONS, groupLibraryItems} from '../../utils/libraryGroupBy';
 import {groupPlaylists, playlistCategoryFromItems, playlistNeedsItemCheck} from '../../utils/playlistGrouping';
@@ -203,6 +204,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const [allItems, setAllItems] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [totalCount, setTotalCount] = useState(0);
+	// What the ratings filter dropped from the fetched pages, so the count shown leaves it out.
+	const [blockedCount, setBlockedCount] = useState(0);
+	const shownCount = Math.max(0, totalCount - blockedCount);
 	const [favoritesOnly, setFavoritesOnly] = useState(false);
 	const [playedFilter, setPlayedFilter] = useState('all');
 	const [likedFilter, setLikedFilter] = useState('all');
@@ -358,6 +362,19 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			loadingMoreRef.current = true;
 		}
 
+		// Paging runs on what the server sent, while the list and count leave out what the ratings
+		// filter dropped.
+		const showPage = (fetched) => {
+			const visibleItems = withoutBlockedItems(fetched);
+			setBlockedCount(prev => (append ? prev : 0) + fetched.length - visibleItems.length);
+			setAllItems(prev => {
+				if (!append) return visibleItems;
+				const combined = [...prev, ...visibleItems];
+				const seen = new Set();
+				return combined.filter(i => { if (seen.has(i.Id)) return false; seen.add(i.Id); return true; });
+			});
+		};
+
 		try {
 			const sortOption = SORT_OPTIONS.find(o => o.key === sortKey) || MUSIC_SORT_OPTIONS.find(o => o.key === sortKey) || SORT_OPTIONS[0];
 			// Picking the sort already in use flips its direction, so a stored order
@@ -405,12 +422,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				}
 				if (generation !== fetchGenerationRef.current) return;
 				apiFetchIndexRef.current = append ? apiFetchIndexRef.current + newItems.length : newItems.length;
-				setAllItems(prev => {
-					if (!append) return newItems;
-					const combined = [...prev, ...newItems];
-					const seen = new Set();
-					return combined.filter(i => { if (seen.has(i.Id)) return false; seen.add(i.Id); return true; });
-				});
+				showPage(newItems);
 				setTotalCount(result.TotalRecordCount || 0);
 			} else {
 				const params = {
@@ -491,12 +503,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 				apiFetchIndexRef.current = append ? apiFetchIndexRef.current + (result.Items?.length || 0) : (result.Items?.length || 0);
 				if (generation !== fetchGenerationRef.current) return;
-				setAllItems(prev => {
-					if (!append) return newItems;
-					const combined = [...prev, ...newItems];
-					const seen = new Set();
-					return combined.filter(i => { if (seen.has(i.Id)) return false; seen.add(i.Id); return true; });
-				});
+				showPage(newItems);
 				setTotalCount(result.TotalRecordCount || 0);
 			}
 		} catch (err) { console.error('[Library] loadItems error:', err); } finally {
@@ -585,6 +592,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			setIsLoading(true);
 			setAllItems([]);
 			setTotalCount(0);
+			setBlockedCount(0);
 			loadingMoreRef.current = false;
 			apiFetchIndexRef.current = 0;
 			initialFocusDoneRef.current = false;
@@ -1223,12 +1231,12 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 										)}
 									</span>
 								))}
-								<div className={css.itemCount}>{totalCount} {$L('Items')}</div>
+								<div className={css.itemCount}>{shownCount} {$L('Items')}</div>
 							</div>
 						) : (
 							<>
 								<div className={css.libraryTitle}>{displayName}</div>
-								<div className={css.itemCount}>{totalCount} {$L('Items')}</div>
+								<div className={css.itemCount}>{shownCount} {$L('Items')}</div>
 							</>
 						)}
 					</div>
@@ -1366,7 +1374,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 				<div className={css.statusBar}>
 					<div className={css.statusText}>{statusText}</div>
-					<div className={css.statusCount}>{items.length} | {totalCount}</div>
+					<div className={css.statusCount}>{items.length} | {shownCount}</div>
 				</div>
 			</div>
 

@@ -477,7 +477,7 @@ export const api = {
 
 	search: async (query, limit = 240) => {
 		const [itemsResult, peopleResult] = await Promise.all([
-			request(`${userRoutes.items()}searchTerm=${encodeURIComponent(query)}&Limit=${limit}&Recursive=true&IncludeItemTypes=Book,Movie,Series,Season,Episode,Video,MusicVideo,Trailer,Program,Playlist,MusicArtist,MusicAlbum,Audio,PhotoAlbum,Photo,BoxSet,Folder&Fields=PrimaryImageAspectRatio,ProductionYear,AlbumArtist,SeriesName,ParentIndexNumber,IndexNumber,ProviderIds,UserData`),
+			request(`${userRoutes.items()}searchTerm=${encodeURIComponent(query)}&Limit=${limit}&Recursive=true&IncludeItemTypes=Book,Movie,Series,Season,Episode,Video,MusicVideo,Trailer,Program,Playlist,MusicArtist,MusicAlbum,Audio,PhotoAlbum,Photo,BoxSet,Folder&Fields=PrimaryImageAspectRatio,ProductionYear,AlbumArtist,SeriesName,ParentIndexNumber,IndexNumber,ProviderIds,UserData,OfficialRating`),
 			request(`/Persons?searchTerm=${encodeURIComponent(query)}&Limit=${limit}&Fields=PrimaryImageAspectRatio`)
 		]);
 
@@ -538,7 +538,7 @@ export const api = {
 	getRandomItem: (includeTypes = 'Movie,Series') =>
 		request(`${userRoutes.items()}IncludeItemTypes=${includeTypes}&Recursive=true&SortBy=Random&Limit=1&Fields=PrimaryImageAspectRatio,Overview&ExcludeItemTypes=BoxSet`),
 
-	getRandomItems: (contentType = 'both', limit = 10, parentId = null, genreName = null, fields = 'PrimaryImageAspectRatio,Overview,Genres,ProviderIds,RemoteTrailers') => {
+	getRandomItems: (contentType = 'both', limit = 10, parentId = null, genreName = null, fields = 'PrimaryImageAspectRatio,Overview,Genres,ProviderIds,RemoteTrailers,OfficialRating') => {
 		let includeTypes;
 		switch (contentType) {
 			case 'movies':
@@ -565,7 +565,7 @@ export const api = {
 
 	// With no sort the server hands back the arrangement the collection keeps
 	getCollectionItems: (collectionId, limit = 50, sortBy = null, sortOrder = 'Ascending') =>
-		request(`${userRoutes.items()}ParentId=${collectionId}&Limit=${limit}&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,ProviderIds,RemoteTrailers&HasBackdrop=true${sortBy ? `&SortBy=${encodeURIComponent(sortBy)}&SortOrder=${encodeURIComponent(sortOrder)}` : ''}`),
+		request(`${userRoutes.items()}ParentId=${collectionId}&Limit=${limit}&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,ProviderIds,RemoteTrailers,OfficialRating&HasBackdrop=true${sortBy ? `&SortBy=${encodeURIComponent(sortBy)}&SortOrder=${encodeURIComponent(sortOrder)}` : ''}`),
 
 	// Get all movies and series for genres page
 	getAllItems: (limit = 10000) =>
@@ -597,11 +597,6 @@ export const api = {
 
 	getIntros: (itemId) =>
 		request(userRoutes.extras(itemId, 'Intros')),
-
-	// The distinct filter values across the libraries, used by parental controls
-	// to list which official ratings actually exist.
-	getRatingFilters: () =>
-		request(`/Items/Filters?UserId=${currentUser}&Recursive=true`),
 
 	// The values one library holds, so the filter panel only offers years,
 	// ratings, tags and languages that match something.
@@ -974,7 +969,7 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 		getCollections: (limit = 50, sortBy = 'SortName', sortOrder = 'Ascending') =>
 			serverRequest(`${serverUserRoutes.items()}IncludeItemTypes=BoxSet&Recursive=true&SortBy=${encodeURIComponent(sortBy)}&SortOrder=${encodeURIComponent(sortOrder)}&Limit=${limit}&Fields=PrimaryImageAspectRatio,ProductionYear,OfficialRating`),
 
-		getRandomItems: (contentType = 'both', limit = 10, parentId = null, genreName = null, fields = 'PrimaryImageAspectRatio,Overview,Genres,ProviderIds') => {
+		getRandomItems: (contentType = 'both', limit = 10, parentId = null, genreName = null, fields = 'PrimaryImageAspectRatio,Overview,Genres,ProviderIds,OfficialRating') => {
 			let includeTypes;
 			switch (contentType) {
 				case 'movies':
@@ -995,7 +990,7 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 			serverRequest(`${serverUserRoutes.items()}IncludeItemTypes=${includeTypes}&Recursive=true&SortBy=Random&Limit=1&Fields=PrimaryImageAspectRatio,Overview&ExcludeItemTypes=BoxSet`),
 
 		search: (query, limit = 240) =>
-			serverRequest(`${serverUserRoutes.items()}SearchTerm=${encodeURIComponent(query)}&IncludeItemTypes=Book,Movie,Series,Season,Episode,Video,MusicVideo,Trailer,Program,Playlist,Person,MusicArtist,MusicAlbum,Audio,PhotoAlbum,Photo,BoxSet,Folder&Recursive=true&Limit=${limit}&Fields=PrimaryImageAspectRatio,Overview,AlbumArtist,SeriesName,ParentIndexNumber,IndexNumber,ProviderIds,UserData`),
+			serverRequest(`${serverUserRoutes.items()}SearchTerm=${encodeURIComponent(query)}&IncludeItemTypes=Book,Movie,Series,Season,Episode,Video,MusicVideo,Trailer,Program,Playlist,Person,MusicArtist,MusicAlbum,Audio,PhotoAlbum,Photo,BoxSet,Folder&Recursive=true&Limit=${limit}&Fields=PrimaryImageAspectRatio,Overview,AlbumArtist,SeriesName,ParentIndexNumber,IndexNumber,ProviderIds,UserData,OfficialRating`),
 
 		getSimilar: (itemId, limit = 12, bypass = null) => {
 			const bypassQuery = bypass ? `&bypass=${encodeURIComponent(bypass)}` : '';
