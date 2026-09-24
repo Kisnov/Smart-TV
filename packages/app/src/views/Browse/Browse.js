@@ -510,6 +510,8 @@ const Browse = ({
 
 	const handleFeaturedFocusCallback = useCallback(() => {
 		setBrowseMode('featured');
+		// Picking from the bar should come back to the bar, not to a row left earlier.
+		lastFocusedRowRef.current = null;
 		detailSectionRef.current?.clearFocusedItem();
 	}, [setBrowseMode]);
 
