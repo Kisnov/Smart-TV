@@ -52,7 +52,7 @@ const GalleryBanner = memo(({
 		if (featuredItems.length > 1) setActiveIndex((prev) => (prev + 1) % featuredItems.length);
 	}, [featuredItems.length]);
 
-	const {trailerActive, trailerContainerRef} = useTrailerPreview({
+	const {trailerActive, trailerHolding, trailerContainerRef} = useTrailerPreview({
 		currentItem: currentFeatured,
 		// The banner stays mounted behind the settings overlay so the hero keeps its
 		// place, but the trailer has to stop or it plays on underneath it.
@@ -134,12 +134,12 @@ const GalleryBanner = memo(({
 			settings.autoAdvanceInterval,
 			settings.carouselSpeed
 		);
-		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerHolding) return;
 
 		carouselIntervalRef.current = setInterval(() => {
 			setActiveIndex((prev) => (prev + 1) % featuredItems.length);
 		}, carouselSpeed);
-	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerActive]);
+	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerHolding]);
 
 	useEffect(() => {
 		startCarouselTimer();
