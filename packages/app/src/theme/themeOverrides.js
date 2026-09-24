@@ -33,6 +33,7 @@ import searchCss from '../views/Search/Search.module.less';
 import detailsCss from '../views/Details/Details.module.less';
 import trackOptionCss from '../components/TrackOptionRow/TrackOptionRow.module.less';
 import modernDetailCss from '../views/Details/ModernDetailContent.module.less';
+import modernFileInfoCss from '../views/Details/ModernFileInformation.module.less';
 import spotlightCss from '../views/Details/spotlight/SpotlightDetailContent.module.less';
 import spotlightCardCss from '../views/Details/spotlight/SpotlightSummaryCard.module.less';
 import spotlightModalCss from '../views/Details/spotlight/SpotlightSectionModal.module.less';
@@ -50,6 +51,8 @@ import modernCardCss from '../components/MediaCard/ModernMediaCard.module.less';
 import mediaRowCss from '../components/MediaRow/MediaRow.module.less';
 import modernRowCss from '../components/MediaRow/ModernMediaRow.module.less';
 import ratingsCss from '../components/RatingsRow/RatingsRow.module.less';
+import itemMenuCss from '../components/ItemContextMenu/ItemContextMenu.module.less';
+import skeletonCss from '../components/Skeleton/Skeleton.module.less';
 
 const STYLE_ELEMENT_ID = 'moonfin-theme-overrides';
 
@@ -232,7 +235,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${settingsCss.actionButton}:focus`, `background: ${buttonFocused}; border-color: ${focusColor}; color: ${buttonInk};`);
 	rule(`.${settingsCss.dangerButton}:focus`, `background: ${recordingActive} !important; border-color: ${recordingActive} !important; color: #fff;`);
 	rule(`.${settingsCss.actionButtonActive}`, `background: ${buttonActive}; color: ${onButtonNormal};`);
-	rule(`.${settingsCss.statusMessage}, .${settingsCss.authHint}, .${settingsCss.viewDescription}, .${settingsCss.themeCardDescription}, .${settingsCss.themeStoreMessage}`, `color: ${os(0.7)};`);
+	rule(`.${settingsCss.statusMessage}, .${settingsCss.authHint}, .${settingsCss.viewDescription}, .${settingsCss.viewCaption}, .${settingsCss.themeCardDescription}, .${settingsCss.themeStoreMessage}`, `color: ${os(0.7)};`);
 	rule(`.${settingsCss.statusError}`, `color: ${error};`);
 	rule(`.${settingsCss.loadingMessage}, .${settingsCss.integrationSpec}`, `color: ${os(0.45)};`);
 	rule(`.${settingsCss.themeCardCheck}, .${settingsCss.themeStoreCardAction}`, `color: ${accent};`);
@@ -303,6 +306,9 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${modernDetailCss.episodeWatched}`, `background: ${badgeWatched}; border-color: ${onBadge};`);
 	rule(`.${modernDetailCss.episodeWatched} svg`, `fill: ${onBadge}; stroke: ${onBadge};`);
 	rule(`.${tabBarCss.tabBar}`, `background: ${os(0.08)};`);
+	rule(`.${modernFileInfoCss.trackActive}`, `border-color: ${accent};`);
+	rule(`.${modernFileInfoCss.showAll}, .${modernFileInfoCss.retry}, .${modernFileInfoCss.reasonHint}`, `color: ${accent};`);
+	rule(`.${modernFileInfoCss.showAll}:focus, .${modernFileInfoCss.retry}:focus`, `border-color: ${focusColor};`);
 
 	// Detail screens, spotlight layout
 	rule(`.${spotlightCss.metaRow}, .${spotlightCss.techSize}`, `color: ${os(0.75)};`);
@@ -326,6 +332,9 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${nouveauFooterCss.capabilityRetry}:focus`, `border-color: ${focusColor};`);
 	rule(`.${modernDetailCss.overflowPanel}`, `background: ${surfaceA(0.97)}; border-color: ${os(0.12)};`);
 	rule(`.${modernDetailCss.overflowTitle}`, `color: ${onBackground};`);
+	rule(`.${itemMenuCss.panel}`, `background: ${surfaceA(0.97)}; border-color: ${os(0.12)};`);
+	rule(`.${itemMenuCss.title}, .${itemMenuCss.row}, .${itemMenuCss.button}`, `color: ${onBackground};`);
+	rule(`.${itemMenuCss.row}:focus, .${itemMenuCss.button}:focus`, `background: ${os(0.1)}; border-color: ${focusColor};`);
 	rule(`.${tabBarCss.tab}`, `color: ${os(0.75)};`);
 	rule(`.${tabBarCss.tabActive}`, `background: ${accent}; color: ${onAccent};`);
 	rule(`.${tabBarCss.tab}:focus`, `border-color: ${focusColor};`);
@@ -341,7 +350,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${browseCss.ayaIndicatorActive}`, `background: ${onSurface};`);
 	rule(`.${backdropCss.globalBackdropOverlay}`, `background: ${toCssColor(c.scrim)};`);
 	rule(`.${browseCss.featuredGradient}`, `background: -webkit-linear-gradient(top, ${scrim(0.3)} 0%, ${scrim(0.1)} 40%, ${scrim(0.8)} 100%); background: linear-gradient(to bottom, ${scrim(0.3)} 0%, ${scrim(0.1)} 40%, ${scrim(0.8)} 100%);`);
-	rule(`.${browseCss.loadingContainer} p, .${browseCss.detailPlaceholder} p, .${browseCss.empty}`, `color: ${os(0.7)};`);
+	rule(`.${browseCss.detailPlaceholder} p, .${browseCss.empty}`, `color: ${os(0.7)};`);
 	// The card takes the media bar's own overlay color at three quarters of its
 	// opacity, outlined with the theme's card border.
 	const mediaBarFill = toCssColorWithAlpha(
@@ -369,6 +378,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${browseCss.galleryPillOutlined}`, `background: transparent; border-color: ${os(0.55)};`);
 	rule(`.${browseCss.galleryCreditLabel}`, `color: ${accent};`);
 	rule(`.${browseCss.galleryShimmer} span`, `background: ${os(0.1)};`);
+	rule(`.${skeletonCss.box}`, `background-color: ${theme.isGlass ? 'rgba(255, 255, 255, 0.16)' : os(0.14)};`);
 	rule(`.${browseCss.bannerCard}:focus`, `border-color: ${focusColor}; box-shadow: ${glowOr(`0 0 18px ${accentA(0.4)}`)};`);
 	rule(`.${browseCss.bannerGradient}`, `background: linear-gradient(to right, ${scrim(0.9)}, ${scrim(0)});`);
 	rule(`.${browseCss.bannerMeta}`, `color: ${os(0.75)};`);

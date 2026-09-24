@@ -5,6 +5,7 @@ jest.mock('@enact/i18n/$L', () => ({__esModule: true, default: (str) => str}));
 import {buildBrowseRows, sameRowList} from './buildBrowseRows';
 import {FAVORITE_ROW_CONFIGS} from './browseFilters';
 import {FAVORITE_ROW_IDS} from '../../utils/homeRowGates';
+import {parentalFilterFromRatings} from '../../utils/parentalFilter';
 
 const row = (id, items = [], extra = {}) => ({id, items, title: id, ...extra});
 const item = (Id, extra = {}) => ({Id, ...extra});
@@ -197,7 +198,7 @@ describe('blocked ratings', () => {
 		const rows = build({
 			allRowData: rowsWithRatings(),
 			homeRowsConfig: config,
-			settings: settings({blockedRatings: ['R']})
+			settings: settings({parentalFilter: parentalFilterFromRatings(['R'])})
 		});
 
 		expect(rows[0].items.map((i) => i.Id)).toEqual(['2', '3']);
@@ -207,7 +208,7 @@ describe('blocked ratings', () => {
 		const rows = build({
 			allRowData: [row('collections', [item('1', {OfficialRating: ' r '})])],
 			homeRowsConfig: config,
-			settings: settings({blockedRatings: ['R']})
+			settings: settings({parentalFilter: parentalFilterFromRatings(['R'])})
 		});
 
 		expect(rows).toEqual([]);
@@ -217,10 +218,24 @@ describe('blocked ratings', () => {
 		const rows = build({
 			allRowData: rowsWithRatings(),
 			homeRowsConfig: config,
-			settings: settings({blockedRatings: []})
+			settings: settings({parentalFilter: parentalFilterFromRatings([])})
 		});
 
 		expect(rows[0].items).toHaveLength(3);
+	});
+
+	test('blocking a rating also drops everything stronger than it', () => {
+		const rows = build({
+			allRowData: [row('collections', [
+				item('1', {OfficialRating: 'NC-17'}),
+				item('2', {OfficialRating: 'TV-MA'}),
+				item('3', {OfficialRating: 'PG-13'})
+			])],
+			homeRowsConfig: config,
+			settings: settings({parentalFilter: parentalFilterFromRatings(['R'])})
+		});
+
+		expect(rows[0].items.map((i) => i.Id)).toEqual(['3']);
 	});
 });
 
@@ -271,5 +286,73 @@ describe('row subtitles', () => {
 		});
 
 		expect(rows[0].subtitle).toBeUndefined();
+	});
+});
+
+describe('loading placeholders', () => {
+	const config = [
+		{id: 'resume', name: 'Continue Watching', enabled: true, order: 0},
+		{id: 'latest-media', name: 'Recently Added Media', enabled: true, order: 1},
+		{id: 'collections', name: 'Collections', enabled: true, order: 2},
+		{id: 'audioalbums', name: 'Music Albums', enabled: true, order: 3},
+		{id: 'sinceyouwatched1', name: 'Since You Watched Row 1', enabled: true, order: 4},
+		{id: 'genres', name: 'Genres', enabled: false, order: 5}
+	];
+
+	test('a section still loading holds its place under its own title', () => {
+		const rows = build({
+			allRowData: [row('resume', [item('a')])],
+			homeRowsConfig: config,
+			settings: settings({displayAudioRows: true}),
+			pendingSections: ['latest-media', 'collections', 'audioalbums', 'sinceyouwatched1']
+		});
+
+		expect(rows.map((r) => [r.id, r.title, Boolean(r.isPlaceholder)])).toEqual([
+			['resume', 'Continue Watching', false],
+			['latest-media', 'Recently Added Media', true],
+			['collections', 'Collections', true],
+			['audioalbums', 'Music Albums', true],
+			['sinceyouwatched1', 'Since you watched', true]
+		]);
+		expect(rows[3].type).toBe('square');
+		expect(rows[2].type).toBe('portrait');
+	});
+
+	test('a section the viewer has switched off gets no placeholder', () => {
+		const rows = build({
+			homeRowsConfig: config,
+			settings: settings({displayCollectionsRows: false}),
+			pendingSections: ['collections', 'genres']
+		});
+
+		expect(rows).toEqual([]);
+	});
+
+	test('a placeholder gives way to the row it was holding a place for', () => {
+		const rows = build({
+			allRowData: [row('collections', [item('a')])],
+			homeRowsConfig: config,
+			pendingSections: ['collections']
+		});
+
+		expect(rows.map((r) => [r.id, Boolean(r.isPlaceholder)])).toEqual([['collections', false]]);
+	});
+
+	test('a plugin section is titled and gated by the plugin list', () => {
+		const rows = build({
+			pluginSectionsConfig: [{id: 'plugin:a', name: 'Plugin A', enabled: true, order: 0}, {id: 'plugin:b', name: 'Plugin B', enabled: false, order: 1}],
+			pendingSections: ['plugin:a', 'plugin:b']
+		});
+
+		expect(rows.map((r) => [r.id, r.title])).toEqual([['plugin:a', 'Plugin A']]);
+	});
+
+	test('rows reported by the other sources keep their titles and pick up their source label', () => {
+		const rows = build({
+			homeRowsConfig: [{id: 'imdb-top250-movies', enabled: true, order: 0}],
+			pendingRows: [{id: 'imdb-top250-movies', title: 'IMDb Top 250 Movies'}]
+		});
+
+		expect(rows.map((r) => [r.title, r.subtitle, Boolean(r.isPlaceholder)])).toEqual([['IMDb Top 250 Movies', 'IMDb List', true]]);
 	});
 });

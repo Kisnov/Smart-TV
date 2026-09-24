@@ -64,7 +64,7 @@ const NouveauDetailContent = (props) => {
 		episodes = [], seriesEpisodes = [], nextUp = [], seasons = [],
 		collectionItems = [], playlistItems = [], effectiveApi,
 		mediaSource, selectedAudioIndex, selectedSubtitleIndex,
-		spotlightBackRef, overviewBackRef, seerrNav, onSelectStudio, loadMoreCollectionItems
+		spotlightBackRef, overviewBackRef, seerrNav, onSelectStudio, loadMoreCollectionItems, collectionMenu
 	} = props;
 
 	const {isEnabled: seerrEnabled} = useSeerr();
@@ -480,6 +480,7 @@ const NouveauDetailContent = (props) => {
 						onNavigateUp={handleNavigateUp}
 						onNavigateDown={handleNavigateDown}
 						renderItem={renderCollectionCard}
+						itemMenu={collectionMenu}
 					/>
 					{sortedPlaylist.length > 0 && (
 						<>
@@ -498,6 +499,7 @@ const NouveauDetailContent = (props) => {
 								onNavigateDown={handleNavigateDown}
 								onNearEnd={loadMoreCollectionItems}
 								renderItem={renderPlaylistCard}
+								itemMenu={collectionMenu}
 							/>
 						</>
 					)}
@@ -529,6 +531,7 @@ const NouveauDetailContent = (props) => {
 						onNavigateUp={handleNavigateUp}
 						onNavigateDown={handleNavigateDown}
 						renderItem={renderEpisode}
+						itemMenu
 					/>
 				</>
 			);
@@ -548,6 +551,7 @@ const NouveauDetailContent = (props) => {
 						onNavigateUp={handleNavigateUp}
 						onNavigateDown={handleNavigateDown}
 						renderItem={renderPosterCard}
+						itemMenu
 					/>
 					<NouveauRail
 						title={$L('Recommendations')}
@@ -593,6 +597,7 @@ const NouveauDetailContent = (props) => {
 					onNavigateUp={handleNavigateUp}
 					onNavigateDown={handleNavigateDown}
 					renderItem={renderPosterCard}
+					itemMenu
 				/>
 			);
 		}

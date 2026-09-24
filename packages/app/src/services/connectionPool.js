@@ -6,6 +6,7 @@
 
 import * as multiServerManager from './multiServerManager';
 import {createApiForServer} from './jellyfinApi';
+import {withoutBlockedItems} from './parentalControls';
 import {deduplicateMediaItems} from '../utils/mediaDedup';
 import {latestMediaFetchLimitForCollection} from '../utils/latestMediaRowNormalizer';
 
@@ -77,13 +78,15 @@ export const executeAll = async (apiFn, options = {}) => {
 		results.push(...serverResults);
 	});
 
+	// Libraries and the like carry no rating, so they pass through untouched.
+	let processedResults = withoutBlockedItems(results);
+
 	// Deduplicate if requested, by provider identity or a plain field
-	let processedResults = results;
 	if (dedupe === 'provider') {
-		processedResults = deduplicateMediaItems(results);
+		processedResults = deduplicateMediaItems(processedResults);
 	} else if (dedupe) {
 		const seen = new Set();
-		processedResults = results.filter(item => {
+		processedResults = processedResults.filter(item => {
 			const key = item[dedupe];
 			if (seen.has(key)) {
 				return false;
@@ -491,7 +494,7 @@ export const getGenreItemsFromAllServers = async (params) => {
 		})
 	);
 
-	const allItems = results.flatMap(r => r.items);
+	const allItems = withoutBlockedItems(results.flatMap(r => r.items));
 	const totalCount = results.reduce((sum, r) => sum + r.count, 0);
 
 	return {

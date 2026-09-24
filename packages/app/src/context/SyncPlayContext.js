@@ -24,18 +24,17 @@ export const SyncPlayProvider = ({children}) => {
 	const [playQueueUpdate, setPlayQueueUpdate] = useState(null);
 	const queueSeqRef = useRef(0);
 	const queueItemRef = useRef(null);
-	const [displayMessage, setDisplayMessage] = useState(null);
 	const listenerRef = useRef(null);
 
 	useEffect(() => {
-		// Emby has no SyncPlay; opening the socket just spams /SyncPlay/Ping with 404s.
+		// Emby has no SyncPlay, and asking it for the clock or a ping only earns 404s.
 		if (isAuthenticated && serverType !== 'emby' && settings.syncplayEnabled !== false) {
-			syncPlayService.connectWebSocket();
+			syncPlayService.start();
 		} else {
-			syncPlayService.disconnectWebSocket();
+			syncPlayService.stop();
 		}
 		return () => {
-			syncPlayService.disconnectWebSocket();
+			syncPlayService.stop();
 		};
 	}, [isAuthenticated, serverType, settings.syncplayEnabled]);
 
@@ -71,9 +70,6 @@ export const SyncPlayProvider = ({children}) => {
 					break;
 				case 'playbackCommand':
 					setLastCommand(data);
-					break;
-				case 'displayMessage':
-					setDisplayMessage(data);
 					break;
 				case 'playQueue': {
 					setPlayQueue(data);
@@ -176,11 +172,9 @@ export const SyncPlayProvider = ({children}) => {
 		isInGroup: !!group,
 		isDialogOpen,
 		lastCommand,
-		displayMessage,
 		playQueueItem: playQueueUpdate?.item ?? null,
 		playQueue,
 		playQueueUpdate,
-		clearDisplayMessage: useCallback(() => setDisplayMessage(null), []),
 		refreshGroups,
 		getGroupPositionTicks,
 		getGroup: syncPlayService.getGroup,

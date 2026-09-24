@@ -1,4 +1,4 @@
-import {Fragment, useState, useEffect, useMemo} from 'react';
+import {Fragment, useCallback, useState, useEffect, useMemo} from 'react';
 import $L from '@enact/i18n/$L';
 
 import MediaRow from '../../components/MediaRow';
@@ -22,6 +22,7 @@ import {fetchUpcomingEpisode, formatUpcomingEpisode} from '../../utils/upcomingE
 import {DETAIL_ICON_PATHS} from './detailIcons';
 import {showsWatchedCheck} from '../../utils/playedState';
 import {AnimeEpisodePills, AnimeItemPills} from '../../components/AnimeMarkerPills';
+import useItemMenuHold, {itemWithIdAt} from '../../hooks/useItemMenuHold';
 
 import css from './Details.module.less';
 
@@ -73,9 +74,13 @@ const ClassicDetailScreen = ({
 	onChapterSelect,
 	onExtraSelect,
 	onCastSelect,
-	onSelectItem
+	onSelectItem,
+	collectionMenu
 }) => {
 	const [upcomingEpisode, setUpcomingEpisode] = useState(null);
+
+	const episodeAt = useCallback((target) => itemWithIdAt(episodes, 'data-episode-id', target), [episodes]);
+	const episodeMenuHold = useItemMenuHold(episodeAt);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -299,7 +304,7 @@ const ClassicDetailScreen = ({
 							{item.ParentIndexNumber !== undefined ? $L('Season {number} Episodes').replace('{number}', item.ParentIndexNumber) : $L('Episodes')}
 						</h3>
 					</div>
-					<div className={css.sectionScroll} onFocus={handleScrollerFocus}>
+					<div className={css.sectionScroll} onFocus={handleScrollerFocus} {...episodeMenuHold}>
 						{episodes.map(ep => {
 							// The episode carries the series artwork on most records, and the
 							// screen's own item stands in for the ones that don't.
@@ -369,6 +374,7 @@ const ClassicDetailScreen = ({
 					serverUrl={serverUrl}
 					onSelectItem={onSelectItem}
 					className={css.inlineRow}
+					menuOptions={collectionMenu}
 				/>
 			)}
 

@@ -1,7 +1,9 @@
+import {useCallback, useState} from 'react';
 import $L from '@enact/i18n/$L';
 
 import {DETAIL_ICON_PATHS} from './detailIcons';
 import {iconViewBox} from '../../components/icons/iconViewBox';
+import LoopMarquee from '../../components/LoopMarquee';
 import {personalRatingIconPath, personalRatingLabel} from './personalRatingAction';
 import {SpottableDiv} from './detailsSpottables';
 
@@ -13,20 +15,31 @@ const Icon = ({path}) => (
 	</svg>
 );
 
-// A circular icon button that expands into a labeled pill when focused.
-export const ActionButton = ({path, label, detail, onClick, active, group, primary, spotlightId}) => (
-	<SpottableDiv
-		className={`${css.actionBtn} ${primary ? css.actionPrimary : ''} ${active ? css.actionActive : ''} ${group ? css.actionGroup : ''}`}
-		onClick={onClick}
-		spotlightId={spotlightId}
-	>
-		<span className={css.actionIcon}><Icon path={path} /></span>
-		<span className={css.actionText}>
-			<span className={css.actionLabel}>{label}</span>
-			{detail && <span className={css.actionDetail}>{detail}</span>}
-		</span>
-	</SpottableDiv>
-);
+// A circular icon button that expands into a labeled pill when focused. A label longer than the
+// opened pill scrolls while it has focus, and Play and Resume grow to fit theirs instead.
+export const ActionButton = ({path, label, detail, onClick, active, group, primary, spotlightId}) => {
+	const [focused, setFocused] = useState(false);
+	const handleFocus = useCallback(() => setFocused(true), []);
+	const handleBlur = useCallback(() => setFocused(false), []);
+
+	return (
+		<SpottableDiv
+			className={`${css.actionBtn} ${primary ? css.actionPrimary : ''} ${active ? css.actionActive : ''} ${group ? css.actionGroup : ''}`}
+			onClick={onClick}
+			onFocus={handleFocus}
+			onBlur={handleBlur}
+			spotlightId={spotlightId}
+		>
+			<span className={css.actionIcon}><Icon path={path} /></span>
+			<span className={css.actionText}>
+				{primary
+					? <span className={css.actionLabel}>{label}</span>
+					: <LoopMarquee className={css.actionLabel} text={label} active={focused} />}
+				{detail && <span className={css.actionDetail}>{detail}</span>}
+			</span>
+		</SpottableDiv>
+	);
+};
 
 // Every action a detail screen can offer, in one place because the screens draw the same set
 // differently. Modern and Spotlight lay them out in a single capped row, Nouveau keeps three

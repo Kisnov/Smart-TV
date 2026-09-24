@@ -8,7 +8,8 @@ export const browseInitialState = {
 	isLoading: true,
 	browseMode: 'featured',
 	allRowData: [],
-	featuredItems: []
+	featuredItems: [],
+	pendingSections: []
 };
 
 const dedupeById = (rows) => {
@@ -79,6 +80,14 @@ export default function browseReducer (state, action) {
 			return {...state, browseMode: action.mode};
 		case 'SET_FEATURED_ITEMS':
 			return {...state, featuredItems: action.items};
+		case 'SET_PENDING_SECTIONS':
+			if (action.sections.length === 0 && state.pendingSections.length === 0) return state;
+			return {...state, pendingSections: action.sections};
+		case 'SECTIONS_DONE': {
+			const pendingSections = state.pendingSections.filter((id) => !action.sections.includes(id));
+			if (pendingSections.length === state.pendingSections.length) return state;
+			return {...state, pendingSections};
+		}
 		default:
 			return state;
 	}

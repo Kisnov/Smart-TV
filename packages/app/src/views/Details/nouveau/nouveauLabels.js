@@ -1,6 +1,7 @@
 import $L from '@enact/i18n/$L';
 
 import {videoResolutionLabel} from '../../../utils/helpers';
+import {formatPlaybackDuration} from '../../../utils/playbackTimeLabels';
 
 const collectionTypeLabel = (type) => {
 	switch (type) {
@@ -11,21 +12,10 @@ const collectionTypeLabel = (type) => {
 	}
 };
 
-// Where a chapter starts, written as a clock reading. The app's own duration formatter is the wrong
-// one here: it answers how long something runs, so it says "5m" where this wants "5:00" and says
-// nothing at all for the very start of a file.
-const formatChapterTime = (ticks) => {
-	const totalSeconds = Math.max(0, Math.floor((Number(ticks) || 0) / 10000000));
-	const hours = Math.floor(totalSeconds / 3600);
-	const minutes = Math.floor(totalSeconds / 60);
-	const seconds = String(totalSeconds % 60).padStart(2, '0');
-
-	if (hours > 0) {
-		return `${hours}:${String(minutes % 60).padStart(2, '0')}:${seconds}`;
-	}
-
-	return `${minutes}:${seconds}`;
-};
+// Where a chapter starts, written as a clock reading. formatDuration is the wrong one here: it
+// answers how long something runs, so it says "5m" where this wants "5:00" and says nothing at
+// all for the very start of a file.
+const formatChapterTime = (ticks) => formatPlaybackDuration((Number(ticks) || 0) / 10000000);
 
 // Times come off the server written a few different ways, so they are compared in one form rather
 // than as typed. Leading zeros go, and an hour of zero is dropped entirely.

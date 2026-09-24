@@ -7,16 +7,29 @@ export const SUBTITLE_SIZE_OPTIONS = [
 	{ value: 'xlarge', label: $L('Extra Large'), fontSize: 60 }
 ];
 
-export const SUBTITLE_COLOR_OPTIONS = [
+// The palette the other clients offer, in their order. The three see-through entries carry their
+// own alpha as #rrggbbaa. The text fill leaves out Transparent, which would hide the text.
+const subtitlePalette = ({allowTransparent}) => [
 	{ value: '#ffffff', label: $L('White') },
+	{ value: '#cccccc', label: $L('Light Gray') },
+	{ value: '#808080', label: $L('Gray') },
+	{ value: '#404040', label: $L('Dark Gray') },
+	{ value: '#000000', label: $L('Black') },
 	{ value: '#ffff00', label: $L('Yellow') },
-	{ value: '#00ffff', label: $L('Cyan') },
-	{ value: '#ff00ff', label: $L('Magenta') },
 	{ value: '#00ff00', label: $L('Green') },
+	{ value: '#00ffff', label: $L('Cyan') },
+	{ value: '#0000ff', label: $L('Blue') },
+	{ value: '#ff00ff', label: $L('Magenta') },
 	{ value: '#ff0000', label: $L('Red') },
-	{ value: '#808080', label: $L('Grey') },
-	{ value: '#404040', label: $L('Dark Grey') }
+	{ value: '#000080', label: $L('Navy') },
+	...(allowTransparent ? [{ value: '#00000000', label: $L('Transparent') }] : []),
+	{ value: '#00000080', label: $L('Semi-transparent Black') },
+	{ value: '#ffffff80', label: $L('Semi-transparent White') }
 ];
+
+export const getSubtitleColorOptions = () => subtitlePalette({allowTransparent: false});
+export const getSubtitleShadowColorOptions = () => subtitlePalette({allowTransparent: true});
+export const getSubtitleBackgroundColorOptions = () => subtitlePalette({allowTransparent: true});
 
 export const SUBTITLE_POSITION_OPTIONS = [
 	{ value: 'bottom', label: $L('Bottom'), offset: 10 },
@@ -24,24 +37,6 @@ export const SUBTITLE_POSITION_OPTIONS = [
 	{ value: 'middle', label: $L('Middle'), offset: 30 },
 	{ value: 'higher', label: $L('Higher'), offset: 40 },
 	{ value: 'absolute', label: $L('Absolute'), offset: 0 }
-];
-
-export const SUBTITLE_SHADOW_COLOR_OPTIONS = [
-	{ value: '#000000', label: $L('Black') },
-	{ value: '#ffffff', label: $L('White') },
-	{ value: '#808080', label: $L('Grey') },
-	{ value: '#404040', label: $L('Dark Grey') },
-	{ value: '#ff0000', label: $L('Red') },
-	{ value: '#00ff00', label: $L('Green') },
-	{ value: '#0000ff', label: $L('Blue') }
-];
-
-export const SUBTITLE_BACKGROUND_COLOR_OPTIONS = [
-	{ value: '#000000', label: $L('Black') },
-	{ value: '#ffffff', label: $L('White') },
-	{ value: '#808080', label: $L('Grey') },
-	{ value: '#404040', label: $L('Dark Grey') },
-	{ value: '#000080', label: $L('Navy') }
 ];
 
 // Every style setting that has an HDR twin stored alongside it.
@@ -77,7 +72,16 @@ export const resolveSubtitleStyleSettings = (settings, isHdr) => {
 	return resolved;
 };
 
-const hexOpacity = (opacity) => Math.round((opacity / 100) * 255).toString(16).padStart(2, '0');
+// A palette value with an opacity slider applied on top. Older TV engines can't read 8 digit hex,
+// so anything short of fully opaque comes out as rgba.
+const toCssColor = (value, opacityPercent) => {
+	const match = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(value || '');
+	if (!match) return value;
+	const alpha = (match[2] ? parseInt(match[2], 16) / 255 : 1) * (opacityPercent / 100);
+	if (alpha >= 1) return `#${match[1]}`;
+	const rgb = [0, 2, 4].map((i) => parseInt(match[1].slice(i, i + 2), 16));
+	return `rgba(${rgb.join(', ')}, ${Math.round(alpha * 1000) / 1000})`;
+};
 
 const SIZE_MAP = { small: 36, medium: 44, large: 52, xlarge: 60 };
 const POSITION_MAP = { bottom: 10, lower: 20, middle: 30, higher: 40 };
@@ -90,13 +94,13 @@ export const getSubtitleOverlayStyle = (settings) => ({
 });
 
 export const getSubtitleTextStyle = (settings) => {
-	const shadowColor = `${settings.subtitleShadowColor || '#000000'}${hexOpacity(settings.subtitleShadowOpacity !== undefined ? settings.subtitleShadowOpacity : 100)}`;
+	const shadowColor = toCssColor(settings.subtitleShadowColor || '#000000', settings.subtitleShadowOpacity !== undefined ? settings.subtitleShadowOpacity : 100);
 	const blur = `${settings.subtitleShadowBlur || 0.1}em`;
 
 	return {
 		fontSize: `${SIZE_MAP[settings.subtitleSize] || 44}px`,
-		backgroundColor: `${settings.subtitleBackgroundColor || '#000000'}${hexOpacity(settings.subtitleBackground !== undefined ? settings.subtitleBackground : 0)}`,
-		color: settings.subtitleColor || '#ffffff',
+		backgroundColor: toCssColor(settings.subtitleBackgroundColor || '#000000', settings.subtitleBackground !== undefined ? settings.subtitleBackground : 0),
+		color: toCssColor(settings.subtitleColor || '#ffffff', 100),
 		textShadow: `-2px -2px ${blur} ${shadowColor}, 2px -2px ${blur} ${shadowColor}, -2px 2px ${blur} ${shadowColor}, 2px 2px ${blur} ${shadowColor}, 0 0 ${blur} ${shadowColor}`
 	};
 };

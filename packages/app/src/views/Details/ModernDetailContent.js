@@ -13,15 +13,19 @@ import RatingsRow from '../../components/RatingsRow';
 import DetailsTabBar from '../../components/DetailsTabBar';
 import ModernActionButtons from './ModernActionButtons';
 import {getImageUrl, formatDuration} from '../../utils/helpers';
+import {formatPlaybackDuration} from '../../utils/playbackTimeLabels';
 import {castPhotoUrl, hidesMediaDescription} from './detailsMedia';
 import {studioCardsFor, studioLogoIndex} from './studioLogos';
 import ExpandableOverview from './ExpandableOverview';
+import ModernFileInformation from './ModernFileInformation';
 import {KEYS} from '../../utils/keys';
 import {DETAIL_ICON_PATHS} from './detailIcons';
 import {iconViewBox} from '../../components/icons/iconViewBox';
 import {arrange} from '../../utils/buttonLayout';
 import {DETAIL_METADATA} from '../../utils/detailMetadataLayout';
 import {fetchUpcomingEpisode, formatUpcomingEpisode} from '../../utils/upcomingEpisode';
+import {episodeCardTitle} from '../../utils/episodeCardTitle';
+import useItemMenuHold, {itemWithIdAt} from '../../hooks/useItemMenuHold';
 import {AnimeEpisodePills, AnimeItemPills} from '../../components/AnimeMarkerPills';
 
 import css from './ModernDetailContent.module.less';
@@ -57,11 +61,14 @@ const ModernDetailContent = (props) => {
 		year, runtime, endsAt, officialRating, seasonCount, genres, tagline,
 		seasons, episodes, similar, extras, cast, crew = [], nextUp, collectionItems, parentCollection = [], parentCollectionName, albumTracks, artistAlbums, playlistItems, personMovies, personSeries, birthDate, birthPlace, episodeRatings,
 		techBadges = [], techSize, overviewBackRef,
-		mediaSource, supportsMediaSourceSelection,
+		mediaSource, supportsMediaSourceSelection, selectedAudioIndex, selectedSubtitleIndex,
 		handleChapterSelect, handleExtraSelect, handleTrackPlay,
 		onSelectItem, onSelectPerson, onSelectStudio,
-		seerr, seerrNav, onSelectSeerrCard, spotlightBackRef
+		seerr, seerrNav, onSelectSeerrCard, spotlightBackRef, collectionMenu
 	} = props;
+
+	const episodeAt = useCallback((target) => itemWithIdAt(episodes, 'data-episode-id', target), [episodes]);
+	const episodeMenuHold = useItemMenuHold(episodeAt);
 
 	// Blur and opacity share one stored value, and the blur options reach 40 while
 	// this scale stops at 25, so a setting carried over from the classic layout is
@@ -341,21 +348,20 @@ const ModernDetailContent = (props) => {
 		}
 	}, [currentTab]);
 
-	const renderGrid = (items, cardType, onSelect = onSelectItem) => (
+	const renderGrid = (items, cardType, onSelect = onSelectItem, menuOptions) => (
 		<RowContainer className={css.grid}>
 			{items.map((it) => (
-				<MediaCard key={it.Id} item={it} serverUrl={effectiveServerUrl} cardType={cardType} onSelect={onSelect} />
+				<MediaCard key={it.Id} item={it} serverUrl={effectiveServerUrl} cardType={cardType} onSelect={onSelect} menuOptions={menuOptions} />
 			))}
 		</RowContainer>
 	);
 
 	const renderEpisodesTab = () => (
-		<RowContainer className={css.episodeList}>
+		<RowContainer className={css.episodeList} {...episodeMenuHold}>
 			{episodes.map((ep) => {
 				const thumb = ep.ImageTags?.Primary ? getImageUrl(effectiveServerUrl, ep.Id, 'Primary', {maxWidth: 400, quality: 80}) : null;
 				const epRuntime = ep.RunTimeTicks ? formatDuration(ep.RunTimeTicks) : '';
 				const progress = ep.UserData?.PlayedPercentage || 0;
-				const label = ep.IndexNumber != null ? `${$L('Episode')} ${ep.IndexNumber} - ${ep.Name}` : ep.Name;
 				return (
 					<SpottableDiv key={ep.Id} className={css.episodeRow} data-episode-id={ep.Id} onClick={handleEpisodeClick}>
 						<div className={css.episodeThumb}>
@@ -364,7 +370,7 @@ const ModernDetailContent = (props) => {
 							{progress > 0 && <div className={css.thumbProgress}><div style={{width: `${Math.min(progress, 100)}%`}} /></div>}
 						</div>
 						<div className={css.episodeBody}>
-							<span className={css.episodeName}>{label}</span>
+							<span className={css.episodeName}>{episodeCardTitle(ep.Name, ep.IndexNumber)}</span>
 							{epRuntime && <span className={css.episodeMeta}>{epRuntime}</span>}
 							<AnimeEpisodePills episode={ep} serverUrl={effectiveServerUrl} large />
 							{ep.Overview && !hidesMediaDescription(ep, settings) && <p className={css.episodeOverview}>{ep.Overview}</p>}
@@ -402,7 +408,7 @@ const ModernDetailContent = (props) => {
 					<SpottableDiv key={i} className={css.chapterCard} data-start-ticks={chapter.StartPositionTicks} onClick={handleChapterSelect}>
 						<div className={css.chapterThumb}>
 							{thumb ? <img src={thumb} alt="" /> : <div className={css.chapterThumbPlaceholder} />}
-							<span className={css.chapterTime}>{formatDuration(chapter.StartPositionTicks)}</span>
+							<span className={css.chapterTime}>{formatPlaybackDuration(chapter.StartPositionTicks / 10000000)}</span>
 						</div>
 						<span className={css.chapterName}>{chapter.Name || `${$L('Chapter')} ${i + 1}`}</span>
 					</SpottableDiv>
@@ -456,23 +462,6 @@ const ModernDetailContent = (props) => {
 			))}
 		</RowContainer>
 	);
-
-	// The streams are spottable even though there is nothing to activate. Focus is
-	// how the tab bar hands over and how the scroller knows where to go, so plain
-	// text would leave this tab unreachable.
-	const renderDetailsTab = () => {
-		const streams = mediaSource?.MediaStreams || [];
-		return (
-			<RowContainer className={css.detailsPanel}>
-				{streams.map((stream, i) => (
-					<SpottableDiv key={i} className={css.detailStream}>
-						<div className={css.detailStreamHeader}>{stream.Type}{stream.Language ? ` (${stream.Language})` : ''}</div>
-						{stream.DisplayTitle && <div className={css.detailStreamLine}>{stream.DisplayTitle}</div>}
-					</SpottableDiv>
-				))}
-			</RowContainer>
-		);
-	};
 
 	// The season cards carry a marker for what Seerr has, or is getting, for that season.
 	const renderSeasonsGrid = () => (
@@ -546,7 +535,7 @@ const ModernDetailContent = (props) => {
 			case 'albums':
 				return renderGrid(artistAlbums, 'square');
 			case 'items':
-				return renderGrid(collectionItems, 'portrait');
+				return renderGrid(collectionItems, 'portrait', onSelectItem, collectionMenu);
 			case 'collection':
 				return renderGrid(parentCollection, 'portrait');
 			case 'similar':
@@ -564,7 +553,16 @@ const ModernDetailContent = (props) => {
 			case 'studios':
 				return renderStudiosTab();
 			case 'details':
-				return renderDetailsTab();
+				return (
+					<ModernFileInformation
+						item={item}
+						mediaSource={mediaSource}
+						effectiveApi={effectiveApi}
+						selectedAudioIndex={selectedAudioIndex}
+						selectedSubtitleIndex={selectedSubtitleIndex}
+						settings={settings}
+					/>
+				);
 			case 'seerr':
 				return renderSeerrTab();
 			default:

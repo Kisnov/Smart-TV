@@ -104,3 +104,8 @@ export const parentalRatingSeverity = (rating) => {
 
 	return UNRECOGNIZED;
 };
+
+// The unrecognized and unrated slots only exist so those labels sort somewhere stable. They say
+// nothing about how strong a rating is, so anything deciding by severity leaves them out.
+export const isRankedRatingSeverity = (severity) =>
+	severity !== UNRECOGNIZED && severity !== RATING_UNRATED;

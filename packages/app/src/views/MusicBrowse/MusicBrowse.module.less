@@ -78,7 +78,6 @@
 	}
 }
 
-.loading,
 .empty {
 	display: -webkit-flex;
 	display: flex;
@@ -89,4 +88,32 @@
 	height: 400px;
 	color: var(--theme-text-muted, rgba(255, 255, 255, 0.5));
 	font-size: 20px;
+}
+
+// The featured banner's box while the page loads, with the art and text laid out inside it.
+.skeletonHero {
+	height: 220px;
+	margin: 8px 60px 12px;
+	padding: 16px;
+	box-sizing: border-box;
+	display: -webkit-flex;
+	display: flex;
+	-webkit-align-items: center;
+	align-items: center;
+	border-radius: 12px;
+	background: rgba(255, 255, 255, 0.06);
+}
+
+.skeletonHeroArt {
+	width: 188px;
+	height: 188px;
+}
+
+.skeletonHeroText {
+	margin-left: 20px;
+}
+
+.skeletonChip {
+	width: 140px;
+	height: 57px;
 }

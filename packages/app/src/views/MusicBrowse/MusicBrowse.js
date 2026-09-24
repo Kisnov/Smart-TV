@@ -4,10 +4,10 @@ import Spotlight from '@enact/spotlight';
 import Spottable from '@enact/spotlight/Spottable';
 import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDecorator';
 import MediaRow from '../../components/MediaRow';
-import LoadingSpinner from '../../components/LoadingSpinner';
 import {useSettings} from '../../context/SettingsContext';
 import MusicHero from './MusicHero';
 import MusicChips from './MusicChips';
+import MusicBrowseSkeleton from './MusicBrowseSkeleton';
 import MusicFilterPanel from './MusicFilterPanel';
 import useMusicBrowseRows from './useMusicBrowseRows';
 import useMusicBrowseFocus from './useMusicBrowseFocus';
@@ -165,7 +165,7 @@ const MusicBrowse = ({library, api, serverUrl, onSelectItem, onOpenGrid, onHome,
 
 			<div className={css.scroller} ref={scrollerRef}>
 				{isLoading ? (
-					<div className={css.loading}><LoadingSpinner /></div>
+					<MusicBrowseSkeleton />
 				) : (
 					<>
 						{featured && (

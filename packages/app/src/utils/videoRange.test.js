@@ -1,4 +1,4 @@
-import {isHdrVideoStream, findVideoStream, isHdrOutput, videoRangeLabel} from './videoRange';
+import {isHdrVideoStream, findVideoStream, isHdrOutput, videoRangeLabel, videoRangeTypeOf} from './videoRange';
 
 describe('isHdrVideoStream', () => {
 	it.each(['HDR10', 'HDR10Plus', 'HLG', 'DOVI'])('treats %s as HDR', (rangeType) => {
@@ -113,5 +113,45 @@ describe('isHdrVideoStream on an Emby stream', () => {
 
 	it('leaves a typed None as SDR', () => {
 		expect(isHdrVideoStream({ExtendedVideoType: 'None'})).toBe(false);
+	});
+});
+
+// A Dolby Vision stream as Emby describes it: no VideoRangeType, the profile typed in
+// ExtendedVideoSubType and VideoRange derived from it.
+const embyDolbyVision = (subType) => ({
+	Type: 'Video',
+	Codec: 'hevc',
+	ExtendedVideoType: 'DolbyVision',
+	ExtendedVideoSubType: subType,
+	VideoRange: 'DolbyVision'
+});
+
+describe('videoRangeTypeOf', () => {
+	it('keeps the range type Jellyfin gives', () => {
+		expect(videoRangeTypeOf({VideoRangeType: 'DOVIWithHDR10', ExtendedVideoSubType: 'DoviProfile50'})).toBe('DOVIWithHDR10');
+	});
+
+	it.each(['DoviProfile81', 'DoviProfile61'])('reads Emby %s as Dolby Vision over an HDR10 base layer', (subType) => {
+		expect(videoRangeTypeOf(embyDolbyVision(subType))).toBe('DOVIWithHDR10');
+	});
+
+	it('reads an Emby profile 5 as the bare Dolby Vision it is', () => {
+		expect(videoRangeTypeOf(embyDolbyVision('DoviProfile50'))).toBe('DOVI');
+	});
+
+	it('reads an Emby profile 7 as carrying an enhancement layer', () => {
+		expect(videoRangeTypeOf(embyDolbyVision('DoviProfile76'))).toBe('DOVIWithEL');
+	});
+
+	it('asks for a Dolby Vision decoder when the profile has no HDR10 base layer or is missing', () => {
+		expect(videoRangeTypeOf(embyDolbyVision('DoviProfile84'))).toBe('DolbyVision');
+		expect(videoRangeTypeOf(embyDolbyVision(undefined))).toBe('DolbyVision');
+		expect(videoRangeTypeOf({Type: 'Video', VideoRange: 'DolbyVision'})).toBe('DolbyVision');
+	});
+
+	it("leaves a stream that isn't Dolby Vision to the other checks", () => {
+		expect(videoRangeTypeOf({Type: 'Video', ExtendedVideoType: 'Hdr10', VideoRange: 'HDR 10'})).toBe('');
+		expect(videoRangeTypeOf({Type: 'Video'})).toBe('');
+		expect(videoRangeTypeOf(null)).toBe('');
 	});
 });

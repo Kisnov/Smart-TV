@@ -19,6 +19,7 @@ const DiagnosticsView = ({
 	onShowMore,
 	logMessage,
 	sendingReport,
+	sendUnavailableReason,
 	onClearLogs,
 	onSendReport
 }) => {
@@ -79,11 +80,12 @@ const DiagnosticsView = ({
 					</Button>
 				</div>
 			)}
+			{sendUnavailableReason && <div className={css.viewDescription}>{sendUnavailableReason}</div>}
 			<div className={css.actionBar}>
 				<Button onClick={onClearLogs} size='small' spotlightId='log-clear'>
 					{$L('Clear')}
 				</Button>
-				<Button onClick={onSendReport} size='small' disabled={sendingReport} spotlightId='log-send'>
+				<Button onClick={onSendReport} size='small' disabled={sendingReport || Boolean(sendUnavailableReason)} spotlightId='log-send'>
 					{sendingReport ? $L('Sending...') : $L('Send Report')}
 				</Button>
 			</div>

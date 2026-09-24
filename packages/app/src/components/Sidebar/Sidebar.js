@@ -65,7 +65,10 @@ const Sidebar = ({
 	const {isEnabled: seerrEnabled, displayName} = useSeerr();
 	const {isInGroup} = useSyncPlay();
 	const {messages, unreadCount} = useServerMessages();
-	const clock = useClock();
+	// The nav bar has always honoured this; the sidebar rendered the clock
+	// whatever the setting said, and kept it ticking too.
+	const showClock = settings.showClock !== false;
+	const clock = useClock(showClock);
 	const {expanded, librariesExpanded, toggleLibraries, handlers} = useSidebarExpansion();
 
 	const showShuffle = settings.showShuffleButton !== false;
@@ -179,9 +182,11 @@ const Sidebar = ({
 				</div>
 			</div>
 
-			<div className={css.footerSection}>
-				<div className={css.clock}>{clock}</div>
-			</div>
+			{showClock && (
+				<div className={css.footerSection}>
+					<div className={css.clock}>{clock}</div>
+				</div>
+			)}
 		</SidebarContainer>
 	);
 };
