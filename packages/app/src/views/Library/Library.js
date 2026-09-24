@@ -23,6 +23,7 @@ import {useStorage} from '../../hooks/useStorage';
 import {buildFilterParams} from '../../utils/libraryFilters';
 import {foldForSearch} from '../../utils/accentFolding';
 import {keepFocusInView} from '../../utils/focusScroll';
+import {PanelContainer} from '../../utils/spotlightContainers';
 import {KEYS} from '../../utils/keys';
 import useSortSettingsPanels from '../../hooks/useSortSettingsPanels';
 import useStartLetter from '../../hooks/useStartLetter';
@@ -37,8 +38,6 @@ const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
 const ToolbarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
 const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
-const SortPanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
-const SettingsPanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
 
 // Every sort ends on SortName so items the server ranks equally keep a stable
 // order between pages, which a bare key leaves to whatever the database returns.
@@ -648,15 +647,6 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		initialFocusDoneRef.current = false;
 	}, []);
 
-	useEffect(() => {
-		if (items.length > 0 && !isLoading && !initialFocusDoneRef.current) {
-			setTimeout(() => {
-				Spotlight.focus(groupedActive ? 'library-group-row-0' : 'library-grid');
-				initialFocusDoneRef.current = true;
-			}, 100);
-		}
-	}, [items.length, isLoading, groupedActive]);
-
 	const handleItemClick = useCallback((ev) => {
 		const itemIndex = ev.currentTarget?.dataset?.index;
 		if (itemIndex === undefined) return;
@@ -748,6 +738,18 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		onBack: handleBackBeyondPanels,
 		enabled: !isMusicBrowseHome
 	});
+	// The grid takes focus once a list has landed, but not while a panel is up, since that's
+	// the viewer still picking. A pick that closes the panel runs this before the reload has
+	// cleared the old list, so it also waits for the new first page.
+	useEffect(() => {
+		if (showSortPanel || showSettingsPanel || apiFetchIndexRef.current === 0) return undefined;
+		if (items.length === 0 || isLoading || initialFocusDoneRef.current) return undefined;
+		const id = setTimeout(() => {
+			Spotlight.focus(groupedActive ? 'library-group-row-0' : 'library-grid');
+			initialFocusDoneRef.current = true;
+		}, 100);
+		return () => clearTimeout(id);
+	}, [items.length, isLoading, groupedActive, showSortPanel, showSettingsPanel]);
 
 	// Choosing the sort already in use turns it around rather than doing nothing.
 	const handleSortSelect = useCallback((ev) => {
@@ -1409,7 +1411,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 			{showSortPanel && (
 				<div className={css.sortPanelOverlay} onClick={handleCloseSortPanel}>
-					<SortPanelContainer
+					<PanelContainer
 						className={css.sortPanel}
 						onFocus={keepFocusInView}
 						spotlightId="sort-panel"
@@ -1607,13 +1609,13 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 								</SpottableButton>
 							</div>
 						)}
-					</SortPanelContainer>
+					</PanelContainer>
 				</div>
 			)}
 
 			{showSettingsPanel && (
 				<div className={css.sortPanelOverlay} onClick={handleCloseSettingsPanel}>
-					<SettingsPanelContainer
+					<PanelContainer
 						className={css.sortPanel}
 						onFocus={keepFocusInView}
 						spotlightId="settings-panel"
@@ -1701,7 +1703,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 								<div className={css.settingValue}>{isFolderView ? $L('On') : $L('Off')}</div>
 							</SpottableButton>
 						)}
-					</SettingsPanelContainer>
+					</PanelContainer>
 				</div>
 			)}
 		</div>
