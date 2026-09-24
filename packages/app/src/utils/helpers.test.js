@@ -81,8 +81,7 @@ describe('toAbsoluteImageUrl', () => {
 		expect(toAbsoluteImageUrl('http://art.example/a.jpg', server)).toBe('http://art.example/a.jpg');
 	});
 
-	// A TV browser on an https page drops a protocol-relative image, so it is
-	// pinned to https rather than left to inherit.
+	// A TV browser on an https page drops protocol-relative images.
 	it('pins a protocol-relative url to https', () => {
 		expect(toAbsoluteImageUrl('//art.example/a.jpg', server)).toBe('https://art.example/a.jpg');
 	});

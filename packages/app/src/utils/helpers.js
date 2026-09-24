@@ -28,10 +28,7 @@ export const getImageUrl = (serverUrl, itemId, imageType = 'Primary', options = 
 	return `${serverUrl}/Items/${itemId}/Images/${imageType}${queryString ? '?' + queryString : ''}`;
 };
 
-// Resolves an artwork url that did not come from our own server: a Seerr or
-// TMDB poster arrives absolute, protocol-relative, or as a path to hang off the
-// server it belongs to. Handing back the url unchanged when there is no server
-// to resolve against keeps a relative path usable against the page origin.
+// Resolves Seerr or TMDB artwork, which can be absolute, protocol-relative, or a path on its server.
 export const toAbsoluteImageUrl = (url, serverUrl) => {
 	if (!url || typeof url !== 'string') return null;
 	if (url.startsWith('http://') || url.startsWith('https://')) return url;
