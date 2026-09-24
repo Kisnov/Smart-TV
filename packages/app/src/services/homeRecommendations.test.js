@@ -432,7 +432,6 @@ describe('scoreCandidate (200.0 pt model)', () => {
 	});
 });
 
-
 describe('loadRewatchItems collections', () => {
 	// Only the collection branch, so every request the mock sees belongs to it.
 	const settings = {
@@ -441,8 +440,7 @@ describe('loadRewatchItems collections', () => {
 		rewatchIncludeCollections: true
 	};
 
-	// A bare api: without getUserConfiguration/getLibraries the library scope stays null and
-	// scopedGetItems passes straight through to getItems, one call per query.
+	// A bare api leaves the library scope off, so each query is a single getItems call.
 	const apiFor = (handler) => ({getItems: jest.fn().mockImplementation(handler)});
 
 	const boxSets = (...items) => ({Items: items, TotalRecordCount: items.length});
@@ -459,7 +457,7 @@ describe('loadRewatchItems collections', () => {
 		});
 
 		expect(await loadRewatchItems(api, settings)).toBeNull();
-		// The list query and nothing else: the fan-out never happens.
+		// Only the box set list goes out.
 		expect(api.getItems).toHaveBeenCalledTimes(1);
 	});
 
@@ -481,13 +479,13 @@ describe('loadRewatchItems collections', () => {
 		const items = await loadRewatchItems(api, settings);
 
 		expect(items.map((item) => item.Id)).toEqual(['c1']);
-		// Both probes ask for one row; neither asks the server for the whole box set.
+		// Both probes ask for a single row, and neither asks for the whole box set.
 		const children = api.getItems.mock.calls.map(([params]) => params).filter((params) => params.ParentId === 'c1');
 		expect(children).toHaveLength(2);
 		children.forEach((params) => expect(params.Limit).toBe(1));
 	});
 
-	test('an empty collection has no unplayed children either, and is not offered', async () => {
+	test('an empty collection has no unplayed children either, and isn\'t offered', async () => {
 		const api = apiFor((params) => {
 			if (params.IncludeItemTypes === 'BoxSet') {
 				return Promise.resolve(boxSets({Id: 'c1', Name: 'Empty', Type: 'BoxSet'}));

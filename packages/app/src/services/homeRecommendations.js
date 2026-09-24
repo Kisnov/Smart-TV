@@ -572,8 +572,7 @@ const reportedUnplayed = (item) => {
 // A series counts as fully watched only when nothing is left unplayed.
 async function verifyFullyWatchedSeries(api, series) {
 	const played = (series.UserData || {}).Played === true;
-	const unplayed = reportedUnplayed(series);
-	if (!played || (unplayed !== null && unplayed > 0)) return null;
+	if (!played || reportedUnplayed(series) > 0) return null;
 
 	try {
 		const res = await api.getItems({
@@ -589,22 +588,15 @@ async function verifyFullyWatchedSeries(api, series) {
 	}
 }
 
-// A collection counts as fully watched only when every child is played.
-//
-// This runs once per candidate collection, so it is the one place on the home screen where a
-// per-item fan-out also pulled an unbounded response: every child of a box set, recursively,
-// each carrying UserData. Fifty franchise box sets answered at once is megabytes of JSON for
-// a TV to parse on the main thread during startup, which is the stall that keeps the media
-// bar's first trailer from reaching its playing event. It asks for counts instead, the way
-// verifyFullyWatchedSeries above already does.
+// A collection counts as fully watched only when every child is played. This runs once for each
+// box set the rewatch row considers, so it asks for counts the way verifyFullyWatchedSeries does
+// rather than for every child.
 async function verifyFullyWatchedCollection(api, col) {
 	const notWatched = {col, isPlayed: false, lastPlayed: ''};
 
-	// The box set list query carries UserData already, so a server that tracks an unplayed
-	// count settles most collections here without another request. Only a definite count rules
-	// one out: a server that omits the field is still asked, exactly as before.
-	const unplayed = reportedUnplayed(col);
-	if (unplayed !== null && unplayed > 0) return notWatched;
+	// The box set list already carries UserData, so a reported unplayed count settles most
+	// collections without another request. A server that leaves the count off is still asked.
+	if (reportedUnplayed(col) > 0) return notWatched;
 
 	try {
 		const unplayedRes = await api.getItems({
@@ -615,8 +607,8 @@ async function verifyFullyWatchedCollection(api, col) {
 		});
 		if (matchCount(unplayedRes) !== 0) return notWatched;
 
-		// The most recently played child both dates the collection for the sort and proves it
-		// is not simply empty, which has no unplayed children either.
+		// The newest played child dates the collection for the sort. Finding none means the set is
+		// empty, which passes the unplayed check too.
 		const playedRes = await api.getItems({
 			ParentId: col.Id,
 			Recursive: true,
@@ -626,7 +618,7 @@ async function verifyFullyWatchedCollection(api, col) {
 			Limit: 1,
 			Fields: 'UserData'
 		});
-		const newest = (((playedRes && playedRes.Items) || [])[0]) || null;
+		const newest = ((playedRes && playedRes.Items) || [])[0];
 		if (!newest) return notWatched;
 
 		return {col, isPlayed: true, lastPlayed: (newest.UserData && newest.UserData.LastPlayedDate) || ''};
