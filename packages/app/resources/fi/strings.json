@@ -2006,5 +2006,6 @@
     "Anamorphic video is not supported.": "Anamorfista videota ei tueta.",
     "Audio bit depth is not supported.": "Äänen bittisyvyyttä ei tueta.",
     "Audio bitrate exceeds streaming limit.": "Äänen bittinopeus ylittää suoratoistorajan.",
-    "Audio channel count ({channels}ch) exceeds the player limit.": "Äänikanavien määrä ({channels}ch) ylittää soittimen rajan."
+    "Audio channel count ({channels}ch) exceeds the player limit.": "Äänikanavien määrä ({channels}ch) ylittää soittimen rajan.",
+    "Audio codec ({codec}) is not supported directly.": "Äänikoodekkia ({codec}) ei tueta suoraan."
 }
