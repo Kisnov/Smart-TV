@@ -1926,21 +1926,6 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		handleBackRef.current = handleBack;
 	}, [handleBack]);
 
-	// Play on the remote is a one way key and must not toggle, so it resumes
-	// through here rather than through handlePlayPause. The rewind belongs to
-	// any unpause, not only the one the OK button asks for; the rest of the
-	// bookkeeping rides the element's own play event in handlePlay.
-	const resumePlayback = useCallback(() => {
-		const video = videoRef.current;
-		if (!video) return;
-		const rewind = settings.unpauseRewind || 0;
-		if (rewind > 0) {
-			video.currentTime = Math.max(0, video.currentTime - rewind);
-		}
-		video.play();
-		healthMonitorRef.current?.setPaused(false);
-	}, [settings.unpauseRewind]);
-
 	// Play during a held scrub is what commits it, landing on the scrubbed spot and playing on
 	// from there.
 	const resumeHeldScrub = useCallback(() => {
@@ -2030,13 +2015,19 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				return;
 			}
 			if (isPaused) {
-				resumePlayback();
+				const rewind = settings.unpauseRewind || 0;
+				if (rewind > 0) {
+					const newTime = Math.max(0, videoRef.current.currentTime - rewind);
+					videoRef.current.currentTime = newTime;
+				}
+				videoRef.current.play();
+				healthMonitorRef.current?.setPaused(false);
 			} else {
 				videoRef.current.pause();
 				healthMonitorRef.current?.setPaused(true);
 			}
 		}
-	}, [isPaused, isInGroup, showControls, resumePlayback, noteViewerActivity, resumeHeldScrub]);
+	}, [isPaused, settings.unpauseRewind, isInGroup, showControls, noteViewerActivity, resumeHeldScrub]);
 
 	const handleRewind = useCallback(() => {
 		if (!videoRef.current) return;
@@ -2720,28 +2711,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				e.stopPropagation();
 				showControls();
 				if (resumeHeldScrub()) return;
-				if (videoRef.current && videoRef.current.paused) {
-					// In a group the request goes to the server because acting
-					// locally would silently desync this client.
-					if (isInGroup && !syncPlayCommandRef.current) {
-						syncPlayService.sendPlayRequest();
-						return;
-					}
-					resumePlayback();
-				}
+				if (isPaused) handlePlayPause();
 				return;
 			}
 			if (e.keyCode === 19) {
 				e.preventDefault();
 				e.stopPropagation();
 				showControls();
-				if (videoRef.current && !videoRef.current.paused) {
-					if (isInGroup && !syncPlayCommandRef.current) {
-						syncPlayService.sendPauseRequest();
-						return;
-					}
-					videoRef.current.pause();
-				}
+				if (!isPaused) handlePlayPause();
 				return;
 			}
 			if (e.keyCode === 417) {
@@ -2857,7 +2834,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, resumePlayback, handleForward, handleRewind, settings.seekStep, scrubBy, resumeHeldScrub, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, isInGroup, carouselOpenRef, openCarousel]);
+	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, isPaused, handlePlayPause, handleForward, handleRewind, settings.seekStep, scrubBy, resumeHeldScrub, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, carouselOpenRef, openCarousel]);
 
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;
 	const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
