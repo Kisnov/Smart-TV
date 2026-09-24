@@ -130,6 +130,10 @@ describe('formatPlaybackTimeSlot', () => {
 		expect(slot('endsAt')).toMatch(/^Ends at \d{2}:\d{2}$/);
 	});
 
+	test('time reads the clock rather than the media', () => {
+		expect(slot('time')).toMatch(/^\d{2}:\d{2}$/);
+	});
+
 	test('only none renders nothing', () => {
 		PLAYBACK_TIME_SLOTS.forEach((value) => {
 			expect(slot(value) === '').toBe(value === 'none');

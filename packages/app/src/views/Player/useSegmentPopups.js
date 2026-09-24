@@ -30,10 +30,14 @@ const useSegmentPopups = ({
 	const [showSkipCredits, setShowSkipCredits] = useState(false);
 	const [showNextEpisode, setShowNextEpisode] = useState(false);
 	const [nextEpisodeCountdown, setNextEpisodeCountdown] = useState(null);
-	// Only counts episodes that started themselves. Choosing the next one by hand
+	// Only counts episodes that started themselves. Any sign of the viewer at the
+	// remote, a seek, a skip, play or pause, or choosing the next one by hand,
 	// answers the question the prompt was going to ask.
 	const [askStillWatching, setAskStillWatching] = useState(false);
 	const consecutiveRef = useRef(0);
+	const noteViewerActivity = useCallback(() => {
+		consecutiveRef.current = 0;
+	}, []);
 
 	const dismissedSegmentsRef = useRef(new Set());
 	// When the current skip prompt first appeared, for the auto hide timer.
@@ -134,12 +138,14 @@ const useSegmentPopups = ({
 	// its own click event instead, so anything without an end tick falls back to
 	// whichever segment is on screen.
 	const handleSkipSegment = useCallback((segment) => {
-		const target = segment?.end != null ? segment : skipSegmentRef.current;
+		const pressed = segment?.end == null;
+		const target = pressed ? skipSegmentRef.current : segment;
 		if (!target?.end) return;
+		if (pressed) noteViewerActivity();
 		dismissedSegmentsRef.current.add(target.start);
 		onSeekToSegmentEnd?.(target.end);
 		setSkipSegment(null);
-	}, [onSeekToSegmentEnd]);
+	}, [noteViewerActivity, onSeekToSegmentEnd]);
 
 	// --- Reset on new media ---
 
@@ -354,7 +360,8 @@ const useSegmentPopups = ({
 		cancelNextEpisodeCountdown,
 		checkSegments,
 		handlePopupKeyDown,
-		resetPopups
+		resetPopups,
+		noteViewerActivity
 	};
 };
 

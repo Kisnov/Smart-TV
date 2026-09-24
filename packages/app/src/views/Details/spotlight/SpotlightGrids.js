@@ -4,7 +4,8 @@ import $L from '@enact/i18n/$L';
 import MediaCard from '../../../components/MediaCard';
 import DetailTrackList from '../../../components/DetailTrackList';
 import {SeerrChips, SeerrFacts, SeerrCollectionBanner} from '../../../components/seerr/SeerrSections';
-import {getImageUrl, formatDuration} from '../../../utils/helpers';
+import {getImageUrl} from '../../../utils/helpers';
+import {formatPlaybackDuration} from '../../../utils/playbackTimeLabels';
 import {castPhotoUrl} from '../detailsMedia';
 import {SpottableDiv, RowContainer} from '../detailsSpottables';
 import {DETAIL_ICON_PATHS} from '../detailIcons';
@@ -20,7 +21,7 @@ const Icon = ({path}) => (
 	</svg>
 );
 
-const MediaGrid = ({items, serverUrl, aspect, seasonStatus, onSelect, firstSpotlightId}) => (
+const MediaGrid = ({items, serverUrl, aspect, seasonStatus, onSelect, firstSpotlightId, menuOptions}) => (
 	<RowContainer className={css.grid}>
 		{items.map((item, index) => (
 			<MediaCard
@@ -31,6 +32,7 @@ const MediaGrid = ({items, serverUrl, aspect, seasonStatus, onSelect, firstSpotl
 				seerrSeasonStatus={item.Type === 'Season' ? seasonStatus?.get(item.IndexNumber) : null}
 				onSelect={onSelect}
 				spotlightId={index === 0 ? firstSpotlightId : undefined}
+				menuOptions={menuOptions}
 			/>
 		))}
 	</RowContainer>
@@ -135,7 +137,7 @@ const ChaptersGrid = ({item, serverUrl, onSelect, firstSpotlightId}) => {
 					>
 						<div className={css.chapterThumb}>
 							{thumb ? <img src={thumb} alt="" /> : <div className={css.chapterThumbEmpty} />}
-							<span className={css.chapterTime}>{formatDuration(chapter.StartPositionTicks)}</span>
+							<span className={css.chapterTime}>{formatPlaybackDuration(chapter.StartPositionTicks / 10000000)}</span>
 						</div>
 						<span className={css.chapterName}>{chapter.Name || `${$L('Chapter')} ${index + 1}`}</span>
 					</SpottableDiv>
@@ -150,7 +152,7 @@ const ChaptersGrid = ({item, serverUrl, onSelect, firstSpotlightId}) => {
 const SpotlightSection = ({section, serverUrl, actions, seerr, firstSpotlightId}) => {
 	switch (section.kind) {
 		case 'media':
-			return <MediaGrid items={section.items} serverUrl={serverUrl} aspect={section.aspect} seasonStatus={section.seasonStatus} onSelect={actions.openItem} firstSpotlightId={firstSpotlightId} />;
+			return <MediaGrid items={section.items} serverUrl={serverUrl} aspect={section.aspect} seasonStatus={section.seasonStatus} onSelect={actions.openItem} firstSpotlightId={firstSpotlightId} menuOptions={section.collectionMembers ? actions.collectionMenu : undefined} />;
 		case 'seerr':
 			return <SeerrGrid items={section.items} serverUrl={serverUrl} showCredit={section.showCredit} onSelect={actions.openSeerrItem} firstSpotlightId={firstSpotlightId} />;
 		case 'people':

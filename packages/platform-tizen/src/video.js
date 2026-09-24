@@ -4,6 +4,7 @@
 /* global webapis, XMLHttpRequest */
 import {detectTizenVersion as _detectTizenVersion} from './deviceProfile';
 import {isExperimentalTruehdEnabled, probeTruehdCodecSupport} from './truehd';
+import {videoRangeTypeOf} from '@moonfin/app/src/utils/videoRange';
 
 let isAVPlayAvailable = false;
 
@@ -254,8 +255,9 @@ export const getPlayMethod = (mediaSource, capabilities, _options, passthroughOp
 		: true;
 
 	let hdrOk = true;
-	if (videoStream?.VideoRangeType) {
-		const rangeType = videoStream.VideoRangeType.toUpperCase();
+	const videoRangeType = videoRangeTypeOf(videoStream);
+	if (videoRangeType) {
+		const rangeType = videoRangeType.toUpperCase();
 		if (rangeType.includes('DOVIWITH')) {
 			// dual layer Dolby Vision has a compatible base layer, an HDR10
 			// panel plays that layer directly and an SDR fallback plays anywhere
@@ -276,7 +278,7 @@ export const getPlayMethod = (mediaSource, capabilities, _options, passthroughOp
 		defaultAudioCodec,
 		audioStreamCount: audioStreams.length,
 		compatibleAudioStreams: audioStreams.filter(s => supportedAudioCodecs.includes((s.Codec || '').toLowerCase())).map(s => `${s.Index}:${s.Codec}`),
-		videoRange: videoStream?.VideoRangeType,
+		videoRange: videoRangeType,
 		videoOk,
 		audioOk,
 		containerOk,

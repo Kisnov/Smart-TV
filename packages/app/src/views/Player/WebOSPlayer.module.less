@@ -494,6 +494,19 @@
 	background: #ffffff;
 }
 
+// A mark where each chapter starts, taller than the track so it reads as a mark and not a gap.
+.chapterMark {
+	position: absolute;
+	top: 50%;
+	width: 3px;
+	height: 14.5px;
+	margin-left: -1.5px;
+	margin-top: -7.25px;
+	background: rgba(255, 255, 255, 0.9);
+	pointer-events: none;
+	z-index: 3;
+}
+
 /* Trickplay Preview Bubble */
 .trickplayBubble {
 	position: absolute;
@@ -847,42 +860,6 @@
 }
 
 /* Next Episode Overlay */
-/* Loading Indicator */
-.loadingIndicator {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	background: rgba(0, 0, 0, 0.9);
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	z-index: 1000;
-}
-
-.spinner {
-	width: 80px;
-	height: 80px;
-	border: 6px solid rgba(255, 255, 255, 0.2);
-	border-top-color: var(--accent-color, #00a4dc);
-	border-radius: 50%;
-	animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
-
-.loadingIndicator p {
-	margin-top: 30px;
-	font-size: 28px;
-	color: #fff;
-}
-
 /* Error State */
 .error {
 	display: flex;
@@ -916,16 +893,6 @@
 	margin-top: 20px;
 	font-size: 18px;
 	color: rgba(255, 255, 255, 0.6);
-}
-
-/* Buffering indicator */
-.bufferingIndicator {
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	z-index: 1001;
-	pointer-events: none;
 }
 
 /* Offset Modal */

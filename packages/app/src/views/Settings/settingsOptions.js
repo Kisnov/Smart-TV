@@ -95,34 +95,7 @@ export const getSubtitlePositionOptions = () => [
 	{ value: 'absolute', label: $L('Absolute'), offset: 0 }
 ];
 
-export const getSubtitleColorOptions = () => [
-	{ value: '#ffffff', label: $L('White') },
-	{ value: '#ffff00', label: $L('Yellow') },
-	{ value: '#00ffff', label: $L('Cyan') },
-	{ value: '#ff00ff', label: $L('Magenta') },
-	{ value: '#00ff00', label: $L('Green') },
-	{ value: '#ff0000', label: $L('Red') },
-	{ value: '#808080', label: $L('Grey') },
-	{ value: '#404040', label: $L('Dark Grey') }
-];
-
-export const getSubtitleShadowColorOptions = () => [
-	{ value: '#000000', label: $L('Black') },
-	{ value: '#ffffff', label: $L('White') },
-	{ value: '#808080', label: $L('Grey') },
-	{ value: '#404040', label: $L('Dark Grey') },
-	{ value: '#ff0000', label: $L('Red') },
-	{ value: '#00ff00', label: $L('Green') },
-	{ value: '#0000ff', label: $L('Blue') }
-];
-
-export const getSubtitleBackgroundColorOptions = () => [
-	{ value: '#000000', label: $L('Black') },
-	{ value: '#ffffff', label: $L('White') },
-	{ value: '#808080', label: $L('Grey') },
-	{ value: '#404040', label: $L('Dark Grey') },
-	{ value: '#000080', label: $L('Navy') }
-];
+export {getSubtitleColorOptions, getSubtitleShadowColorOptions, getSubtitleBackgroundColorOptions} from '../../utils/subtitleConstants';
 
 export const getSeekStepOptions = () => [
 	{ value: 5, label: $L('5 seconds') },
@@ -185,6 +158,24 @@ export const getScreensaverPositionOptions = () => [
 	{ value: 'bottomCenter', label: $L('Bottom-Center') },
 	{ value: 'bottomRight', label: $L('Bottom-Right') }
 ];
+
+export const getLoadingAnimationImageOptions = () => [
+	{ value: 'none', label: $L('None') },
+	{ value: 'moonfinLogo', label: $L('Moonfin Logo') },
+	{ value: 'spinner', label: $L('Spinner') },
+	{ value: 'runner', label: $L('Runner') },
+	{ value: 'moonPhases', label: $L('Moon Phases') },
+	{ value: 'moonfinPhases', label: $L('Moonfin Phases') },
+	{ value: 'neonfinPhases', label: $L('Neonfin Phases') }
+];
+
+export const getLoadingAnimationPositionOptions = () => [
+	...getScreensaverPositionOptions(),
+	{ value: 'bouncing', label: $L('Bouncing') }
+];
+
+export const getLoadingAnimationSpeedOptions = () =>
+	getScreensaverMovementOptions().filter((option) => option.value !== 'staticCorner');
 
 export const getScreensaverTimeoutOptions = () => [
 	{ value: 30, label: $L('30 seconds') },
@@ -595,7 +586,8 @@ const PLAYBACK_TIME_LABELS = {
 	elapsed: () => $L('Time elapsed'),
 	totalDuration: () => $L('Total duration'),
 	timeRemaining: () => $L('Time remaining'),
-	endsAt: () => $L('Ends at')
+	endsAt: () => $L('Ends at'),
+	time: () => $L('Current Time')
 };
 
 const playbackTimeOptions = (values) => values

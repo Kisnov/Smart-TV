@@ -7,7 +7,8 @@ import {
 
 describe('resolveItemMediaType', () => {
 	it('lets the concrete type win over the media type', () => {
-		expect(resolveItemMediaType({Type: 'MusicVideo', MediaType: 'Audio'})).toBe('Video');
+		expect(resolveItemMediaType({Type: 'MusicVideo', MediaType: 'Audio'})).toBe('MusicVideo');
+		expect(resolveItemMediaType({Type: 'Movie', MediaType: 'Video'})).toBe('Video');
 		expect(resolveItemMediaType({Type: 'AudioBook', MediaType: 'Audio'})).toBe('AudioBook');
 		expect(resolveItemMediaType({Type: 'Audio'})).toBe('Audio');
 		expect(resolveItemMediaType({MediaType: 'Video'})).toBe('Video');
@@ -16,10 +17,18 @@ describe('resolveItemMediaType', () => {
 });
 
 describe('playlistSummaryCategory and playlistNeedsItemCheck', () => {
-	it('takes specific summaries at face value', () => {
+	it('takes book and photo summaries at face value', () => {
+		const books = {Type: 'Playlist', MediaType: 'Book', ChildCount: 3};
+		expect(playlistSummaryCategory(books)).toBe('Book');
+		expect(playlistNeedsItemCheck(books)).toBe(false);
+		expect(playlistNeedsItemCheck({Type: 'Playlist', MediaType: 'Photo', ChildCount: 3})).toBe(false);
+	});
+
+	// A music video playlist carries the same summary as a movie one.
+	it('asks for an item check when the summary says Video', () => {
 		const video = {Type: 'Playlist', MediaType: 'Video', ChildCount: 3};
 		expect(playlistSummaryCategory(video)).toBe('Video');
-		expect(playlistNeedsItemCheck(video)).toBe(false);
+		expect(playlistNeedsItemCheck(video)).toBe(true);
 	});
 
 	it('marks an empty playlist Mixed without a check', () => {
@@ -45,6 +54,13 @@ describe('playlistCategoryFromItems', () => {
 		expect(playlistCategoryFromItems([{Type: 'AudioBook'}, {Type: 'AudioBook'}])).toBe('AudioBook');
 	});
 
+	it('makes music videos a section of their own, songs among them or not', () => {
+		expect(playlistCategoryFromItems([{Type: 'MusicVideo'}, {Type: 'MusicVideo'}])).toBe('MusicVideo');
+		expect(playlistCategoryFromItems([{Type: 'MusicVideo'}, {Type: 'Audio'}])).toBe('MusicVideo');
+		expect(playlistCategoryFromItems([{Type: 'MusicVideo'}, {Type: 'Movie'}])).toBe('Mixed');
+		expect(playlistCategoryFromItems([{Type: 'Audio'}, {Type: 'Audio'}])).toBe('Audio');
+	});
+
 	it('calls a blend of kinds Mixed', () => {
 		expect(playlistCategoryFromItems([{Type: 'Audio'}, {Type: 'Movie'}])).toBe('Mixed');
 		expect(playlistCategoryFromItems([])).toBe('Mixed');
@@ -62,5 +78,15 @@ describe('groupPlaylists', () => {
 		expect(groups.map((g) => g.name)).toEqual(['Video Playlists', 'Audio Playlists', 'Audiobook Playlists']);
 		expect(groups[1].items.map((i) => i.Id)).toEqual(['a']);
 		expect(groups[2].items.map((i) => i.Id)).toEqual(['c']);
+	});
+
+	it('puts music video playlists right after the video ones', () => {
+		const playlists = [
+			{Id: 'a', Type: 'Playlist', MediaType: 'Audio', ChildCount: 2},
+			{Id: 'b', Type: 'Playlist', MediaType: 'Video', ChildCount: 2}
+		];
+		const groups = groupPlaylists(playlists, {a: 'MusicVideo'});
+		expect(groups.map((g) => g.name)).toEqual(['Video Playlists', 'Music Video Playlists']);
+		expect(groups[1].items.map((i) => i.Id)).toEqual(['a']);
 	});
 });

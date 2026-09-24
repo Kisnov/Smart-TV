@@ -4,7 +4,7 @@ import {formatClockTime, shiftedNow} from './clock';
 
 // Music and video players have different playback time labels.
 // The video player has six, the music player has one.
-export const PLAYBACK_TIME_SLOTS = ['none', 'elapsed', 'totalDuration', 'timeRemaining', 'endsAt'];
+export const PLAYBACK_TIME_SLOTS = ['none', 'elapsed', 'totalDuration', 'timeRemaining', 'endsAt', 'time'];
 
 export const PLAYBACK_TIME_DISPLAYS = ['totalDuration', 'timeRemaining', 'endsAt'];
 
@@ -65,6 +65,8 @@ export const formatPlaybackTimeSlot = ({slot, position, duration, clockDisplay, 
 		case 'timeRemaining':
 		case 'endsAt':
 			return formatPlaybackTrailingTime({mode: slot, position, duration, clockDisplay, timeOffsetHours});
+		case 'time':
+			return formatClockTime(shiftedNow(timeOffsetHours), clockDisplay);
 		default:
 			return '';
 	}

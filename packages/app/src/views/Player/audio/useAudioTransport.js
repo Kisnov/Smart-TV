@@ -80,6 +80,8 @@ const useAudioTransport = ({
 		hasPrevTrack: isAudioMode ? queue.hasPrev : playlistHasPrev,
 		handleToggleShuffle: queue.toggleShuffle,
 		handleToggleRepeat: queue.cycleRepeat,
+		setShuffleMode: queue.setShuffleMode,
+		setRepeatMode: queue.setRepeatMode,
 		// A track running out has to walk the same order the skip button does,
 		// but the players tear the media down first so they advance themselves.
 		getNextStep: queue.getNext,

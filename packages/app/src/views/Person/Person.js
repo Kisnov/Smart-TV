@@ -1,10 +1,12 @@
 import {useState, useEffect, useCallback, useMemo} from 'react';
 import $L from '@enact/i18n/$L';
 import {useAuth} from '../../context/AuthContext';
+import {withoutBlockedItems} from '../../services/parentalControls';
 import MediaRow from '../../components/MediaRow';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PersonDetailShell from '../../components/PersonDetailShell';
 import usePersonSeerrCredits from '../../hooks/usePersonSeerrCredits';
+import {useUserDataList} from '../../hooks/useUserDataSync';
 import {getImageUrl} from '../../utils/helpers';
 import {personDateLines, splitFilmography} from '../../utils/personCredits';
 
@@ -28,7 +30,7 @@ const Person = ({personId, onSelectItem, onSelectSeerrItem, onSelectSeerrPerson}
 					api.getItemsByPerson(personId)
 				]);
 				setPerson(personData);
-				setItems(itemsData.Items || []);
+				setItems(withoutBlockedItems(itemsData.Items || []));
 			} catch (err) {
 				console.error('Failed to load person:', err);
 			} finally {
@@ -64,7 +66,8 @@ const Person = ({personId, onSelectItem, onSelectSeerrItem, onSelectSeerrPerson}
 		if (tmdbId) onSelectSeerrPerson?.(tmdbId, person?.Name);
 	}, [tmdbId, person, onSelectSeerrPerson]);
 
-	const {movies, series, guestAppearances, musicVideos} = useMemo(() => splitFilmography(items), [items]);
+	const syncedItems = useUserDataList(items);
+	const {movies, series, guestAppearances, musicVideos} = useMemo(() => splitFilmography(syncedItems), [syncedItems]);
 
 	const backdropCandidates = useMemo(() => {
 		const urls = [];

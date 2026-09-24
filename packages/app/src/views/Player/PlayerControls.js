@@ -18,9 +18,11 @@ import {
 	formatTime, getQualityPresets,
 	IconPlay, IconPause, IconRewind, IconForward, IconSubtitle, IconSubtitleOff, IconAudio,
 	IconChapters, IconPrevious, IconNext, IconQuality, IconInfo, IconCast, IconZoom,
-	IconShuffle, IconRepeat, IconRepeatOne, IconSleep, IconGuide
+	IconShuffle, IconRepeat, IconRepeatOne, IconSleep, IconGuide, IconChannels
 } from './PlayerConstants';
 import {formatClockTime} from '../../utils/clock';
+import {episodeLine} from '../../utils/liveTvGuide';
+import {chapterMarkerPositions} from '../../utils/chapterMarkers';
 import {keepFocusInView} from '../../utils/focusScroll';
 import {SLEEP_TIMER_MINUTES} from './useSleepTimer';
 import {arrange, OSD_ORDER_KEY, OSD_HIDDEN_KEY} from '../../utils/buttonLayout';
@@ -81,6 +83,7 @@ export const usePlayerButtons = ({
 		// The live row's order comes from moonfin-core's live player.
 		if (isLiveTV) {
 			return arrange([
+				{id: 'channels', icon: <IconChannels />, label: $L('Channels'), action: 'channels'},
 				{id: 'guide', icon: <IconGuide />, label: $L('Guide'), action: 'guide'},
 				...(audioStreams.length > 1 ? [{id: 'audio', icon: <IconAudio />, label: $L('Audio'), action: 'audio'}] : []),
 				...((subtitleStreams.length > 0 || canDownloadRemoteSubtitles) ? [{id: 'subtitles', icon: (selectedSubtitleIndex >= 0 ? <IconSubtitle /> : <IconSubtitleOff />), label: $L('Subtitles'), action: 'subtitle'}] : []),
@@ -124,7 +127,6 @@ const PlayerControls = ({
 	progressPercent,
 	bufferedPercent,
 	isSeeking,
-	seekPosition,
 	item,
 	mediaSourceId,
 	playMethod,
@@ -240,6 +242,12 @@ const PlayerControls = ({
 		handleSelectCastMember?.(person);
 	}, [castMembers, handleSelectCastMember]);
 
+	const durationMs = duration * 1000;
+	const chapterMarks = useMemo(
+		() => (settings.showChapterMarkers && !isAudioMode ? chapterMarkerPositions(chapters, durationMs) : []),
+		[settings.showChapterMarkers, isAudioMode, chapters, durationMs]
+	);
+
 	const clampedProgress = Number.isFinite(progressPercent)
 		? Math.max(0, Math.min(100, progressPercent))
 		: 0;
@@ -325,10 +333,11 @@ const PlayerControls = ({
 						const progress = start && end
 							? Math.max(0, Math.min(1, (now - start.getTime()) / (end.getTime() - start.getTime())))
 							: 0;
+						const programEpisodeLine = episodeLine(liveProgram);
 						return (
 							<div className={css.liveTimeline}>
-								{liveProgram?.EpisodeTitle && (
-									<div className={css.liveEpisodeTitle}>{liveProgram.EpisodeTitle}</div>
+								{programEpisodeLine && (
+									<div className={css.liveEpisodeTitle}>{programEpisodeLine}</div>
 								)}
 								<div className={css.liveProgressTrack}>
 									{liveProgram && (
@@ -357,12 +366,19 @@ const PlayerControls = ({
 							<div className={css.progressBuffered} style={{transform: `scaleX(${clampedBuffered / 100})`, WebkitTransform: `scaleX(${clampedBuffered / 100})`}} />
 							<div className={css.progressFill} style={{transform: `scaleX(${clampedProgress / 100})`, WebkitTransform: `scaleX(${clampedProgress / 100})`}} />
 							<div className={css.seekIndicator} style={{left: `${clampedProgress}%`}} />
-							{isSeeking && !isAudioMode && settings.trickPlayEnabled !== false && (
+							{/* Over the fill and the thumb, so a mark stays visible where it crosses the played part. */}
+							{chapterMarks.map((ms) => (
+								<div key={ms} className={css.chapterMark} style={{left: `${(ms / durationMs) * 100}%`}} />
+							))}
+							{!isAudioMode && settings.trickPlayEnabled !== false && (
 								<TrickplayPreview
 									itemId={item.Id}
 									mediaSourceId={mediaSourceId}
-									positionTicks={seekPosition}
-									visible
+									positionTicks={displayTime * 10000000}
+									durationTicks={durationMs * 10000}
+									stepSeconds={settings.seekStep}
+									visible={isSeeking}
+									warm={controlsVisible}
 								/>
 							)}
 						</SpottableDiv>

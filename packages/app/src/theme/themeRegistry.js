@@ -108,6 +108,7 @@ const glassTheme = parseThemeSpec({
 	schemaVersion: 1,
 	id: 'glass',
 	displayName: 'Glass',
+	isGlass: true,
 	transparentNavbarSurface: true,
 	semantic: {
 		statusAvailable: '#FF30D158',

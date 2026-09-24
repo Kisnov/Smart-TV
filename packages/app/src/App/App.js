@@ -16,8 +16,10 @@ import {AuthProvider, useAuth} from '../context/AuthContext';
 import {useSettings} from '../context/SettingsContext';
 import * as connectionPool from '../services/connectionPool';
 import * as jellyfinApi from '../services/jellyfinApi';
+import {adoptLegacyBlockedRatings, loadParentalControls, parentalScopeKey, setParentalScope} from '../services/parentalControls';
 import {libraryIdOf, seerrDetailStub} from '../utils/seerrTarget';
 import serverLogger from '../services/serverLogger';
+import * as remoteControl from '../services/remoteControl';
 import {isBackKey, KEYS} from '../utils/keys';
 import {applyPerfTier} from '../utils/perfTier';
 import {isLiveTvLibrary} from '../utils/liveTvLibrary';
@@ -35,6 +37,7 @@ import {ServerMessagesProvider, useServerMessages} from '../context/ServerMessag
 import {SyncPlayProvider, useSyncPlay} from '../context/SyncPlayContext';
 import {useVersionCheck} from '../hooks/useVersionCheck';
 import UpdateNotification from '../components/UpdateNotification';
+import {ItemMenuProvider} from '../components/ItemContextMenu';
 import SeerrNotificationToast from '../components/SeerrNotificationToast';
 import ServerMessagesDialog from '../components/ServerMessagesDialog';
 import DebugOverlay from '../components/DebugOverlay'; // Red Button on TV remote toggles this
@@ -90,6 +93,8 @@ import css from './App.module.less';
 
 const MAX_HISTORY_LENGTH = 10;
 const SpottableButton = Spottable('button');
+
+const isAudioItem = (item) => item?.MediaType === 'Audio' || item?.Type === 'Audio';
 
 const normalizeSeerrSelection = (item) => {
 	if (!item) return null;
@@ -151,20 +156,36 @@ const PANELS = {
 const AppContent = (props) => {
 	const {isAuthenticated, isLoading, logout, serverUrl, serverName, api, user, hasMultipleServers, accessToken, connectionState, revalidateSession} = useAuth();
 	const {settings, activeTheme, syncOnLogin, updateSettings, loaded: settingsLoaded} = useSettings();
-	const {streamNotification, dismissStreamNotification} = useSeerr();
+	const {streamNotification, dismissStreamNotification, pluginInfo} = useSeerr();
 	const {pendingPopups, markPopupsRead} = useServerMessages();
 	const themeMusic = useThemeMusic();
-	const {openDialog: openSyncPlay, closeDialog: closeSyncPlay, isDialogOpen: syncPlayDialogOpen, playQueueUpdate: syncPlayQueueUpdate, isInGroup: isSyncPlayInGroup, setNewQueue: syncPlaySetNewQueue, displayMessage: syncPlayMessage, clearDisplayMessage: clearSyncPlayMessage, getGroupPositionTicks: getSyncPlayPositionTicks} = useSyncPlay();
+	const {openDialog: openSyncPlay, closeDialog: closeSyncPlay, isDialogOpen: syncPlayDialogOpen, playQueueUpdate: syncPlayQueueUpdate, isInGroup: isSyncPlayInGroup, setNewQueue: syncPlaySetNewQueue, getGroupPositionTicks: getSyncPlayPositionTicks} = useSyncPlay();
 	const handledSyncPlayQueueRef = useRef(null);
 
-	const syncPlayToast = useMemo(() => (
-		syncPlayMessage ? {
-			key: `syncplay-${Date.now()}`,
-			title: syncPlayMessage.header || $L('SyncPlay'),
-			body: syncPlayMessage.text
-		} : null
-	), [syncPlayMessage]);
+	const [remoteMessage, setRemoteMessage] = useState(null);
+	const clearRemoteMessage = useCallback(() => setRemoteMessage(null), []);
 	const unifiedMode = settings.unifiedLibraryMode && hasMultipleServers;
+
+	// Blocked ratings belong to whoever is signed in on this server.
+	useEffect(() => {
+		loadParentalControls();
+		setParentalScope(parentalScopeKey(serverUrl, user?.Id));
+	}, [serverUrl, user?.Id]);
+
+	// The list used to be kept once for the whole TV. Whoever is signed in takes it, and the old
+	// copy goes so the next account starts from its own.
+	const legacyBlockedRatings = settings.blockedRatings;
+	useEffect(() => {
+		if (!settingsLoaded || !user?.Id || !Array.isArray(legacyBlockedRatings)) return undefined;
+		let cancelled = false;
+		loadParentalControls().then(() => {
+			if (!cancelled && adoptLegacyBlockedRatings(legacyBlockedRatings)) {
+				updateSettings({blockedRatings: undefined});
+			}
+		});
+		return () => { cancelled = true; };
+	}, [settingsLoaded, user?.Id, serverUrl, legacyBlockedRatings, updateSettings]);
+
 	const [panelIndex, setPanelIndex] = useState(PANELS.LOGIN);
 	const [selectedItem, setSelectedItem] = useState(null);
 	const [selectedLibrary, setSelectedLibrary] = useState(null);
@@ -200,7 +221,10 @@ const AppContent = (props) => {
 	const setupWizardBackRef = useRef(null);
 	const cleanupHandlersRef = useRef(null);
 	const backHandlerRef = useRef(null);
+	const itemMenuBackRef = useRef(null);
 	const detailsItemStackRef = useRef([]);
+	// Play from a card's menu opens the item's screen, which starts it once it knows what to play.
+	const [detailsAutoPlay, setDetailsAutoPlay] = useState(false);
 	const [seerrCollection, setSeerrCollection] = useState(null);
 	const prevUserIdRef = useRef(null);
 	const [photoViewerItem, setPhotoViewerItem] = useState(null);
@@ -253,9 +277,18 @@ const AppContent = (props) => {
 	// again. Following the settings here is what makes them survive a restart.
 	useEffect(() => {
 		serverLogger.init({
-			getAuth: () => ({serverUrl: jellyfinApi.getServerUrl(), accessToken: jellyfinApi.getApiKey()})
+			getAuth: () => ({
+				serverUrl: jellyfinApi.getServerUrl(),
+				accessToken: jellyfinApi.getApiKey(),
+				serverType: jellyfinApi.getServerType(),
+				authHeader: jellyfinApi.getAuthHeader()
+			})
 		});
 	}, []);
+
+	useEffect(() => {
+		serverLogger.setClientLogSupported(pluginInfo?.clientLogSupported === true);
+	}, [pluginInfo]);
 
 	useEffect(() => {
 		serverLogger.setEnabled(settings.serverLogging === true);
@@ -680,10 +713,14 @@ const AppContent = (props) => {
 					return;
 				}
 
+				if (itemMenuBackRef.current?.()) return;
+
 				if (panelIndex === PANELS.BROWSE || panelIndex === PANELS.LOGIN) {
 					// Sign-in walks its own screens, and home returns a scrolled row
 					// list to the top, before back means exit
 					if (backHandlerRef.current?.()) return;
+					// Another client pressing back never closes the app on the viewer.
+					if (e.fromRemote) return;
 					if (settings.exitConfirmation === false) {
 						performAppCleanup();
 						exitApp();
@@ -736,6 +773,7 @@ const AppContent = (props) => {
 	}, []);
 
 	const handleSelectItem = useCallback((item) => {
+		setDetailsAutoPlay(false);
 		if (item.Type === 'Photo') {
 			setPhotoViewerItem(item);
 			return;
@@ -761,6 +799,14 @@ const AppContent = (props) => {
 			navigateTo(PANELS.DETAILS);
 		}
 	}, [navigateTo, panelIndex, selectedItem]);
+
+	// A song plays as soon as it's picked, so only the rest wait for their screen to start them.
+	const handlePlayFromMenu = useCallback((item) => {
+		handleSelectItem(item);
+		if (item.Type !== 'Audio') setDetailsAutoPlay(true);
+	}, [handleSelectItem]);
+
+	const handleAutoPlayed = useCallback(() => setDetailsAutoPlay(false), []);
 
 	const handleViewPhoto = useCallback((item, siblings) => {
 		setPhotoViewerItem(item);
@@ -892,6 +938,9 @@ const AppContent = (props) => {
 			}
 			if (prev?.videoQueue?.some(e => e.Id === item.Id)) {
 				return {videoQueue: prev.videoQueue};
+			}
+			if (prev?.liveTvChannels?.some(c => c.Id === item.Id)) {
+				return {liveTvChannels: prev.liveTvChannels};
 			}
 			return null;
 		});
@@ -1039,9 +1088,10 @@ const AppContent = (props) => {
 		navigateTo(PANELS.PERSON, false);
 	}, [navigateTo, settings.detailScreenStyle]);
 
-	const handlePlayChannel = useCallback((channel) => {
+	// The guide hands over its lineup, in its own order, for the player's channel carousel.
+	const handlePlayChannel = useCallback((channel, lineup) => {
 		setPlayingItem(channel);
-		setPlaybackOptions(null);
+		setPlaybackOptions(lineup?.length ? {liveTvChannels: lineup} : null);
 		setIsResume(false);
 		navigateTo(PANELS.PLAYER);
 	}, [navigateTo]);
@@ -1074,6 +1124,67 @@ const AppContent = (props) => {
 		window.dispatchEvent(new CustomEvent('moonfin:browseRefresh'));
 		setPanelIndex(PANELS.BROWSE);
 	}, []);
+
+	const showRemoteMessage = useCallback((text, header) => {
+		setRemoteMessage({key: Date.now(), title: header?.trim() || $L('Remote message'), body: text});
+	}, []);
+
+	// Another client sending something to play here. It starts where that client asked rather than
+	// at this one's resume point, and a run of items plays as a queue of the kind the first one is.
+	// Over a player already running, the new item takes its place the way the next one would.
+	const playFromRemote = useCallback(async (itemIds, options) => {
+		const loaded = await Promise.all(itemIds.map((id) => api.getItem(id).catch(() => null)));
+		const items = loaded.filter(Boolean);
+		if (!items.length) return;
+		const item = items[Math.min(Math.max(options.startIndex, 0), items.length - 1)];
+		const queue = items.filter((entry) => isAudioItem(entry) === isAudioItem(item));
+		const playOptions = {
+			startPositionTicks: options.startPositionTicks || 0,
+			audioStreamIndex: options.audioStreamIndex,
+			subtitleStreamIndex: options.subtitleStreamIndex,
+			mediaSourceId: options.mediaSourceId,
+			...(queue.length > 1 ? {[isAudioItem(item) ? 'audioPlaylist' : 'videoQueue']: queue} : {})
+		};
+		if (panelIndex !== PANELS.PLAYER) {
+			handlePlay(item, false, playOptions);
+			return;
+		}
+		await remoteControl.releasePlayer();
+		setPlayingItem(item);
+		setPlaybackOptions(playOptions);
+		setIsResume(false);
+	}, [api, panelIndex, handlePlay]);
+
+	// Queued from another client onto what's playing, music onto the playlist and video onto the
+	// queue, so what comes next follows the same order it would if it had been queued here.
+	const queueFromRemote = useCallback(async (itemIds, playNext) => {
+		if (!playingItem) return;
+		const loaded = await Promise.all(itemIds.map((id) => api.getItem(id).catch(() => null)));
+		const items = loaded.filter((entry) => entry && isAudioItem(entry) === isAudioItem(playingItem));
+		if (!items.length) return;
+		const key = isAudioItem(playingItem) ? 'audioPlaylist' : 'videoQueue';
+		setPlaybackOptions((prev) => {
+			const queue = prev?.[key]?.length ? prev[key] : [playingItem];
+			const at = queue.findIndex((entry) => entry.Id === playingItem.Id);
+			const next = playNext && at >= 0
+				? [...queue.slice(0, at + 1), ...items, ...queue.slice(at + 1)]
+				: [...queue, ...items];
+			return {...prev, [key]: next};
+		});
+	}, [api, playingItem]);
+
+	const remoteAppRef = useRef(null);
+	remoteAppRef.current = {
+		goHome: () => {
+			setShowSettingsPanel(false);
+			handleHome();
+		},
+		showMessage: showRemoteMessage,
+		playItems: playFromRemote,
+		queueItems: queueFromRemote
+	};
+
+	useEffect(() => remoteControl.setAppControls(remoteAppRef), []);
 
 	const [seerrRequestsTab, setSeerrRequestsTab] = useState('requests');
 
@@ -1371,252 +1482,257 @@ const AppContent = (props) => {
 					onMessages={handleOpenServerMessages}
 				/>
 			) : null}
-			<Suspense fallback={<PanelLoader />}>
-				<Panels index={panelIndex} noCloseButton noAnimation>
-					<Panel>
-						<Login onLoggedIn={handleLoggedIn} backHandlerRef={backHandlerRef} />
-					</Panel>
-					<Panel>
-						<Browse
-							onSelectItem={handleSelectItem}
-							onSelectLibrary={handleSelectLibrary}
-							onOpenRecordings={handleOpenRecordings}
-							onPlayRecording={handlePlayRecording}
-							onSelectGenre={handleSelectGenreFromBrowse}
-							onSelectSeerrItem={handleSelectSeerrItem}
-							onSelectSeerrGenre={handleSelectSeerrGenre}
-							onSelectSeerrStudio={handleSelectSeerrStudio}
-							onSelectSeerrNetwork={handleSelectSeerrNetwork}
-							onOpenSeerrShortcut={handleOpenSeerrShortcut}
-							isVisible={panelIndex === PANELS.BROWSE && !showSettingsPanel}
-							backHandlerRef={backHandlerRef}
-							onFocusItemThemeMusic={themeMusic.playThemeMusicDelayed}
-							onBlurItemThemeMusic={themeMusic.cancelDelayed}
-							onLeaveThemeMusic={themeMusic.stopThemeMusic}
-						/>
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.DETAILS && (
-							<Details
-								itemId={selectedItem?.Id}
-								initialItem={selectedItem}
-								onPlay={handlePlay}
+			<ItemMenuProvider onPlay={handlePlayFromMenu} onOpenItem={handleSelectItem} backRef={itemMenuBackRef}>
+				<Suspense fallback={<PanelLoader />}>
+					<Panels index={panelIndex} noCloseButton noAnimation>
+						<Panel>
+							<Login onLoggedIn={handleLoggedIn} backHandlerRef={backHandlerRef} />
+						</Panel>
+						<Panel>
+							<Browse
 								onSelectItem={handleSelectItem}
-								onSelectPerson={handleSelectPerson}
-								onSelectStudio={handleSelectStudio}
-								onItemDeleted={handleBack}
-								seerrNav={seerrNav}
-							backHandlerRef={backHandlerRef}
-						/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.LIBRARY && (
-							<Library
-							library={selectedLibrary}
-							genreFilter={genreFilter}
-							studioFilter={studioFilter}
-							onSelectItem={handleSelectItem}
-							onViewPhoto={handleViewPhoto}
-							onHome={handleHome}
+								onSelectLibrary={handleSelectLibrary}
+								onOpenRecordings={handleOpenRecordings}
+								onPlayRecording={handlePlayRecording}
+								onSelectGenre={handleSelectGenreFromBrowse}
+								onSelectSeerrItem={handleSelectSeerrItem}
+								onSelectSeerrGenre={handleSelectSeerrGenre}
+								onSelectSeerrStudio={handleSelectSeerrStudio}
+								onSelectSeerrNetwork={handleSelectSeerrNetwork}
+								onOpenSeerrShortcut={handleOpenSeerrShortcut}
+								isVisible={panelIndex === PANELS.BROWSE && !showSettingsPanel}
 								backHandlerRef={backHandlerRef}
-						/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SEARCH && (
-							<Search onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectPerson={handleSelectPerson} onSelectGame={handleSelectGame} onPlayChannel={handlePlayChannel} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SETTINGS && (
-							<Settings
-								onBack={handleBack}
-								onLibrariesChanged={fetchLibraries}
-								onRunSetupWizard={handleRunSetupWizard}
-								onSelectItem={handleSelectItemFromSettings}
+								onFocusItemThemeMusic={themeMusic.playThemeMusicDelayed}
+								onBlurItemThemeMusic={themeMusic.cancelDelayed}
+								onLeaveThemeMusic={themeMusic.stopThemeMusic}
 							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.PLAYER && playingItem && (
-							<Player
-								item={playingItem}
-								resume={isResume}
-								initialMediaSourceId={playbackOptions?.mediaSourceId}
-								initialAudioIndex={playbackOptions?.audioStreamIndex}
-								initialSubtitleIndex={playbackOptions?.subtitleStreamIndex}
-								initialStartPositionTicks={playbackOptions?.startPositionTicks}
-								initialQuality={playbackOptions?.forceBitrate}
-								forceTranscode={playbackOptions?.forceTranscode}
-								audioPlaylist={playbackOptions?.audioPlaylist}
-								videoQueue={playbackOptions?.videoQueue}
-								onEnded={handlePlayerEnd}
-								onBack={handlePlayerEnd}
-								onGuide={handlePlayerGuide}
-								onPlayNext={handlePlayNext}
-								onSelectPerson={handleSelectPersonFromPlayer}
-								onPausedChange={setIsPlayerPaused}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.DETAILS && (
+								<Details
+									itemId={selectedItem?.Id}
+									initialItem={selectedItem}
+									onPlay={handlePlay}
+									onSelectItem={handleSelectItem}
+									onSelectPerson={handleSelectPerson}
+									onSelectStudio={handleSelectStudio}
+									onItemDeleted={handleBack}
+									autoPlay={detailsAutoPlay}
+									onAutoPlayed={handleAutoPlayed}
+									seerrNav={seerrNav}
+									backHandlerRef={backHandlerRef}
 							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.FAVORITES && (
-							<Favorites onSelectItem={handleSelectItem} onSelectPerson={handleSelectPerson} onHome={handleHome} backHandlerRef={backHandlerRef} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GENRES && (
-							<Genres onSelectGenre={handleSelectGenre} onHome={handleHome} backHandlerRef={backHandlerRef} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.PERSON && (
-							<Person personId={selectedPerson?.Id} onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectSeerrPerson={handleSelectSeerrPerson} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.LIVETV && (
-							<LiveTV onPlayChannel={handlePlayChannel} onRecordings={handleOpenRecordings} backHandlerRef={backHandlerRef} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SEERR_DISCOVER && (
-							<SeerrDiscover
-								backHandlerRef={backHandlerRef}
-								onSelectItem={handleSelectSeerrItem}
-								onSelectGenre={handleSelectSeerrGenre}
-								onSelectStudio={handleSelectSeerrStudio}
-								onSelectNetwork={handleSelectSeerrNetwork}
-								onOpenRequests={handleOpenSeerrRequests}
-								onOpenShortcut={handleOpenSeerrShortcut}
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SEERR_REQUESTS && (
-							<SeerrRequests
-								onSelectItem={handleSelectSeerrItem}
-								onClose={handleBack}
-								initialTab={seerrRequestsTab}
-								backHandlerRef={backHandlerRef}
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GENRE_BROWSE && (
-							<GenreBrowse
-								genre={selectedGenre}
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.LIBRARY && (
+								<Library
+								library={selectedLibrary}
+								genreFilter={genreFilter}
+								studioFilter={studioFilter}
 								onSelectItem={handleSelectItem}
-							backHandlerRef={backHandlerRef}
-						/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.RECORDINGS && (
-							<Recordings onPlayRecording={handlePlayRecording} onBack={handleBack} backHandlerRef={backHandlerRef} />
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SEERR_BROWSE && (
-							<SeerrBrowse
-								browseType={seerrBrowse?.browseType}
-								item={seerrBrowse?.item}
-								mediaType={seerrBrowse?.mediaType}
-								onSelectItem={handleSelectSeerrItem}
-							backHandlerRef={backHandlerRef}
-						/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.SEERR_PERSON && (
-							<SeerrPerson
-								personId={seerrPerson?.id}
-								personName={seerrPerson?.name}
-								onSelectItem={handleSelectSeerrItem}
-								onBack={handleBack}
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.ADD_SERVER && (
-							<Login
-								onLoggedIn={handleLoggedIn}
-								onServerAdded={handleServerAdded}
-								backHandlerRef={backHandlerRef}
-								isAddingServer
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.ADD_USER && (
-							<Login
-								onLoggedIn={handleLoggedIn}
-								onServerAdded={handleServerAdded}
-								backHandlerRef={backHandlerRef}
-								isAddingUser
-								currentServerUrl={serverUrl}
-								currentServerName={serverName}
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GAMES && (
-							<Games
-								library={selectedGameLibrary}
-								onSelectSystem={handleSelectGameSystem}
+								onViewPhoto={handleViewPhoto}
 								onHome={handleHome}
+									backHandlerRef={backHandlerRef}
+							/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SEARCH && (
+								<Search onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectPerson={handleSelectPerson} onSelectGame={handleSelectGame} onPlayChannel={handlePlayChannel} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SETTINGS && (
+								<Settings
+									onBack={handleBack}
+									onLibrariesChanged={fetchLibraries}
+									onRunSetupWizard={handleRunSetupWizard}
+									onSelectItem={handleSelectItemFromSettings}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.PLAYER && playingItem && (
+								<Player
+									item={playingItem}
+									resume={isResume}
+									initialMediaSourceId={playbackOptions?.mediaSourceId}
+									initialAudioIndex={playbackOptions?.audioStreamIndex}
+									initialSubtitleIndex={playbackOptions?.subtitleStreamIndex}
+									initialStartPositionTicks={playbackOptions?.startPositionTicks}
+									initialQuality={playbackOptions?.forceBitrate}
+									forceTranscode={playbackOptions?.forceTranscode}
+									audioPlaylist={playbackOptions?.audioPlaylist}
+									videoQueue={playbackOptions?.videoQueue}
+									liveTvChannels={playbackOptions?.liveTvChannels}
+									onEnded={handlePlayerEnd}
+									onBack={handlePlayerEnd}
+									onGuide={handlePlayerGuide}
+									onPlayNext={handlePlayNext}
+									onSelectPerson={handleSelectPersonFromPlayer}
+									onPausedChange={setIsPlayerPaused}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.FAVORITES && (
+								<Favorites onSelectItem={handleSelectItem} onSelectPerson={handleSelectPerson} onHome={handleHome} backHandlerRef={backHandlerRef} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GENRES && (
+								<Genres onSelectGenre={handleSelectGenre} onHome={handleHome} backHandlerRef={backHandlerRef} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.PERSON && (
+								<Person personId={selectedPerson?.Id} onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectSeerrPerson={handleSelectSeerrPerson} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.LIVETV && (
+								<LiveTV onPlayChannel={handlePlayChannel} onRecordings={handleOpenRecordings} backHandlerRef={backHandlerRef} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SEERR_DISCOVER && (
+								<SeerrDiscover
+									backHandlerRef={backHandlerRef}
+									onSelectItem={handleSelectSeerrItem}
+									onSelectGenre={handleSelectSeerrGenre}
+									onSelectStudio={handleSelectSeerrStudio}
+									onSelectNetwork={handleSelectSeerrNetwork}
+									onOpenRequests={handleOpenSeerrRequests}
+									onOpenShortcut={handleOpenSeerrShortcut}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SEERR_REQUESTS && (
+								<SeerrRequests
+									onSelectItem={handleSelectSeerrItem}
+									onClose={handleBack}
+									initialTab={seerrRequestsTab}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GENRE_BROWSE && (
+								<GenreBrowse
+									genre={selectedGenre}
+									onSelectItem={handleSelectItem}
 								backHandlerRef={backHandlerRef}
 							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GAME_DETAILS && (
-							<GameDetails
-								library={selectedGameLibrary}
-								gameId={selectedGame?.id}
-								initialGame={selectedGame}
-								onPlay={handlePlayGame}
-								onSelectGame={handleSelectGame}
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.RECORDINGS && (
+								<Recordings onPlayRecording={handlePlayRecording} onBack={handleBack} backHandlerRef={backHandlerRef} />
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SEERR_BROWSE && (
+								<SeerrBrowse
+									browseType={seerrBrowse?.browseType}
+									item={seerrBrowse?.item}
+									mediaType={seerrBrowse?.mediaType}
+									onSelectItem={handleSelectSeerrItem}
 								backHandlerRef={backHandlerRef}
 							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GAME_PLAYER && selectedGame && (
-							<GamePlayer
-								library={selectedGameLibrary}
-								game={selectedGame}
-								startFresh={gameStartFresh}
-								onBack={handleBack}
-								backHandlerRef={backHandlerRef}
-							/>
-						)}
-					</Panel>
-					{/* Panels renders only children[panelIndex], so every Panel's position
-					    here has to match its PANELS value and a new one goes on the end. */}
-					<Panel>
-						{panelIndex === PANELS.SEERR_COLLECTION && (
-							<SeerrCollection
-								collectionId={seerrCollection?.collectionId}
-								onSelectItem={handleSelectSeerrItem}
-								backHandlerRef={backHandlerRef}
-							/>
-						)}
-					</Panel>
-					<Panel>
-						{panelIndex === PANELS.GAME_SYSTEM && (
-							<GameSystem
-								library={selectedGameLibrary}
-								system={selectedGameSystem}
-								onSelectGame={handleSelectGame}
-								onBack={handleBack}
-								backHandlerRef={backHandlerRef}
-							/>
-						)}
-					</Panel>
-				</Panels>
-			</Suspense>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.SEERR_PERSON && (
+								<SeerrPerson
+									personId={seerrPerson?.id}
+									personName={seerrPerson?.name}
+									onSelectItem={handleSelectSeerrItem}
+									onBack={handleBack}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.ADD_SERVER && (
+								<Login
+									onLoggedIn={handleLoggedIn}
+									onServerAdded={handleServerAdded}
+									backHandlerRef={backHandlerRef}
+									isAddingServer
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.ADD_USER && (
+								<Login
+									onLoggedIn={handleLoggedIn}
+									onServerAdded={handleServerAdded}
+									backHandlerRef={backHandlerRef}
+									isAddingUser
+									currentServerUrl={serverUrl}
+									currentServerName={serverName}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GAMES && (
+								<Games
+									library={selectedGameLibrary}
+									onSelectSystem={handleSelectGameSystem}
+									onHome={handleHome}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GAME_DETAILS && (
+								<GameDetails
+									library={selectedGameLibrary}
+									gameId={selectedGame?.id}
+									initialGame={selectedGame}
+									onPlay={handlePlayGame}
+									onSelectGame={handleSelectGame}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GAME_PLAYER && selectedGame && (
+								<GamePlayer
+									library={selectedGameLibrary}
+									game={selectedGame}
+									startFresh={gameStartFresh}
+									onBack={handleBack}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+						{/* Panels renders only children[panelIndex], so every Panel's position
+						    here has to match its PANELS value and a new one goes on the end. */}
+						<Panel>
+							{panelIndex === PANELS.SEERR_COLLECTION && (
+								<SeerrCollection
+									collectionId={seerrCollection?.collectionId}
+									onSelectItem={handleSelectSeerrItem}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+						<Panel>
+							{panelIndex === PANELS.GAME_SYSTEM && (
+								<GameSystem
+									library={selectedGameLibrary}
+									system={selectedGameSystem}
+									onSelectGame={handleSelectGame}
+									onBack={handleBack}
+									backHandlerRef={backHandlerRef}
+								/>
+							)}
+						</Panel>
+					</Panels>
+				</Suspense>
+			</ItemMenuProvider>
 			<AccountModal
 				open={showAccountModal}
 				onClose={handleCloseAccountModal}
@@ -1656,8 +1772,8 @@ const AppContent = (props) => {
 				onDismiss={dismissStreamNotification}
 			/>
 			<SeerrNotificationToast
-				notification={syncPlayToast}
-				onDismiss={clearSyncPlayMessage}
+				notification={remoteMessage}
+				onDismiss={clearRemoteMessage}
 			/>
 			<ServerMessagesDialog
 				open={showServerMessages}

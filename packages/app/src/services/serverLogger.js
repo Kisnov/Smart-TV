@@ -2,6 +2,7 @@ import {getPlatform} from '../platform';
 import {setNetworkLogSink} from '../utils/networkLogSink';
 import {redact, redactContext} from '../utils/logRedaction';
 import {setSyncLogSink} from '../utils/syncLog';
+import {acceptsReports, clientLogRequest} from './clientLogUpload';
 
 const LOG_LEVELS = {
 	DEBUG: 'Debug',
@@ -32,6 +33,7 @@ let logBuffer = [];
 let deviceInfoCache = null;
 let authGetter = null;
 let deviceInfoLoader = null;
+let clientLogSupported = false;
 
 const listeners = new Set();
 
@@ -112,23 +114,16 @@ const formatLogAsText = (entry) => {
 	return lines.join('\n');
 };
 
-const postDocument = (auth, body) => fetch(
-`${auth.serverUrl}/ClientLog/Document?documentType=Log&name=${logEndpointName}`,
-{
-	method: 'POST',
-	headers: {
-		'Content-Type': 'text/plain',
-		'Authorization': `MediaBrowser Token="${auth.accessToken}"`
-	},
-	body
-}
-);
+const postDocument = (auth, body) => {
+	const {url, init} = clientLogRequest(auth, logEndpointName, body);
+	return fetch(url, init);
+};
 
 const sendLogToServer = async (entry) => {
 	if (!authGetter) return;
 
 	const auth = authGetter();
-	if (!auth?.serverUrl || !auth?.accessToken) return;
+	if (!auth?.serverUrl || !auth?.accessToken || !acceptsReports(auth.serverType, clientLogSupported)) return;
 
 	try {
 		await postDocument(auth, formatLogAsText(entry));
@@ -202,6 +197,7 @@ const uploadReport = async () => {
 
 	const auth = authGetter();
 	if (!auth?.serverUrl || !auth?.accessToken) throw new Error('No server to send the report to');
+	if (!acceptsReports(auth.serverType, clientLogSupported)) throw new Error('The server has nowhere to take the report');
 
 	await loadDeviceInfo();
 	const response = await postDocument(auth, exportText());
@@ -241,6 +237,10 @@ export const serverLogger = {
 	},
 
 	isEnabled: () => isEnabled,
+
+	setClientLogSupported: (supported) => {
+		clientLogSupported = supported;
+	},
 
 	// Recording is the switch for keeping a local trace. Attaching the sink is what makes
 	// the fetch wrappers start reporting, and detaching it is what makes them free again.

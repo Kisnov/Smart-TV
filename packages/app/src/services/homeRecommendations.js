@@ -1,5 +1,6 @@
 import {HOME_ROW_ITEM_FIELDS} from './jellyfinApi';
 import {scopedGetItems, searchLibraries, visibleLibraryIds} from './libraryScope';
+import {getActiveParentalFilter} from './parentalControls';
 import {byLastPlayedDesc} from '../utils/libraryScopeRules';
 import seerrApi from './seerrApi';
 import {normalizeMediaItem} from '../utils/seerrHomeRows';
@@ -245,11 +246,13 @@ export async function getRecommendations(api, seed, {includeWatched, candidateIt
 	}
 	await Promise.all(queries);
 
+	const parentalFilter = getActiveParentalFilter();
 	const scored = [];
 	for (const candidate of candidatesMap.values()) {
 		const id = candidate.Id ? String(candidate.Id) : '';
 		if (!id || id === baseId) continue;
 		if (!includeWatched && isPlayed(candidate)) continue;
+		if (parentalFilter.isBlockedRaw(candidate)) continue;
 		scored.push({item: candidate, score: scoreCandidate(candidate, ctx)});
 	}
 
@@ -269,6 +272,7 @@ export async function getRecommendations(api, seed, {includeWatched, candidateIt
 				const id = item && item.Id ? String(item.Id) : '';
 				if (!id || candidatesMap.has(id) || id === baseId) continue;
 				if (!includeWatched && isPlayed(item)) continue;
+				if (parentalFilter.isBlockedRaw(item)) continue;
 				candidatesMap.set(id, item);
 				scored.push({item, score: scoreCandidate(item, ctx)});
 				if (scored.length >= 30) break;
@@ -413,9 +417,11 @@ async function loadSeeds(api, sourceItem, sourceType) {
 }
 
 function filterRecommendedItems(items, includeWatched) {
+	const parentalFilter = getActiveParentalFilter();
 	return (items || []).filter((item) => {
 		if (!item || !item.Id) return false;
 		if (!includeWatched && isPlayed(item)) return false;
+		if (parentalFilter.isBlockedRaw(item)) return false;
 		return true;
 	});
 }
@@ -556,14 +562,23 @@ export async function getOnlineRecommendations(settings, seed) {
 	return results.filter((item) => item && item.id).slice(0, 15).map(normalizeMediaItem);
 }
 
+// How many items a query matched, whether or not the server sent a total back.
+const matchCount = (res) => (res && typeof res.TotalRecordCount === 'number'
+	? res.TotalRecordCount
+	: (((res && res.Items) || []).length));
+
+// The unplayed count a list query already carried, or null when the server left it off.
+const reportedUnplayed = (item) => {
+	const userData = item.UserData || {};
+	if (typeof item.UnplayedItemCount === 'number') return item.UnplayedItemCount;
+	if (typeof userData.UnplayedItemCount === 'number') return userData.UnplayedItemCount;
+	return null;
+};
+
 // A series counts as fully watched only when nothing is left unplayed.
 async function verifyFullyWatchedSeries(api, series) {
-	const userData = series.UserData || {};
-	const played = userData.Played === true;
-	const unplayed = typeof series.UnplayedItemCount === 'number'
-		? series.UnplayedItemCount
-		: (typeof userData.UnplayedItemCount === 'number' ? userData.UnplayedItemCount : 0);
-	if (!played || unplayed > 0) return null;
+	const played = (series.UserData || {}).Played === true;
+	if (!played || reportedUnplayed(series) > 0) return null;
 
 	try {
 		const res = await api.getItems({
@@ -573,36 +588,50 @@ async function verifyFullyWatchedSeries(api, series) {
 			Filters: 'IsUnplayed',
 			Limit: 1
 		});
-		const count = res && (typeof res.TotalRecordCount === 'number'
-			? res.TotalRecordCount
-			: ((res.Items || []).length));
-		return count === 0 ? series : null;
+		return matchCount(res) === 0 ? series : null;
 	} catch (_error) {
 		return series;
 	}
 }
 
-// A collection counts as fully watched only when every child is played.
+// A collection counts as fully watched only when every child is played. This runs once for each
+// box set the rewatch row considers, so it asks for counts the way verifyFullyWatchedSeries does
+// rather than for every child.
 async function verifyFullyWatchedCollection(api, col) {
+	const notWatched = {col, isPlayed: false, lastPlayed: ''};
+
+	// The box set list already carries UserData, so a reported unplayed count settles most
+	// collections without another request. A server that leaves the count off is still asked.
+	if (reportedUnplayed(col) > 0) return notWatched;
+
 	try {
-		const res = await api.getItems({
+		const unplayedRes = await api.getItems({
 			ParentId: col.Id,
 			Recursive: true,
+			Filters: 'IsUnplayed',
+			Limit: 1
+		});
+		if (matchCount(unplayedRes) !== 0) return notWatched;
+
+		// The newest played child dates the collection for the sort. Finding none means the set is
+		// empty, which passes the unplayed check too.
+		const playedRes = await api.getItems({
+			ParentId: col.Id,
+			Recursive: true,
+			Filters: 'IsPlayed',
+			SortBy: 'DatePlayed',
+			SortOrder: 'Descending',
+			Limit: 1,
 			Fields: 'UserData'
 		});
-		const children = (res && res.Items) || [];
-		if (children.length > 0 && children.every((c) => c.UserData && c.UserData.Played === true)) {
-			let lastPlayed = '';
-			for (const child of children) {
-				const lp = (child.UserData && child.UserData.LastPlayedDate) || '';
-				if (lp > lastPlayed) lastPlayed = lp;
-			}
-			return {col, isPlayed: true, lastPlayed};
-		}
+		const newest = ((playedRes && playedRes.Items) || [])[0];
+		if (!newest) return notWatched;
+
+		return {col, isPlayed: true, lastPlayed: (newest.UserData && newest.UserData.LastPlayedDate) || ''};
 	} catch (_error) {
 		// Treat as not fully watched.
 	}
-	return {col, isPlayed: false, lastPlayed: ''};
+	return notWatched;
 }
 
 // A series card should open its first episode when selected.

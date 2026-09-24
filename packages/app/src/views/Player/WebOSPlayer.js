@@ -37,9 +37,14 @@ import {resolveSeriesAudio} from './initialAudio';
 import {resolveInitialSubtitle} from './initialSubtitle';
 import PlayerControls, {usePlayerButtons} from './PlayerControls';
 import useLiveProgram from './useLiveProgram';
+import {hasTrickplayPreview} from '../../components/TrickplayPreview';
+import useChannelCarousel from './useChannelCarousel';
+import ChannelCarousel from './ChannelCarousel';
 import NextUpOverlay from './NextUpOverlay';
 import SkipSegmentOverlay from './SkipSegmentOverlay';
 import StillWatchingDialog from './StillWatchingDialog';
+import useBufferingAnimation from './useBufferingAnimation';
+import LoadingAnimationLayer from '../../components/LoadingAnimation';
 import useSleepTimer from './useSleepTimer';
 import useSyncPlayCommands from './useSyncPlayCommands';
 import useSegmentPopups from './useSegmentPopups';
@@ -63,6 +68,7 @@ import {
 } from './remoteSubtitleUtils';
 import {getVideoDisplayAspectRatio, getZoomDisplayRect} from './aspectRatioUtils';
 import {describeVideoStream, readVideoSupport} from './videoDiagnostics';
+import useRemotePlayerControls from './useRemotePlayerControls';
 
 import css from './WebOSPlayer.module.less';
 
@@ -89,7 +95,7 @@ const getWebOSFullscreenRect = () => {
 // request puts the whole group through a round of buffering.
 const GROUP_SEEK_DEBOUNCE_MS = 600;
 
-const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialSubtitleIndex, initialStartPositionTicks, initialQuality, forceTranscode, onEnded, onBack, onGuide, onPlayNext, onSelectPerson, audioPlaylist, videoQueue, onPausedChange}) => {
+const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialSubtitleIndex, initialStartPositionTicks, initialQuality, forceTranscode, onEnded, onBack, onGuide, onPlayNext, onSelectPerson, audioPlaylist, videoQueue, liveTvChannels, onPausedChange}) => {
 	const {settings, updateSetting} = useSettings();
 	const {isInGroup, lastCommand} = useSyncPlay();
 	const syncPlayCommandRef = useRef(false);
@@ -149,6 +155,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const [isSeeking, setIsSeeking] = useState(false);
 	const [seekPosition, setSeekPosition] = useState(0);
 	const [mediaSourceId, setMediaSourceId] = useState(null);
+	const {showBuffering, noteSeek} = useBufferingAnimation({
+		isBuffering,
+		isSeeking,
+		hasPreview: settings.trickPlayEnabled !== false && hasTrickplayPreview(item.Id, mediaSourceId)
+	});
 	const [hasTriedTranscode, setHasTriedTranscode] = useState(false);
 	const [focusRow, setFocusRow] = useState('bottom');
 	const [isAudioMode, setIsAudioMode] = useState(false);
@@ -180,6 +191,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const lastFocusedElementRef = useRef(null);
 
 	const videoRef = useRef(null);
+	// Read through a ref when an item loads, so the queue growing while it plays doesn't load it again.
+	const videoQueueRef = useRef(videoQueue);
+	videoQueueRef.current = videoQueue;
 	// Whether the pipeline has stalled: set by waiting, cleared once frames
 	// move again. readyState is no use for this on webOS, which sits at
 	// HAVE_CURRENT_DATA while playing perfectly well, so a test on it reported
@@ -234,8 +248,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const unregisterAppStateRef = useRef(null);
 	const controlsTimeoutRef = useRef(null);
 	const lastSeekTargetRef = useRef(null);
+	// A scrub that paused playback to hold the preview still, where it has got to, and whether
+	// playback was going before it.
+	const scrubHoldRef = useRef({active: false, wasPlaying: false, ticks: null});
 	const seekingTranscodeRef = useRef(false);
 	const seekDebounceTimerRef = useRef(null);
+	const scrubSettleTimerRef = useRef(null);
 	const isCleaningUpRef = useRef(false);
 	const isHandlingErrorRef = useRef(false);
 	const sourceTransitionRef = useRef(false);
@@ -272,7 +290,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 	const {
 		shuffleMode, repeatMode, hasNextTrack, hasPrevTrack,
-		handleToggleShuffle, handleToggleRepeat, handleNextTrack, handlePrevTrack,
+		handleToggleShuffle, handleToggleRepeat, setShuffleMode, setRepeatMode, handleNextTrack, handlePrevTrack,
 		handleSelectQueueTrack, handleSeekToLyric, handleEnterAudioPanel, getNextStep
 	} = useAudioTransport({
 		item, audioPlaylist, isAudioMode, onPlayNext, positionRef,
@@ -673,6 +691,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			}
 			setIsLoading(true);
 			setError(null);
+			scrubHoldRef.current = {active: false, wasPlaying: false, ticks: null};
 			setMediaSegments(null);
 			setHasTriedTranscode(false);
 			setCurrentTime(0);
@@ -948,7 +967,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 					// A queue sets its own order. Running off the end of one, or playing a
 					// lone episode, falls back to the air order lookup.
-					const queued = videoQueue?.length ? nextInQueue(videoQueue, item) : null;
+					const queued = nextInQueue(videoQueueRef.current, item);
 					if (queued) {
 						setNextEpisode(queued);
 					} else if (item.Type === 'Episode') {
@@ -960,7 +979,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			} catch (err) {
 				console.error('[Player] Failed to load media:', err);
 				// A pre-roll that cant even load gets skipped, not surfaced.
-				const skipTo = isPreroll(item) ? nextInQueue(videoQueue, item) : null;
+				const skipTo = isPreroll(item) ? nextInQueue(videoQueueRef.current, item) : null;
 				if (skipTo && onPlayNext) {
 					onPlayNext(skipTo);
 				} else {
@@ -984,6 +1003,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				resetPopups(); // eslint-disable-line no-use-before-define
 				if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
 				if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
+				clearTimeout(scrubSettleTimerRef.current);
 				disposePgsRenderer(pgsRendererRef.current);
 				disposeAssRenderer(assRendererRef.current);
 				clearAssCanvas(assCanvas);
@@ -1011,6 +1031,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			if (seekDebounceTimerRef.current) {
 				clearTimeout(seekDebounceTimerRef.current);
 			}
+			clearTimeout(scrubSettleTimerRef.current);
 
 			isCleaningUpRef.current = true;
 			destroyHlsPlayer();
@@ -1025,7 +1046,13 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			}
 		};
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [item, resume, videoQueue, onPlayNext, selectedQuality, settings.maxBitrate, settings.preferTranscode, settings.forceDirectPlay, settings.forceTruehdPassthrough, forceTranscode, settings.subtitleMode, settings.introAction, settings.outroAction, initialAudioIndex, initialSubtitleIndex]);
+	}, [item, resume, onPlayNext, selectedQuality, settings.maxBitrate, settings.preferTranscode, settings.forceDirectPlay, settings.forceTruehdPassthrough, forceTranscode, settings.subtitleMode, settings.introAction, settings.outroAction, initialAudioIndex, initialSubtitleIndex]);
+
+	// Another client can queue more while this plays, and what it puts behind this plays next.
+	useEffect(() => {
+		const queued = nextInQueue(videoQueue, item);
+		if (queued) setNextEpisode(queued);
+	}, [videoQueue, item]);
 
 	useEffect(() => {
 		if (mediaUrl) {
@@ -1524,6 +1551,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		onPlayNext(episode);
 	}, [onPlayNext, item.Id]);
 
+	const {carouselOpenRef, openCarousel, markChannelPlaying, carouselProps} = useChannelCarousel({
+		item, isLiveTV, liveTvChannels, sortBy: settings.liveTvChannelSortBy,
+		error, controlsVisible, showControls, hideControls, setFocusRow,
+		onSwitchChannel: onPlayNextWithCleanup
+	});
+
 	const onSeekToSegmentEnd = useCallback((endTicks) => {
 		if (!endTicks || !videoRef.current) return;
 		// Skipping inside a group skips the segment for everyone.
@@ -1534,7 +1567,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		skipSegment, showSkipCredits, showNextEpisode, nextEpisodeCountdown,
 		handleSkipSegment, handlePlayNextNow,
 		askStillWatching, handleStillWatchingContinue, handleStillWatchingStop, cancelNextEpisodeCountdown,
-		checkSegments, handlePopupKeyDown, resetPopups
+		checkSegments, handlePopupKeyDown, resetPopups, noteViewerActivity
 	} = useSegmentPopups({
 		mediaSegments, nextEpisode, settings, runTimeRef,
 		activeModal, controlsVisible, hideControls, showControls,
@@ -1657,6 +1690,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	}, []);
 
 	const handlePlaying = useCallback(() => {
+		markChannelPlaying();
 		setIsBuffering(false);
 		stalledRef.current = false;
 		syncLog('[Player] playing at', videoRef.current?.currentTime);
@@ -1671,7 +1705,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (isInGroup && !groupHoldRef.current) {
 			skipGovernorRef.current.onStart({nowMs: Date.now(), fromMs: positionRef.current / 10000});
 		}
-	}, [holdForGroup, isInGroup]);
+	}, [holdForGroup, isInGroup, markChannelPlaying]);
 
 	const handleEnded = useCallback(async () => {
 		if (sourceTransitionRef.current) {
@@ -1909,7 +1943,89 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		handleBackRef.current = handleBack;
 	}, [handleBack]);
 
+	// Play during a held scrub is what commits it, landing on the scrubbed spot and playing on
+	// from there.
+	const resumeHeldScrub = useCallback(() => {
+		const held = scrubHoldRef.current;
+		if (!held.active) return false;
+		scrubHoldRef.current = {active: false, wasPlaying: false, ticks: null};
+		noteViewerActivity();
+		if (held.ticks != null) {
+			noteSeek();
+			seekToTicks(held.ticks);
+		}
+		setIsSeeking(false);
+		videoRef.current?.play()?.catch?.(() => {});
+		healthMonitorRef.current?.setPaused(false);
+		return true;
+	}, [noteViewerActivity, seekToTicks, noteSeek]);
+
+	// Moving off the bar lands a held scrub where it is and stays paused, and play then carries on
+	// from there.
+	const settleHeldScrub = useCallback(() => {
+		const held = scrubHoldRef.current;
+		if (!held.active || held.ticks == null) return;
+		noteSeek();
+		seekToTicks(held.ticks);
+		scrubHoldRef.current = {...held, ticks: null};
+	}, [seekToTicks, noteSeek]);
+
+	// A skip or a chapter jump lands somewhere the scrub knows nothing about, so a held scrub is
+	// dropped and playback carries on as it was.
+	const dropScrub = useCallback(() => {
+		const held = scrubHoldRef.current;
+		if (!held.active) return;
+		scrubHoldRef.current = {active: false, wasPlaying: false, ticks: null};
+		setIsSeeking(false);
+		if (held.wasPlaying) {
+			videoRef.current?.play()?.catch?.(() => {});
+			healthMonitorRef.current?.setPaused(false);
+		}
+	}, []);
+
+	// With a preview to look at, a scrub pauses playback so the preview holds still, and only play
+	// commits it. The viewer can turn that off, and without a preview playback carries on.
+	const beginScrub = useCallback(() => {
+		if (scrubHoldRef.current.active || settings.trickPlayPauseWhileScrubbing === false ||
+			settings.trickPlayEnabled === false || isInGroup || !hasTrickplayPreview(item.Id, mediaSourceId)) return;
+		const video = videoRef.current;
+		const wasPlaying = Boolean(video && !video.paused);
+		scrubHoldRef.current = {active: true, wasPlaying, ticks: null};
+		if (wasPlaying) {
+			video.pause();
+			healthMonitorRef.current?.setPaused(true);
+		}
+	}, [settings.trickPlayPauseWhileScrubbing, settings.trickPlayEnabled, isInGroup, item.Id, mediaSourceId]);
+
+	// One scrub step on. A held scrub only moves its target, anything else seeks as it goes.
+	const scrubBy = useCallback((deltaSeconds) => {
+		if (!videoRef.current) return;
+		noteViewerActivity();
+		beginScrub();
+		setIsSeeking(true);
+		const held = scrubHoldRef.current;
+		clearTimeout(scrubSettleTimerRef.current);
+		if (!held.active) {
+			noteSeek();
+			seekByOffset(deltaSeconds, true);
+			// A scrub that doesn't hold playback has landed once the presses stop, and the preview
+			// goes with it.
+			scrubSettleTimerRef.current = setTimeout(() => setIsSeeking(false), 600);
+			return;
+		}
+		const base = held.ticks != null ? held.ticks : positionRef.current;
+		const maxTicks = Math.max(0, duration - 1) * 10000000;
+		const ticks = Math.max(0, Math.min(maxTicks, base + Math.floor(deltaSeconds * 10000000)));
+		scrubHoldRef.current = {...held, ticks};
+		setSeekPosition(ticks);
+	}, [noteViewerActivity, beginScrub, seekByOffset, duration, noteSeek]);
+
 	const handlePlayPause = useCallback(() => {
+		if (resumeHeldScrub()) {
+			showControls();
+			return;
+		}
+		noteViewerActivity();
 		if (videoRef.current) {
 			showControls();
 			if (isInGroup && !syncPlayCommandRef.current) {
@@ -1933,15 +2049,23 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				healthMonitorRef.current?.setPaused(true);
 			}
 		}
-	}, [isPaused, settings.unpauseRewind, isInGroup, showControls]);
+	}, [isPaused, settings.unpauseRewind, isInGroup, showControls, noteViewerActivity, resumeHeldScrub]);
 
 	const handleRewind = useCallback(() => {
-		if (videoRef.current) seekByOffset(-skipBackSeconds(settings));
-	}, [settings, seekByOffset]);
+		if (!videoRef.current) return;
+		noteViewerActivity();
+		dropScrub();
+		noteSeek();
+		seekByOffset(-skipBackSeconds(settings));
+	}, [settings, seekByOffset, noteViewerActivity, dropScrub, noteSeek]);
 
 	const handleForward = useCallback(() => {
-		if (videoRef.current) seekByOffset(skipForwardSeconds(settings));
-	}, [settings, seekByOffset]);
+		if (!videoRef.current) return;
+		noteViewerActivity();
+		dropScrub();
+		noteSeek();
+		seekByOffset(skipForwardSeconds(settings));
+	}, [settings, seekByOffset, noteViewerActivity, dropScrub, noteSeek]);
 
 	const openModal = useCallback((modal) => {
 	  lastFocusedElementRef.current = document.activeElement;
@@ -2186,15 +2310,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		}
 	}, [remoteSubtitleResults, item, subtitleStreams, mediaSourceId, selectedAudioIndex, selectedSubtitleIndex, selectedQuality, settings.maxBitrate, applySubtitleSelection]);
 
-	// Track selection - using data attributes to avoid arrow functions in JSX
-	const handleSelectAudio = useCallback(async (e) => {
-		const index = parseInt(e.currentTarget.dataset.index, 10);
-		if (isNaN(index)) return;
+	const applyAudioSelection = useCallback(async (index, shouldClose = true) => {
 		setSelectedAudioIndex(index);
 		// Saved here rather than after the switch, because switching leaves by several
 		// routes and the choice was made either way.
 		saveAudioPref(item, index, audioStreams || []);
-		closeModal();
+		if (shouldClose) closeModal();
 
 		setHasTriedTranscode(false);
 		forceHlsJsRef.current = false;
@@ -2251,11 +2372,47 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		}
 	}, [item, playMethod, closeModal, audioStreams]);
 
+	// Track selection - using data attributes to avoid arrow functions in JSX
+	const handleSelectAudio = useCallback((e) => {
+		const index = parseInt(e.currentTarget.dataset.index, 10);
+		if (!isNaN(index)) applyAudioSelection(index);
+	}, [applyAudioSelection]);
+
 	const handleSelectSubtitle = useCallback(async (e) => {
 		const index = parseInt(e.currentTarget.dataset.index, 10);
 		if (isNaN(index)) return;
 		await applySubtitleSelection(index, subtitleStreams, true);
 	}, [applySubtitleSelection, subtitleStreams]);
+
+	// What another client's remote reaches while this plays. It goes through the same handlers as
+	// the buttons, so a group, a scrub or the next episode behaves as it would for the viewer.
+	useRemotePlayerControls({
+		pause: () => {
+			if (!isPaused) handlePlayPause();
+		},
+		resume: () => {
+			if (isPaused) handlePlayPause();
+		},
+		playPause: handlePlayPause,
+		stop: handleBack,
+		release: teardownPlayback,
+		seek: (ticks) => {
+			dropScrub();
+			if (!groupSeekTo(ticks)) seekToTicks(ticks);
+		},
+		next: () => (isAudioMode ? handleNextTrack() : handlePlayNextNow()),
+		previous: handlePrevTrack,
+		rewind: handleRewind,
+		fastForward: handleForward,
+		setAudioStream: (index) => {
+			if ((audioStreams || []).some((s) => s.index === index)) applyAudioSelection(index, false);
+		},
+		setSubtitleStream: (index) => {
+			if (index === -1 || subtitleStreams.some((s) => s.index === index)) applySubtitleSelection(index, subtitleStreams, false);
+		},
+		setRepeatMode,
+		setShuffle: setShuffleMode
+	});
 
 	const handleSelectQuality = useCallback((e) => {
 		const valueStr = e.currentTarget.dataset.value;
@@ -2267,9 +2424,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const handleSelectChapter = useCallback((e) => {
 		const ticks = parseInt(e.currentTarget.dataset.ticks, 10);
 		if (isNaN(ticks) || ticks < 0) return;
+		dropScrub();
 		if (!groupSeekTo(ticks)) seekToTicks(ticks);
 		closeModal();
-	}, [closeModal, seekToTicks, groupSeekTo]);
+	}, [closeModal, seekToTicks, groupSeekTo, dropScrub]);
 
 	const handleProgressClick = useCallback((e) => {
 		if (!videoRef.current) return;
@@ -2287,31 +2445,37 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		if (e.key === 'ArrowLeft' || e.keyCode === 37) {
 			e.preventDefault();
-			setIsSeeking(true);
-			seekByOffset(-step, true);
+			scrubBy(-step);
 		} else if (e.key === 'ArrowRight' || e.keyCode === 39) {
 			e.preventDefault();
-			setIsSeeking(true);
-			seekByOffset(step, true);
+			scrubBy(step);
+		} else if (e.key === 'Enter' || e.keyCode === 13) {
+			e.preventDefault();
+			if (resumeHeldScrub()) return;
+			setIsSeeking(false);
+			handlePlayPause();
 		} else if (e.key === 'ArrowUp' || e.keyCode === 38) {
 			e.preventDefault();
+			settleHeldScrub();
 			const next = isAudioMode ? nextAudioFocusRow('progress', 'up') : 'bottom';
 			setFocusRow(next);
 			setIsSeeking(false);
 			window.requestAnimationFrame(() => Spotlight.focus(isAudioMode ? AUDIO_FOCUS_IDS[next] : 'play-pause-btn'));
 		} else if (e.key === 'ArrowDown' || e.keyCode === 40) {
 			e.preventDefault();
+			settleHeldScrub();
 			setFocusRow('bottom');
 			setIsSeeking(false);
 			if (isAudioMode) {
 				window.requestAnimationFrame(() => Spotlight.focus('play-pause-btn'));
 			}
 		}
-	}, [settings.seekStep, seekByOffset, showControls, isAudioMode]);
+	}, [settings.seekStep, scrubBy, resumeHeldScrub, settleHeldScrub, showControls, handlePlayPause, isAudioMode]);
 
 	const handleProgressBlur = useCallback(() => {
+		settleHeldScrub();
 		setIsSeeking(false);
-	}, []);
+	}, [settleHeldScrub]);
 
 	const handleToggleFavorite = useCallback(async () => {
 		if (!item?.Id) return;
@@ -2380,6 +2544,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			case 'zoom': handleToggleZoom(); break;
 			case 'sleep': openModal('sleep'); break;
 			case 'info': openModal('info'); break;
+			case 'channels': openCarousel(); break;
 			case 'guide': handleOpenGuide(); break;
 			case 'next': handlePlayNextNow(); break;
 			case 'nextTrack': handleNextTrack(); break;
@@ -2389,7 +2554,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			case 'favorite': handleToggleFavorite(); break;
 			default: break;
 		}
-	}, [showControls, handlePlayPause, handleRewind, handleForward, openModal, handleOpenCast, handleToggleZoom, handleOpenGuide, handlePlayNextNow, handleNextTrack, handlePrevTrack, handleToggleShuffle, handleToggleRepeat, handleToggleFavorite]);
+	}, [showControls, handlePlayPause, handleRewind, handleForward, openModal, handleOpenCast, handleToggleZoom, handleOpenGuide, openCarousel, handlePlayNextNow, handleNextTrack, handlePrevTrack, handleToggleShuffle, handleToggleRepeat, handleToggleFavorite]);
 
 	const handleControlButtonClick = useCallback((e) => {
 		const action = e.currentTarget.dataset.action;
@@ -2594,6 +2759,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	useEffect(() => {
 		const handleKeyDown = (e) => {
 			const key = e.key || e.keyCode;
+			// The channel carousel takes every key while it's up.
+			if (carouselOpenRef.current) return;
 
 			if (handlePopupKeyDown(e)) return;
 
@@ -2603,28 +2770,15 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				e.preventDefault();
 				e.stopPropagation();
 				showControls();
-				if (videoRef.current && videoRef.current.paused) {
-					// In a group the request goes to the server because acting
-					// locally would silently desync this client.
-					if (isInGroup && !syncPlayCommandRef.current) {
-						syncPlayService.sendPlayRequest();
-						return;
-					}
-					videoRef.current.play();
-				}
+				if (resumeHeldScrub()) return;
+				if (isPaused) handlePlayPause();
 				return;
 			}
 			if (e.keyCode === 19) {
 				e.preventDefault();
 				e.stopPropagation();
 				showControls();
-				if (videoRef.current && !videoRef.current.paused) {
-					if (isInGroup && !syncPlayCommandRef.current) {
-						syncPlayService.sendPauseRequest();
-						return;
-					}
-					videoRef.current.pause();
-				}
+				if (!isPaused) handlePlayPause();
 				return;
 			}
 			if (e.keyCode === 417) {
@@ -2645,6 +2799,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				e.preventDefault();
 				e.stopPropagation();
 				handleBack();
+				return;
+			}
+
+			// Up during live playback opens the channel carousel, over the OSD or not.
+			if (isLiveTV && !activeModal && (key === 'ArrowUp' || e.keyCode === 38)) {
+				e.preventDefault();
+				e.stopPropagation();
+				openCarousel();
 				return;
 			}
 
@@ -2675,6 +2837,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}
 				if (key === 'Enter' || e.keyCode === 13) {
 					e.preventDefault();
+					// Hidden controls keep focus, so the focused one would get this key
+					// too and toggle playback straight back.
+					e.stopPropagation();
 					handlePlayPause();
 					return;
 				}
@@ -2683,17 +2848,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}
 				if (key === 'ArrowLeft' || e.keyCode === 37 || key === 'ArrowRight' || e.keyCode === 39) {
 					e.preventDefault();
+					// Same as Enter, or the focused progress bar adds a second step.
+					e.stopPropagation();
 					if (isLiveTV) { showControls(); return; }
 					showControls();
 					setFocusRow('progress');
-					setIsSeeking(true);
-					setSeekPosition(Math.floor(currentTime * 10000000));
-					const step = settings.seekStep;
-					if (key === 'ArrowLeft' || e.keyCode === 37) {
-						seekByOffset(-step, true);
-					} else {
-						seekByOffset(step, true);
-					}
+					scrubBy(key === 'ArrowLeft' || e.keyCode === 37 ? -settings.seekStep : settings.seekStep);
 					return;
 				}
 				e.preventDefault();
@@ -2739,7 +2899,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleForward, handleRewind, currentTime, settings.seekStep, seekByOffset, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, isInGroup]);
+	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, isPaused, handlePlayPause, handleForward, handleRewind, settings.seekStep, scrubBy, resumeHeldScrub, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, carouselOpenRef, openCarousel]);
 
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;
 	const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
@@ -2788,12 +2948,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 			<canvas ref={assCanvasRef} className={css.assCanvas} />
 
-			{isLoading && (
-				<div className={css.loadingIndicator}>
-					<div className={css.spinner} />
-					<p>{$L('Loading...')}</p>
-				</div>
-			)}
+			{isLoading && <LoadingAnimationLayer dimmed label={$L('Loading Stream...')} />}
 
 			{error && (
 				<div className={css.error}>
@@ -2838,12 +2993,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			)}
 
 
-			{/* Buffering Indicator */}
-			{!isLoading && isBuffering && (
-				<div className={css.bufferingIndicator}>
-					<div className={css.spinner} />
-				</div>
-			)}
+			{!isLoading && showBuffering && <LoadingAnimationLayer label={$L('Loading Stream...')} />}
 
 			{!isLoading && !error && isPaused && settings.showDescriptionOnPause && item?.Overview && !isAudioMode && !activeModal && !controlsVisible && (
 				<div className={css.pauseDescriptionOverlay}>
@@ -2882,6 +3032,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				/>
 			)}
 
+			{carouselProps && (
+				<ChannelCarousel
+					{...carouselProps}
+					serverUrl={getServerUrl()}
+					clockDisplay={settings.clockDisplay}
+				/>
+			)}
+
 			{!isLoading && !error && <PlayerControls
 				isHdrContent={isHdrContent}
 				css={css}
@@ -2901,7 +3059,6 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				progressPercent={progressPercent}
 				bufferedPercent={bufferedPercent}
 				isSeeking={isSeeking}
-				seekPosition={seekPosition}
 				item={item}
 				mediaSourceId={mediaSourceId}
 				playMethod={playMethod}

@@ -5,6 +5,7 @@ import {getImageUrl} from '../../utils/helpers';
 import {genreGlowRgb} from './galleryGlow';
 import {KEYS} from '../../utils/keys';
 import css from './Browse.module.less';
+import {carouselIntervalMs} from '../../utils/carouselTiming';
 
 const SPINES_PER_SIDE = 7;
 const POSTER_OPTS = {maxWidth: 500, quality: 85};
@@ -84,12 +85,12 @@ const BookshelfBar = memo(({
 			carouselIntervalRef.current = null;
 		}
 
-		const autoAdvanceEnabled = settings.autoAdvance !== false;
-		const configuredInterval = Number(settings.autoAdvanceInterval);
-		const carouselSpeed = Number.isFinite(configuredInterval) && configuredInterval > 0
-			? configuredInterval * 1000
-			: (settings.carouselSpeed || 8000);
-		if (!autoAdvanceEnabled || !isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0) return;
+		const carouselSpeed = carouselIntervalMs(
+			settings.autoAdvance,
+			settings.autoAdvanceInterval,
+			settings.carouselSpeed
+		);
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0) return;
 
 		carouselIntervalRef.current = setInterval(() => {
 			setCurrentIndex((prev) => (prev + 1) % featuredItems.length);

@@ -6,6 +6,10 @@ import * as multiServerManager from '../services/multiServerManager';
 import {clearImageCache} from '../services/imageProxy';
 import {clearAnimeMarkerCache} from '../services/animeMarkersApi';
 import {resetLibraryScope} from '../services/libraryScope';
+import {resetBlockedContentGate} from '../services/blockedContentGate';
+import * as serverSocket from '../services/serverSocket';
+import * as userDataSync from '../services/userDataSync';
+import * as remoteControl from '../services/remoteControl';
 
 import {clearProxiedImageCache} from '../hooks/useProxiedImage';
 import {parseUrl} from '../utils/urlCompat';
@@ -37,6 +41,7 @@ const clearAllCaches = () => {
 	clearAnimeMarkerCache();
 	// The policy and the hidden library list belong to the account that just left.
 	resetLibraryScope();
+	resetBlockedContentGate();
 	console.log('[AuthContext] All caches cleared');
 };
 
@@ -508,6 +513,25 @@ export const AuthProvider = ({children}) => {
 			}
 		}
 	}, [isAuthenticated]);
+
+	// The session socket, and the watched state and remote control it carries, belong to whoever
+	// is signed in, so all of it starts over when the account or the server changes. A server that
+	// restarts forgets what this session can do, so it's told again on every connect.
+	useEffect(() => {
+		if (!isAuthenticated) return undefined;
+		serverSocket.connect();
+		userDataSync.bindTo(serverSocket.onMessage, jellyfinApi.getUserId());
+		remoteControl.bindTo(serverSocket.onMessage);
+		const stopReporting = serverSocket.onConnectionChange((open) => {
+			if (open) jellyfinApi.reportCapabilities();
+		});
+		return () => {
+			stopReporting();
+			remoteControl.reset();
+			userDataSync.reset();
+			serverSocket.disconnect();
+		};
+	}, [isAuthenticated, serverUrl, accessToken]);
 
 	// Nothing else moves the state off disconnected, so the banner would sit there
 	// until someone pressed Retry. Probe in the background instead and drop it as
