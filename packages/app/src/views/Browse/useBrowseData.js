@@ -206,10 +206,10 @@ const useBrowseData = ({
 		let cancelled = false;
 
 		// Loading cant clear until the media bar has something, or the first focus lands
-		// on a row rather than on the bar. Items we already remember do that on the spot
-		// and the fresh ones then arrive in their own time, so coming back to the home
-		// screen no longer waits on a request whose answer is already in hand. With
-		// nothing remembered there is still nothing to show until the request answers.
+		// on a row rather than on the bar. Items we already remember do that on the spot,
+		// so coming back to the home screen no longer waits on a request whose answer is
+		// already in hand, and a fresh draw only follows if the media bar settings changed.
+		// With nothing remembered there is still nothing to show until the request answers.
 		const primeFeaturedItems = async (remembered, rememberedConfigKey) => {
 			if (remembered?.length) {
 				// Records which settings the bar's items were drawn for.
@@ -401,7 +401,7 @@ const useBrowseData = ({
 				// The Mediabar is populated only by the settings-aware loader so it can
 				// never show a library outside the selected sources. Rows that answer to
 				// a setting are rebuilt on every visit rather than read back, but the bar
-				// can still open on what it last held while the fresh set is on its way.
+				// keeps what it last held unless the media bar settings changed.
 				if (settingsRef.current.featuredBarStyle !== 'off') {
 					await primeFeaturedItems(memoryCache.featuredItems, memoryCache.featuredConfigKey);
 				} else {
