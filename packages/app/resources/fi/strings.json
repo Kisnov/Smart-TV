@@ -1998,5 +1998,13 @@
     "Your records and how the server is doing": "Tietosi ja palvelimen tila",
     "{count} facts": "{count} tiedot",
     "{count} tags": "{count} tagit",
-    "Animation Position": "Animaation Sijainti"
+    "Animation Position": "Animaation Sijainti",
+    "Animation Size": "Animaation Koko",
+    "Animation Speed": "Animaation Nopeus",
+    "ASS/SSA subtitles require transcoding because direct play is turned off.": "ASS/SSA-tekstitykset vaativat transkoodausta, koska suora toisto on poistettu käytöstä.",
+    "Add to Favorites": "Lisää Suosikkeihin",
+    "Anamorphic video is not supported.": "Anamorfista videota ei tueta.",
+    "Audio bit depth is not supported.": "Äänen bittisyvyyttä ei tueta.",
+    "Audio bitrate exceeds streaming limit.": "Äänen bittinopeus ylittää suoratoistorajan.",
+    "Audio channel count ({channels}ch) exceeds the player limit.": "Äänikanavien määrä ({channels}ch) ylittää soittimen rajan."
 }
