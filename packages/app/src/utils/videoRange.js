@@ -1,13 +1,24 @@
-// Anything VideoRangeType names other than SDR is some HDR format, so a new one counts
-// without a change here. VideoRange is the older coarse field and only fills in.
-export const isHdrVideoStream = (videoStream) => {
-	if (!videoStream) return false;
-	const rangeType = (videoStream.VideoRangeType || '').toUpperCase();
-	if (rangeType) return rangeType !== 'SDR';
-	return (videoStream.VideoRange || '').toUpperCase() === 'HDR';
+const normalizeToken = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
+
+// The HDR format a stream carries, from whichever range field the server filled in. Emby types it
+// in ExtendedVideoType and writes VideoRange as prose, HDR 10 rather than HDR10, so the value is
+// squashed first, with + spelled out so HDR 10+ doesn't read as HDR10.
+export const videoRangeLabel = (videoStream) => {
+	if (!videoStream) return 'SDR';
+	const raw = [videoStream.VideoRangeType, videoStream.ExtendedVideoType, videoStream.VideoRange]
+		.find((value) => typeof value === 'string' && value.trim() !== '') || '';
+	const range = normalizeToken(raw.replace(/\+/g, 'PLUS'));
+
+	if (range.indexOf('DOVI') !== -1 || range.indexOf('DOLBYVISION') !== -1) return 'Dolby Vision';
+	// Ahead of HDR10, which its own name would match first.
+	if (range.indexOf('HDR10PLUS') !== -1) return 'HDR10+';
+	if (range.indexOf('HDR10') !== -1) return 'HDR10';
+	if (range.indexOf('HLG') !== -1 || range.indexOf('HYPERLOGGAMMA') !== -1) return 'HLG';
+	if (range.indexOf('HDR') !== -1) return 'HDR';
+	return 'SDR';
 };
 
-const normalizeToken = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
+export const isHdrVideoStream = (videoStream) => videoRangeLabel(videoStream) !== 'SDR';
 
 // Emby sub types whose base layer is plain HDR10, so a decoder that skips the Dolby Vision
 // metadata still renders the picture the file carries.

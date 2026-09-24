@@ -1,4 +1,4 @@
-import {isHdrVideoStream, findVideoStream, isHdrOutput, videoRangeTypeOf} from './videoRange';
+import {isHdrVideoStream, findVideoStream, isHdrOutput, videoRangeLabel, videoRangeTypeOf} from './videoRange';
 
 describe('isHdrVideoStream', () => {
 	it.each(['HDR10', 'HDR10Plus', 'HLG', 'DOVI'])('treats %s as HDR', (rangeType) => {
@@ -21,6 +21,52 @@ describe('isHdrVideoStream', () => {
 	it('handles missing input', () => {
 		expect(isHdrVideoStream(null)).toBe(false);
 		expect(isHdrVideoStream({})).toBe(false);
+	});
+
+	it('reads an Emby stream from the fields Emby fills in', () => {
+		expect(isHdrVideoStream({ExtendedVideoType: 'Hdr10'})).toBe(true);
+		expect(isHdrVideoStream({VideoRange: 'HDR 10'})).toBe(true);
+		expect(isHdrVideoStream({ExtendedVideoType: 'None'})).toBe(false);
+	});
+});
+
+describe('videoRangeLabel', () => {
+	it.each([
+		['DOVI', 'Dolby Vision'],
+		['DOVIWithHDR10', 'Dolby Vision'],
+		['HDR10Plus', 'HDR10+'],
+		['HDR10', 'HDR10'],
+		['HLG', 'HLG'],
+		['SDR', 'SDR']
+	])('reads a Jellyfin %s as %s', (rangeType, expected) => {
+		expect(videoRangeLabel({VideoRangeType: rangeType})).toBe(expected);
+	});
+
+	it.each([
+		['Hdr10', 'HDR10'],
+		['Hdr10Plus', 'HDR10+'],
+		['HyperLogGamma', 'HLG'],
+		['DolbyVision', 'Dolby Vision'],
+		['None', 'SDR']
+	])('reads an Emby %s as %s', (extended, expected) => {
+		expect(videoRangeLabel({ExtendedVideoType: extended})).toBe(expected);
+	});
+
+	it('reads the range written out as prose', () => {
+		expect(videoRangeLabel({VideoRange: 'HDR 10'})).toBe('HDR10');
+		expect(videoRangeLabel({VideoRange: 'HDR 10+'})).toBe('HDR10+');
+		expect(videoRangeLabel({VideoRange: 'Dolby Vision'})).toBe('Dolby Vision');
+		expect(videoRangeLabel({VideoRange: 'HDR'})).toBe('HDR');
+	});
+
+	it('takes the typed field over the prose written from it', () => {
+		expect(videoRangeLabel({ExtendedVideoType: 'None', VideoRange: 'HDR 10'})).toBe('SDR');
+	});
+
+	it('says SDR when the server gave nothing', () => {
+		expect(videoRangeLabel(null)).toBe('SDR');
+		expect(videoRangeLabel({})).toBe('SDR');
+		expect(videoRangeLabel({VideoRangeType: '   '})).toBe('SDR');
 	});
 });
 
