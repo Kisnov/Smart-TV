@@ -2779,32 +2779,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				showControls();
 				if (resumeHeldScrub()) return;
 				const state = avplayGetState();
-				if (state === 'PAUSED' || state === 'READY') {
-					// In a group the request goes to the server because acting
-					// locally would silently desync this client.
-					if (isInGroup && !syncPlayCommandRef.current) {
-						syncPlayService.sendPlayRequest();
-						return;
-					}
-					avplayPlay();
-					setIsPaused(false);
-					verifyResumeHealthy();
-				}
+				if (state === 'PAUSED' || state === 'READY') handlePlayPause();
 				return;
 			}
 			if (e.keyCode === KEYS.PAUSE) {
 				e.preventDefault();
 				e.stopPropagation();
 				showControls();
-				const state = avplayGetState();
-				if (state === 'PLAYING') {
-					if (isInGroup && !syncPlayCommandRef.current) {
-						syncPlayService.sendPauseRequest();
-						return;
-					}
-					avplayPause();
-					setIsPaused(true);
-				}
+				if (avplayGetState() === 'PLAYING') handlePlayPause();
 				return;
 			}
 			if (e.keyCode === KEYS.PLAY_PAUSE) {
@@ -2935,7 +2917,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleForward, handleRewind, settings.seekStep, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, scrubBy, resumeHeldScrub, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, isInGroup, verifyResumeHealthy, carouselOpenRef, openCarousel]);
+	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleForward, handleRewind, settings.seekStep, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, scrubBy, resumeHeldScrub, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, carouselOpenRef, openCarousel]);
 
 	// Calculate progress - use seekPosition when actively seeking for smooth scrubbing
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;

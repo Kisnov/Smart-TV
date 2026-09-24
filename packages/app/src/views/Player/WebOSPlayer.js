@@ -2771,28 +2771,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				e.stopPropagation();
 				showControls();
 				if (resumeHeldScrub()) return;
-				if (videoRef.current && videoRef.current.paused) {
-					// In a group the request goes to the server because acting
-					// locally would silently desync this client.
-					if (isInGroup && !syncPlayCommandRef.current) {
-						syncPlayService.sendPlayRequest();
-						return;
-					}
-					videoRef.current.play();
-				}
+				if (isPaused) handlePlayPause();
 				return;
 			}
 			if (e.keyCode === 19) {
 				e.preventDefault();
 				e.stopPropagation();
 				showControls();
-				if (videoRef.current && !videoRef.current.paused) {
-					if (isInGroup && !syncPlayCommandRef.current) {
-						syncPlayService.sendPauseRequest();
-						return;
-					}
-					videoRef.current.pause();
-				}
+				if (!isPaused) handlePlayPause();
 				return;
 			}
 			if (e.keyCode === 417) {
@@ -2913,7 +2899,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleForward, handleRewind, settings.seekStep, scrubBy, resumeHeldScrub, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, isInGroup, carouselOpenRef, openCarousel]);
+	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, isPaused, handlePlayPause, handleForward, handleRewind, settings.seekStep, scrubBy, resumeHeldScrub, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, carouselOpenRef, openCarousel]);
 
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;
 	const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
