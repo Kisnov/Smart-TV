@@ -2374,9 +2374,6 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 	const handleProgressClick = useCallback((e) => {
 		if (!videoRef.current) return;
-		// Spotlight emulates a click from the OK key, and that event carries no
-		// pointer coordinates. Only a real pointer click seeks to a position.
-		if (!Number.isFinite(e.clientX)) return;
 		const rect = e.currentTarget.getBoundingClientRect();
 		const percent = (e.clientX - rect.left) / rect.width;
 		const newTime = percent * duration;
@@ -2398,9 +2395,6 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		} else if (e.key === 'Enter' || e.keyCode === 13) {
 			e.preventDefault();
 			if (resumeHeldScrub()) return;
-			// Arrows already applied the jump, so OK on the bar toggles playback
-			// instead of doing nothing and forcing a trip down to the play/pause
-			// button.
 			setIsSeeking(false);
 			handlePlayPause();
 		} else if (e.key === 'ArrowUp' || e.keyCode === 38) {
@@ -2800,10 +2794,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}
 				if (key === 'Enter' || e.keyCode === 13) {
 					e.preventDefault();
-					// The controls are only hidden by a class, so whichever of them
-					// last had focus still holds it and still answers this keydown.
-					// Without stopping here it would toggle a second time and carry
-					// on playing.
+					// Hidden controls keep focus, so the focused one would get this key
+					// too and toggle playback straight back.
 					e.stopPropagation();
 					handlePlayPause();
 					return;
@@ -2813,9 +2805,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}
 				if (key === 'ArrowLeft' || e.keyCode === 37 || key === 'ArrowRight' || e.keyCode === 39) {
 					e.preventDefault();
-					// Same reason as the Enter branch above: the hidden controls still
-					// hold focus, and letting this reach the progress bar would seek a
-					// second time off the step this one just scheduled.
+					// Same as Enter, or the focused progress bar adds a second step.
 					e.stopPropagation();
 					if (isLiveTV) { showControls(); return; }
 					showControls();
