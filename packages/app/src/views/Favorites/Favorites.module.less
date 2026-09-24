@@ -305,8 +305,10 @@ justify-content: flex-end;
 }
 
 .sortPanel {
-width: 380px;
+// 380px inside, with the padding and border counted in so the panel stops at the screen edge.
+width: 445px;
 height: 100%;
+box-sizing: border-box;
 background: rgba(var(--theme-surface-rgb, 20, 20, 40), 0.92);
 backdrop-filter: blur(16px) saturate(1.3);
 -webkit-backdrop-filter: blur(16px) saturate(1.3);
