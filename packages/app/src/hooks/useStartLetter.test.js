@@ -8,13 +8,13 @@ jest.mock('@enact/spotlight', () => ({__esModule: true, default: {focus: jest.fn
 const item = (name) => ({SortName: name});
 const ALIENS = [item('Alien'), item('Aliens'), item('Blade Runner')];
 
-const setup = (props = {}) => renderHook(
+const setup = () => renderHook(
 	({allItems, isLoading}) => useStartLetter({
 		allItems,
 		isLoading,
 		gridSpotlightId: 'library-grid'
 	}),
-	{initialProps: {allItems: ALIENS, isLoading: false, ...props}}
+	{initialProps: {allItems: ALIENS, isLoading: false}}
 );
 
 const pick = (result, letter) => act(() => {
@@ -59,8 +59,8 @@ describe('useStartLetter', () => {
 		expect(Spotlight.focus).toHaveBeenCalledWith('library-grid');
 	});
 
-	// The list also rebuilds for a filter or a search the viewer ran from a panel
-	// that is still open, and taking focus for those drags them out of it.
+	// The list also rebuilds for a filter or a search, and taking focus for those
+	// pulls the viewer away from whatever they were using.
 	test('leaves focus alone when the list rebuilds under the same letter', () => {
 		const {result, rerender} = setup();
 
@@ -68,12 +68,24 @@ describe('useStartLetter', () => {
 		act(() => jest.advanceTimersByTime(100));
 		Spotlight.focus.mockClear();
 
-		// A filter applied from the panel: reload, then a different set back.
 		rerender({allItems: ALIENS, isLoading: true});
 		rerender({allItems: [item('Alien')], isLoading: false});
 		act(() => jest.advanceTimersByTime(200));
 
 		expect(Spotlight.focus).not.toHaveBeenCalled();
+	});
+
+	// A short narrowed list asks for the next page straight away, so a load can
+	// start and finish before the focus gets to move.
+	test('still hands focus over when a page lands before it moved', () => {
+		const {result, rerender} = setup();
+
+		pick(result, 'A');
+		rerender({allItems: ALIENS, isLoading: true});
+		rerender({allItems: [...ALIENS, item('Amelie')], isLoading: false});
+		act(() => jest.advanceTimersByTime(100));
+
+		expect(Spotlight.focus).toHaveBeenCalledWith('library-grid');
 	});
 
 	test('still moves focus when a different letter is picked', () => {

@@ -19,11 +19,8 @@ const useStartLetter = ({allItems, isLoading, gridSpotlightId}) => {
 		}
 	}, [startLetter]);
 
-	// Which letter the grid was last handed focus for. The effect below has to
-	// watch the rebuilt list to know when to move, and that list also rebuilds
-	// for a filter or a search the viewer ran from somewhere else entirely.
-	// Without this it would answer those too and pull focus out of whatever
-	// panel they were working in.
+	// The letter the grid was last handed focus for. The list also rebuilds for a filter or a
+	// search, and without this the effect below would answer those too and pull focus away.
 	const focusedForLetterRef = useRef(null);
 
 	// The grid rebuilds around the narrower list, so the focus waits for it to settle.
@@ -33,10 +30,12 @@ const useStartLetter = ({allItems, isLoading, gridSpotlightId}) => {
 			focusedForLetterRef.current = null;
 			return undefined;
 		}
-		if (items.length === 0 || isLoading) return undefined;
-		if (focusedForLetterRef.current === startLetter) return undefined;
-		focusedForLetterRef.current = startLetter;
-		const id = setTimeout(() => Spotlight.focus(gridSpotlightId), 100);
+		if (items.length === 0 || isLoading || focusedForLetterRef.current === startLetter) return undefined;
+		// Marked when the focus really moves, since a page landing inside the wait cancels it.
+		const id = setTimeout(() => {
+			focusedForLetterRef.current = startLetter;
+			Spotlight.focus(gridSpotlightId);
+		}, 100);
 		return () => clearTimeout(id);
 	}, [startLetter, items.length, isLoading, gridSpotlightId]);
 

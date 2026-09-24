@@ -11,3 +11,11 @@ export const ModalContainer = SpotlightContainerDecorator({
 	leaveFor: {left: '', right: '', up: '', down: ''},
 	preserveId: true
 }, 'div');
+
+// The sort and settings panels over the library, favorites and genre grids. Held the
+// same way, but coming back in lands wherever the viewer left off.
+export const PanelContainer = SpotlightContainerDecorator({
+	enterTo: 'last-focused',
+	restrict: 'self-only',
+	leaveFor: {left: '', right: '', up: '', down: ''}
+}, 'div');

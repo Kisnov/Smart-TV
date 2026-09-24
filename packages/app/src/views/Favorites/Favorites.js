@@ -18,6 +18,7 @@ import useSortSettingsPanels from '../../hooks/useSortSettingsPanels';
 import useStartLetter from '../../hooks/useStartLetter';
 import {GRID_DIRECTIONS, IMAGE_SIZES, IMAGE_TYPES, LETTERS, capitalize, createGridKeyDown, createToolbarKeyDown, cycleValue, stopPropagation} from '../../utils/gridChrome';
 import {keepFocusInView} from '../../utils/focusScroll';
+import {PanelContainer} from '../../utils/spotlightContainers';
 
 import FocusedItemHud from './FocusedItemHud';
 import useFavoriteTabs from './useFavoriteTabs';
@@ -31,8 +32,6 @@ const ToolbarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', r
 // The grid sits under the tab bar, so it lets focus leave upward rather than
 // keeping it to itself.
 const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
-const SortPanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
-const SettingsPanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
 
 // These labels are the plain English the translation is looked up by. Translating
 // here would freeze them before the locale has been picked, so they are left alone
@@ -534,7 +533,7 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 
 			{showSortPanel && (
 				<div className={css.sortPanelOverlay} onClick={handleCloseSortPanel}>
-					<SortPanelContainer
+					<PanelContainer
 						className={css.sortPanel}
 						spotlightId="fav-sort-panel"
 						onClick={stopPropagation}
@@ -579,13 +578,13 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 								))}
 							</div>
 						)}
-					</SortPanelContainer>
+					</PanelContainer>
 				</div>
 			)}
 
 			{showSettingsPanel && (
 				<div className={css.sortPanelOverlay} onClick={handleCloseSettingsPanel}>
-					<SettingsPanelContainer
+					<PanelContainer
 						className={css.sortPanel}
 						spotlightId="fav-settings-panel"
 						onClick={stopPropagation}
@@ -631,7 +630,7 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 							<div className={css.settingLabel}>{$L('View style')}</div>
 							<div className={css.settingValue}>{$L(VIEW_STYLE_LABELS[viewStyle] || VIEW_STYLE_LABELS.home)}</div>
 						</SpottableButton>
-					</SettingsPanelContainer>
+					</PanelContainer>
 				</div>
 			)}
 		</div>

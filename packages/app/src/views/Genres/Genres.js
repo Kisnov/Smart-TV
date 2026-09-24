@@ -12,6 +12,7 @@ import {getImageUrl, getBackdropId} from '../../utils/helpers';
 import {useStorage} from '../../hooks/useStorage';
 import useSortSettingsPanels from '../../hooks/useSortSettingsPanels';
 import {capitalize, createGridKeyDown, createToolbarKeyDown, cycleValue, stopPropagation} from '../../utils/gridChrome';
+import {PanelContainer} from '../../utils/spotlightContainers';
 
 import css from './Genres.module.less';
 
@@ -19,8 +20,6 @@ const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
 const ToolbarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
 const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
-const SortPanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
-const SettingsPanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
 
 const SORT_OPTIONS = [
 	{key: 'name-asc', label: $L('Name (A-Z)')},
@@ -395,7 +394,7 @@ const Genres = ({onSelectGenre, onHome, backHandlerRef}) => {
 
 			{showSortPanel && (
 				<div className={css.sortPanelOverlay} onClick={handleCloseSortPanel}>
-					<SortPanelContainer
+					<PanelContainer
 						className={css.sortPanel}
 						spotlightId="genres-sort-panel"
 						onClick={stopPropagation}
@@ -452,13 +451,13 @@ const Genres = ({onSelectGenre, onHome, backHandlerRef}) => {
 								))}
 							</div>
 						)}
-					</SortPanelContainer>
+					</PanelContainer>
 				</div>
 			)}
 
 			{showSettingsPanel && (
 				<div className={css.sortPanelOverlay} onClick={handleCloseSettingsPanel}>
-					<SettingsPanelContainer
+					<PanelContainer
 						className={css.sortPanel}
 						spotlightId="genres-settings-panel"
 						onClick={stopPropagation}
@@ -474,7 +473,7 @@ const Genres = ({onSelectGenre, onHome, backHandlerRef}) => {
 							<div className={css.settingLabel}>{$L('Card size')}</div>
 							<div className={css.settingValue}>{$L(capitalize(cardSize))}</div>
 						</SpottableButton>
-					</SettingsPanelContainer>
+					</PanelContainer>
 				</div>
 			)}
 		</div>
