@@ -1997,5 +1997,6 @@
     "You get one daily and one weekly reroll, and this spends it.": "Saat yhden päivittäisen ja yhden viikoittaisen uudelleenkierroksen, ja tämä kuluttaa ne.",
     "Your records and how the server is doing": "Tietosi ja palvelimen tila",
     "{count} facts": "{count} tiedot",
-    "{count} tags": "{count} tagit"
+    "{count} tags": "{count} tagit",
+    "Animation Position": "Animaation Sijainti"
 }
