@@ -15,9 +15,7 @@ describe('featuredConfigKey', () => {
 		expect(featuredConfigKey(base)).toBe(featuredConfigKey({...base}));
 	});
 
-	// An unset list and an empty one describe the same bar. Telling them apart
-	// would make a defaulted setting look like a different bar and replace one the
-	// viewer is watching.
+	// An unset list and an empty one are the same bar.
 	test('an unset list reads the same as an empty one', () => {
 		const unset = {...base, mediaBarLibraryIds: undefined, mediaBarCollectionIds: undefined, excludedGenres: undefined};
 		const empty = {...base, mediaBarLibraryIds: [], mediaBarCollectionIds: [], excludedGenres: []};
@@ -29,8 +27,7 @@ describe('featuredConfigKey', () => {
 			.toBe(featuredConfigKey({...base, mediaBarSourceType: 'library'}));
 	});
 
-	// Each of these changes what the bar holds, so a set drawn before it is not a
-	// refresh of the set drawn after it.
+	// Each of these changes what the bar holds.
 	test.each([
 		['useMoonfinPlugin', {useMoonfinPlugin: true}],
 		['mediaBarSourceType', {mediaBarSourceType: 'collection'}],
