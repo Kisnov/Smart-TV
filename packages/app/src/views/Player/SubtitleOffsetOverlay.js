@@ -14,6 +14,7 @@ const OffsetContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
 	defaultElement: '[data-spot-default="true"]',
 	straightOnly: false,
+	leaveFor: {left: '', right: '', up: '', down: ''},
 	preserveId: true
 }, 'div');
 

@@ -19,3 +19,9 @@ export const PanelContainer = SpotlightContainerDecorator({
 	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
+
+// Full screen layers like the trailer and the lost connection notice. Nothing under them
+// can be seen, so a press at the edge stays on the layer.
+export const OverlayContainer = SpotlightContainerDecorator({
+	leaveFor: {left: '', right: '', up: '', down: ''}
+}, 'div');

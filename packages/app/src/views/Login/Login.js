@@ -20,7 +20,11 @@ import css from './Login.module.less';
 const SpottableButton = Spottable('button');
 const SpottableDiv = Spottable('div');
 const FocusArea = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
-const DialogArea = SpotlightContainerDecorator({enterTo: 'default-element', restrict: 'self-only'}, 'div');
+const DialogArea = SpotlightContainerDecorator({
+	enterTo: 'default-element',
+	restrict: 'self-only',
+	leaveFor: {left: '', right: '', up: '', down: ''}
+}, 'div');
 
 const QUICK_CONNECT_POLL = 5000;
 const LONG_PRESS_DELAY = 500;

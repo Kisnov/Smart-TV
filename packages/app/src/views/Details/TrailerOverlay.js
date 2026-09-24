@@ -2,6 +2,7 @@ import {useCallback} from 'react';
 import $L from '@enact/i18n/$L';
 import {createPortal} from 'react-dom';
 
+import {OverlayContainer} from '../../utils/spotlightContainers';
 import {SpottableButton} from './detailsSpottables';
 
 import css from './Details.module.less';
@@ -14,7 +15,7 @@ const TrailerOverlay = ({videoId, streamUrl, videoRef, muted, onClose, onKeyDown
 	if (!videoId) return null;
 
 	const content = (
-		<div className={css.trailerOverlay} onClick={onClose} onKeyDown={onKeyDown}>
+		<OverlayContainer className={css.trailerOverlay} onClick={onClose} onKeyDown={onKeyDown}>
 			<SpottableButton className={css.trailerCloseBtn} onClick={onClose} spotlightId="trailer-close-btn">
 				<svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
 					<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -37,7 +38,7 @@ const TrailerOverlay = ({videoId, streamUrl, videoRef, muted, onClose, onKeyDown
 					</div>
 				)}
 			</div>
-		</div>
+		</OverlayContainer>
 	);
 
 	if (typeof document !== 'undefined' && document.body) {
