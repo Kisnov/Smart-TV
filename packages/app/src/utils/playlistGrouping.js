@@ -3,11 +3,16 @@
 
 import $L from '@enact/i18n/$L';
 
-export const PLAYLIST_CATEGORIES = ['Video', 'Audio', 'AudioBook', 'Book', 'Photo', 'Mixed'];
+export const PLAYLIST_CATEGORIES = ['Video', 'MusicVideo', 'Audio', 'AudioBook', 'Book', 'Photo', 'Mixed'];
+
+// How many of a playlist's items are read to classify it. One whose types only diverge past
+// this many is binned by that sample.
+export const PLAYLIST_SAMPLE_SIZE = 200;
 
 export const playlistCategoryLabel = (category) => {
 	switch (category) {
 		case 'Video': return $L('Video Playlists');
+		case 'MusicVideo': return $L('Music Video Playlists');
 		case 'Audio': return $L('Audio Playlists');
 		case 'AudioBook': return $L('Audiobook Playlists');
 		case 'Book': return $L('Book Playlists');
@@ -31,10 +36,10 @@ const categoryForMediaType = (mediaType) => {
 // from a song.
 export const resolveItemMediaType = (item) => {
 	switch (item?.Type) {
+		case 'MusicVideo': return 'MusicVideo';
 		case 'Movie':
 		case 'Episode':
 		case 'Video':
-		case 'MusicVideo':
 		case 'Trailer':
 		case 'Clip':
 			return 'Video';
@@ -53,13 +58,14 @@ const isPlaylistNonEmpty = (item) => {
 	return count == null ? true : count > 0;
 };
 
-// Whether the summary alone can settle the category. Video, Book and Photo are
-// specific enough to take at face value. Audio isnt, since the server calls
-// both music and audiobooks Audio and tags a playlist of music videos Audio too.
+// Whether the summary alone can settle the category. Book and Photo are specific
+// enough to take at face value. Video and Audio arent, since the server calls
+// both music and audiobooks Audio, tags a playlist of music videos either Audio
+// or Video, and gives a music video playlist the same summary as a movie one.
 export const playlistNeedsItemCheck = (item) => {
 	if (item.Type !== 'Playlist' || !isPlaylistNonEmpty(item)) return false;
 	const summary = categoryForMediaType(item.MediaType);
-	return summary === 'Audio' || summary === 'Unknown';
+	return summary !== 'Book' && summary !== 'Photo';
 };
 
 // The category the summary suggests, used until an item check can improve on it
@@ -70,19 +76,21 @@ export const playlistSummaryCategory = (item) => {
 	return summary === 'Unknown' ? 'Mixed' : summary;
 };
 
-// The category a playlist earns from its actual items, one kind or Mixed
+// The category a playlist earns from its actual items, one kind or Mixed. Music
+// videos with songs among them still make a music video playlist.
 export const playlistCategoryFromItems = (items) => {
 	if (!items || !items.length) return 'Mixed';
-	let first = null;
+	const categories = [];
 	for (let i = 0; i < items.length; i++) {
 		const category = resolveItemMediaType(items[i]);
-		if (first === null) {
-			first = category;
-		} else if (category !== first) {
-			return 'Mixed';
-		}
+		if (categories.indexOf(category) === -1) categories.push(category);
 	}
-	return first === 'Unknown' ? 'Mixed' : first;
+	if (categories.indexOf('MusicVideo') !== -1 &&
+		categories.every((category) => category === 'MusicVideo' || category === 'Audio')) {
+		return 'MusicVideo';
+	}
+	if (categories.length === 1) return categories[0] === 'Unknown' ? 'Mixed' : categories[0];
+	return 'Mixed';
 };
 
 export const groupPlaylists = (playlists, resolvedCategories) => {

@@ -10,6 +10,7 @@ import {isStaticLibraryCard, modernCardMetrics, getEpisodeLabels, getCardDisplay
 import SeerrIcon from '../icons/SeerrIcon';
 import {showsWatchedCheck} from '../../utils/playedState';
 import {AnimeCardPill} from '../AnimeMarkerPills';
+import useItemMenuHold from '../../hooks/useItemMenuHold';
 
 import css from './ModernMediaCard.module.less';
 
@@ -58,7 +59,8 @@ const ModernMediaCard = ({
 	onSpotlightLeft,
 	onSpotlightRight,
 	isFocused = false,
-	isLibraryRow = false
+	isLibraryRow = false,
+	menuOptions
 }) => {
 	const {settings} = useSettings();
 	const focusTimeoutRef = useRef(null);
@@ -212,6 +214,9 @@ const ModernMediaCard = ({
 		onSelect?.(item);
 	}, [item, onSelect]);
 
+	const itemAt = useCallback(() => item, [item]);
+	const menuHold = useItemMenuHold(itemAt, menuOptions);
+
 	const handleFocus = useCallback(() => {
 		onFocused?.(item?.Id || null);
 		if (focusTimeoutRef.current) {
@@ -268,6 +273,7 @@ const ModernMediaCard = ({
 
 	return (
 		<SpottableDiv
+			{...menuHold}
 			className={cardClassName}
 			onClick={handleClick}
 			onFocus={handleFocus}

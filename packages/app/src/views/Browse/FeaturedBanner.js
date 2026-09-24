@@ -8,6 +8,7 @@ import RatingsRow from '../../components/RatingsRow';
 import {KEYS} from '../../utils/keys';
 import useTrailerPreview from './useTrailerPreview';
 import css from './Browse.module.less';
+import {carouselIntervalMs} from '../../utils/carouselTiming';
 
 const FEATURED_GENRES_LIMIT = 3;
 const PRELOAD_ADJACENT_SLIDES = 2;
@@ -45,7 +46,7 @@ const FeaturedBanner = memo(({
 		if (featuredItems.length > 1) setCurrentIndex((prev) => (prev + 1) % featuredItems.length);
 	}, [featuredItems.length]);
 
-	const {trailerActive, trailerContainerRef} = useTrailerPreview({
+	const {trailerActive, trailerHolding, trailerContainerRef} = useTrailerPreview({
 		currentItem: currentFeatured,
 		// The banner stays mounted behind the settings overlay so the hero keeps its
 		// place, but the trailer has to stop or it plays on underneath it.
@@ -101,25 +102,25 @@ const FeaturedBanner = memo(({
 			carouselIntervalRef.current = null;
 		}
 
-		const autoAdvanceEnabled = settings.autoAdvance !== false;
-		const configuredInterval = Number(settings.autoAdvanceInterval);
-		const carouselSpeed = Number.isFinite(configuredInterval) && configuredInterval > 0
-			? configuredInterval * 1000
-			: (settings.carouselSpeed || 8000);
-		if (!autoAdvanceEnabled || !isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
+		const carouselSpeed = carouselIntervalMs(
+			settings.autoAdvance,
+			settings.autoAdvanceInterval,
+			settings.carouselSpeed
+		);
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerHolding) return;
 
 		carouselIntervalRef.current = setInterval(() => {
 			setCurrentIndex((prev) => (prev + 1) % featuredItems.length);
 		}, carouselSpeed);
-	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerActive]);
+	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerHolding]);
 
 	useEffect(() => {
-		const autoAdvanceEnabled = settings.autoAdvance !== false;
-		const configuredInterval = Number(settings.autoAdvanceInterval);
-		const carouselSpeed = Number.isFinite(configuredInterval) && configuredInterval > 0
-			? configuredInterval * 1000
-			: (settings.carouselSpeed || 8000);
-		if (!autoAdvanceEnabled || !isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
+		const carouselSpeed = carouselIntervalMs(
+			settings.autoAdvance,
+			settings.autoAdvanceInterval,
+			settings.carouselSpeed
+		);
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerHolding) return;
 		startCarouselTimer();
 		return () => {
 			if (carouselIntervalRef.current) {
@@ -127,7 +128,7 @@ const FeaturedBanner = memo(({
 				carouselIntervalRef.current = null;
 			}
 		};
-	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerActive, startCarouselTimer]);
+	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerHolding, startCarouselTimer]);
 
 	const handleFeaturedPrev = useCallback(() => {
 		if (featuredItems.length <= 1) return;

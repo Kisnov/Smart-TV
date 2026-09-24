@@ -2,6 +2,8 @@
 // Capability detection is handled by deviceProfile.js - this module focuses on
 // playback decisions, audio codec checks, and Luna hardware control.
 
+import {videoRangeTypeOf} from '@moonfin/app/src/utils/videoRange';
+
 let lunaClient = null;
 let isLunaAvailable = false;
 
@@ -213,8 +215,9 @@ export const getPlayMethod = (mediaSource, capabilities, options = {}, passthrou
 	// HDR compatibility check
 	let hdrOk = true;
 	let isDolbyVision = false;
-	if (videoStream?.VideoRangeType) {
-		const rangeType = videoStream.VideoRangeType.toUpperCase();
+	const videoRangeType = videoRangeTypeOf(videoStream);
+	if (videoRangeType) {
+		const rangeType = videoRangeType.toUpperCase();
 		if (rangeType === 'DOVI') {
 			// Pure DV with no fallback layer needs native DV support
 			hdrOk = capabilities.dolbyVision;

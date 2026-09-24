@@ -6,6 +6,7 @@ import {SeerrSeasonDot} from '../seerr/SeerrStatusBadge';
 import {showsWatchedCheck} from '../../utils/playedState';
 import SeerrIcon from '../icons/SeerrIcon';
 import {AnimeCardPill} from '../AnimeMarkerPills';
+import useItemMenuHold from '../../hooks/useItemMenuHold';
 
 import css from './MediaCard.module.less';
 
@@ -13,6 +14,13 @@ const SpottableDiv = Spottable('div');
 
 const POSTER_SIZE_MULTIPLIERS = {small: 0.8, default: 1, large: 1.2, xlarge: 1.4};
 const BASE_SIZES = {portrait: [240, 360], landscape: [384, 216], square: [240, 240], banner: [1168, 216]};
+
+// How big a card of each shape draws, grown or shrunk by the poster size setting.
+export const classicCardSize = (shape, posterSize) => {
+	const multiplier = POSTER_SIZE_MULTIPLIERS[posterSize] || 1;
+	const [width, height] = BASE_SIZES[shape];
+	return {width: Math.round(width * multiplier), height: Math.round(height * multiplier)};
+};
 
 // The wide artwork a row asked for, or null when the item carries none of it. Handing
 // back the url rather than a yes or no is what keeps the card shape and the picture it
@@ -87,7 +95,7 @@ const episodeArtwork = (item, serverUrl, imageType, useSeriesArt) => {
 	return preferred || still;
 };
 
-const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'poster', onSelect, onFocusItem, showServerBadge = false, eagerLoad = false, seerrSeasonStatus, spotlightId, onSpotlightLeft, onSpotlightRight}) => {
+const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'poster', onSelect, onFocusItem, showServerBadge = false, eagerLoad = false, seerrSeasonStatus, spotlightId, onSpotlightLeft, onSpotlightRight, menuOptions}) => {
 	const {settings} = useSettings();
 	const focusTimeoutRef = useRef(null);
 
@@ -184,6 +192,9 @@ const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'post
 		onSelect?.(item);
 	}, [item, onSelect]);
 
+	const itemAt = useCallback(() => item, [item]);
+	const menuHold = useItemMenuHold(itemAt, menuOptions);
+
 	const handleFocus = useCallback(() => {
 		if (focusTimeoutRef.current) {
 			clearTimeout(focusTimeoutRef.current);
@@ -230,12 +241,10 @@ const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'post
 
 	const sizeMultiplier = POSTER_SIZE_MULTIPLIERS[settings.homeRowsPosterSize] || 1;
 	const shapeKey = isBanner ? 'banner' : isLandscape ? 'landscape' : isSquare ? 'square' : 'portrait';
-	const [baseW, baseH] = BASE_SIZES[shapeKey];
-	const cardWidth = Math.round(baseW * sizeMultiplier);
+	const {width: cardWidth, height: cardHeight} = classicCardSize(shapeKey, settings.homeRowsPosterSize);
 	// The genre name grows with the card so it reads on a poster and on a
 	// focused thumbnail alike, and the seerr genre cards use the same scale.
 	const genreLabelSize = Math.min(24, Math.max(14, cardWidth * (14 / 200)));
-	const cardHeight = Math.round(baseH * sizeMultiplier);
 	const sizeStyle = sizeMultiplier !== 1 ? {width: cardWidth + 'px'} : undefined;
 	const imgSizeStyle = sizeMultiplier !== 1 ? {height: cardHeight + 'px'} : undefined;
 	// Logos and studio art have to sit inside the card whole. Everything else takes
@@ -245,7 +254,7 @@ const MediaCard = ({item, serverUrl, cardType = 'portrait', rowImageType = 'post
 		: imgSizeStyle;
 
 	return (
-		<SpottableDiv className={cardClass} data-media-card onClick={handleClick} onFocus={handleFocus} style={sizeStyle} spotlightId={spotlightId} onSpotlightLeft={onSpotlightLeft} onSpotlightRight={onSpotlightRight}>
+		<SpottableDiv {...menuHold} className={cardClass} data-media-card onClick={handleClick} onFocus={handleFocus} style={sizeStyle} spotlightId={spotlightId} onSpotlightLeft={onSpotlightLeft} onSpotlightRight={onSpotlightRight}>
 			<div className={css.imageContainer}>
 				{imageUrl ? (
 					<>

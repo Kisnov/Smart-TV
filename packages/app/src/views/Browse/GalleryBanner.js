@@ -10,6 +10,7 @@ import {KEYS} from '../../utils/keys';
 import {genreGlowRgb} from './galleryGlow';
 import useTrailerPreview from './useTrailerPreview';
 import css from './Browse.module.less';
+import {carouselIntervalMs} from '../../utils/carouselTiming';
 
 const GALLERY_GENRES_LIMIT = 3;
 const GALLERY_CAST_LIMIT = 5;
@@ -51,7 +52,7 @@ const GalleryBanner = memo(({
 		if (featuredItems.length > 1) setActiveIndex((prev) => (prev + 1) % featuredItems.length);
 	}, [featuredItems.length]);
 
-	const {trailerActive, trailerContainerRef} = useTrailerPreview({
+	const {trailerActive, trailerHolding, trailerContainerRef} = useTrailerPreview({
 		currentItem: currentFeatured,
 		// The banner stays mounted behind the settings overlay so the hero keeps its
 		// place, but the trailer has to stop or it plays on underneath it.
@@ -128,17 +129,17 @@ const GalleryBanner = memo(({
 			carouselIntervalRef.current = null;
 		}
 
-		const autoAdvanceEnabled = settings.autoAdvance !== false;
-		const configuredInterval = Number(settings.autoAdvanceInterval);
-		const carouselSpeed = Number.isFinite(configuredInterval) && configuredInterval > 0
-			? configuredInterval * 1000
-			: (settings.carouselSpeed || 8000);
-		if (!autoAdvanceEnabled || !isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
+		const carouselSpeed = carouselIntervalMs(
+			settings.autoAdvance,
+			settings.autoAdvanceInterval,
+			settings.carouselSpeed
+		);
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerHolding) return;
 
 		carouselIntervalRef.current = setInterval(() => {
 			setActiveIndex((prev) => (prev + 1) % featuredItems.length);
 		}, carouselSpeed);
-	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerActive]);
+	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerHolding]);
 
 	useEffect(() => {
 		startCarouselTimer();

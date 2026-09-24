@@ -92,6 +92,7 @@ const MinimalistEpisodes = ({
 				navbarPosition={settings.navbarPosition}
 				onNavigateUp={handleNavigateUp}
 				renderItem={renderEpisode}
+				itemMenu
 			/>
 		</RowContainer>
 	);

@@ -5,6 +5,7 @@ import Spotlight from '@enact/spotlight';
 
 import {api, getServerUrl} from '../../services/jellyfinApi';
 import {confirmOffline} from '../../utils/connectionProbe';
+import {OverlayContainer} from '../../utils/spotlightContainers';
 
 import css from './NoConnection.module.less';
 
@@ -52,7 +53,7 @@ const NoConnection = () => {
 	if (!offline) return null;
 
 	return (
-		<div className={css.overlay}>
+		<OverlayContainer className={css.overlay}>
 			<div className={css.content}>
 				<div className={css.icon}>
 					<svg viewBox="0 0 24 24" width="120" height="120" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -75,7 +76,7 @@ const NoConnection = () => {
 					{$L('Retry')}
 				</SpottableButton>
 			</div>
-		</div>
+		</OverlayContainer>
 	);
 };
 

@@ -646,15 +646,17 @@ export const getJellyfinDeviceProfile = async (options = {}) => {
 		hevcLevel = '123'; // Level 4.1
 	}
 
-	// Dual layer Dolby Vision files carry a compatible base layer, so an HDR10
-	// panel can direct play them and just ignore the DV data on top. A bare
-	// DOVI is profile 5, which has no such base layer, so it stays with panels
-	// that decode Dolby Vision outright.
+	// Dolby Vision over an HDR10, HDR10+, HLG or SDR base plays that base on a
+	// panel without Dolby Vision, which skips the metadata on top. Profile 7
+	// adds an enhancement layer that freezes the picture on those panels, so
+	// only a Dolby Vision panel gets it as is and the rest get a remux with the
+	// Dolby Vision taken out. A bare DOVI is profile 5, which has no base to
+	// fall back on.
 	const hevcRangeTypes = ['SDR', 'DOVIWithSDR'];
-	if (caps.hdr10) hevcRangeTypes.push('HDR10', 'DOVIWithHDR10', 'DOVIWithEL', 'DOVIInvalid');
-	if (caps.hdr10Plus) hevcRangeTypes.push('HDR10Plus', 'DOVIWithHDR10Plus', 'DOVIWithELHDR10Plus');
+	if (caps.hdr10) hevcRangeTypes.push('HDR10', 'DOVIWithHDR10', 'DOVIInvalid');
+	if (caps.hdr10Plus) hevcRangeTypes.push('HDR10Plus', 'DOVIWithHDR10Plus');
 	if (caps.hlg) hevcRangeTypes.push('HLG', 'DOVIWithHLG');
-	if (caps.dolbyVision) hevcRangeTypes.push('DOVI');
+	if (caps.dolbyVision) hevcRangeTypes.push('DOVI', 'DOVIWithEL', 'DOVIWithELHDR10Plus');
 
 	const codecProfiles = [
 		{

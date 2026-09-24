@@ -7,6 +7,8 @@ import {serverLogger} from './serverLogger';
 import {TEXT_SUBTITLE_CODECS, isAssSubtitleCodec, isPgsSubtitleCodec, isBurnInSubtitleCodec} from '../utils/subtitleCodecs';
 import {applyProfileTuning} from '../utils/deviceProfileTuning';
 import {findNextInSeason, findNextSeason, firstPlayableEpisode} from '../utils/nextEpisode';
+import {videoRangeTypeOf} from '../utils/videoRange';
+import {getVolumeState, lastVolumeState} from './systemVolume';
 
 export const PlayMethod = {
 	DirectPlay: 'DirectPlay',
@@ -146,8 +148,9 @@ const selectMediaSource = (mediaSources, capabilities, options, passthroughSetti
 			else if (videoStream.Width >= 1280) score += 10;
 		}
 
-		if (videoStream?.VideoRangeType) {
-			const rangeType = videoStream.VideoRangeType.toUpperCase();
+		const videoRangeType = videoRangeTypeOf(videoStream);
+		if (videoRangeType) {
+			const rangeType = videoRangeType.toUpperCase();
 			if (rangeType.includes('DOLBY') && capabilities.dolbyVision) score += 10;
 			else if (rangeType.includes('HDR') && capabilities.hdr10) score += 5;
 		}
@@ -652,13 +655,14 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 
 	// Log video stream info including HDR type
 	const videoStream = mediaSource.MediaStreams?.find(s => s.Type === 'Video');
+	const videoRangeType = videoRangeTypeOf(videoStream);
 	console.log('[playback] Video stream info:', {
 		codec: videoStream?.Codec,
 		profile: videoStream?.Profile,
 		level: videoStream?.Level,
 		width: videoStream?.Width,
 		height: videoStream?.Height,
-		videoRangeType: videoStream?.VideoRangeType,
+		videoRangeType,
 		colorPrimaries: videoStream?.ColorPrimaries,
 		colorTransfer: videoStream?.ColorTransfer,
 		colorSpace: videoStream?.ColorSpace,
@@ -747,8 +751,8 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 	}
 
 	// Starfish needs a DV codec hint in the MIME type to activate the DV decoder
-	if (playMethod !== PlayMethod.Transcode && !isAudio && videoStream?.VideoRangeType) {
-		const rangeType = videoStream.VideoRangeType.toUpperCase();
+	if (playMethod !== PlayMethod.Transcode && !isAudio && videoRangeType) {
+		const rangeType = videoRangeType.toUpperCase();
 		if (rangeType.includes('DOVI')) {
 			const streamCodec = (videoStream.Codec || '').toLowerCase();
 			let dvCodec;
@@ -1081,6 +1085,14 @@ export const changeSubtitleStream = async (streamIndex) => {
 	return newInfo;
 };
 
+// Where the TV's volume sits, so a client controlling this one shows the level it's really at. It's
+// read again each time, so a change made on the set's own remote reaches the next report.
+const volumeReport = () => {
+	const state = lastVolumeState();
+	getVolumeState();
+	return state ? {VolumeLevel: Math.round(state.volume), IsMuted: state.muted} : {IsMuted: false};
+};
+
 export const reportStart = async (positionTicks = 0) => {
 	if (!currentSession) return;
 
@@ -1101,7 +1113,7 @@ export const reportStart = async (positionTicks = 0) => {
 			PositionTicks: positionTicks,
 			CanSeek: true,
 			IsPaused: false,
-			IsMuted: false,
+			...volumeReport(),
 			PlayMethod: currentSession.reportedPlayMethod || currentSession.playMethod,
 			RepeatMode: 'RepeatNone'
 		});
@@ -1130,7 +1142,7 @@ export const reportProgress = async (positionTicks, options = {}) => {
 			PositionTicks: positionTicks,
 			CanSeek: true,
 			IsPaused: options.isPaused || false,
-			IsMuted: options.isMuted || false,
+			...volumeReport(),
 			PlayMethod: currentSession.reportedPlayMethod || currentSession.playMethod,
 			AudioStreamIndex: currentSession.audioStreamIndex,
 			SubtitleStreamIndex: currentSession.subtitleStreamIndex

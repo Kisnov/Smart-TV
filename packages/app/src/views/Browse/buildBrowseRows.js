@@ -5,6 +5,7 @@
 import $L from '@enact/i18n/$L';
 import {isKidsMode} from '../../utils/kidsMode';
 import {isLiveTvLibrary} from '../../utils/liveTvLibrary';
+import {withoutBlocked} from '../../utils/parentalFilter';
 
 import {SERVER_TO_TV_ROW, TV_TO_SERVER_ROW} from '../../utils/homeLayout';
 import {FAVORITE_ROW_CONFIGS, isHiddenByMap, parseHiddenMap} from './browseFilters';
@@ -175,24 +176,52 @@ const orderRows = (rows, rowOrderMap) => {
 		.map((entry) => entry.row);
 };
 
-// Parental controls. Items carrying a blocked rating drop out of every row, and
-// unrated items pass through the way the other clients let them.
-const filterBlockedRatings = (rows, blockedRatings) => {
-	if (!Array.isArray(blockedRatings) || blockedRatings.length === 0) return rows;
-	const blocked = new Set(blockedRatings.map((rating) => String(rating).trim().toUpperCase()));
+// Unrated items always pass, since a server that rates nothing can't be told apart from one that
+// just didn't rate this item.
+const filterBlockedRatings = (rows, parentalFilter) => {
+	if (!parentalFilter?.isActive) return rows;
 	return rows
 		.map((row) => {
 			if (!Array.isArray(row.items)) return row;
-			const items = row.items.filter((item) => {
-				const rating = typeof item.OfficialRating === 'string' ? item.OfficialRating.trim().toUpperCase() : '';
-				return !rating || !blocked.has(rating);
-			});
-			return items.length === row.items.length ? row : {...row, items};
+			const items = withoutBlocked(row.items, parentalFilter);
+			return items === row.items ? row : {...row, items};
 		})
 		.filter((row) => !Array.isArray(row.items) || row.items.length > 0);
 };
 
-export const buildBrowseRows = ({allRowData, seerrRows, externalRows, homeRowsConfig, pluginSectionsConfig, settings}) => {
+// Rows of music show square cards, so a section of them waits on square placeholders.
+const AUDIO_SECTIONS = ['audioartists', 'audioalbums', 'audioplaylists'];
+
+const sectionTitle = (id, homeRowsConfig, pluginSection, favoriteLabelMap) => {
+	if (ROW_TITLES[id]) return ROW_TITLES[id]();
+	if (favoriteLabelMap.has(id)) return favoriteLabelMap.get(id);
+	if (id.startsWith('sinceyouwatched')) return $L('Since you watched');
+	if (pluginSection) return pluginSection.name || pluginSection.displayText || $L('Plugin Section');
+	const config = homeRowsConfig.find((row) => row.id === id);
+	return config ? $L(config.name) : id;
+};
+
+// A section still loading holds its place with its title over placeholder cards, then gives way
+// to whatever rows it turns out to have. [pendingRows] come already titled from the sources that
+// only ever report enabled rows.
+const placeholderRows = ({pendingSections, pendingRows, placedIds, gates, homeRowsConfig, pluginSectionsConfig, favoriteLabelMap}) => {
+	const fromSections = pendingSections
+		.map((id) => {
+			const pluginSection = pluginSectionsConfig.find((section) => section.id === id);
+			return {id, isPluginRow: Boolean(pluginSection), title: sectionTitle(id, homeRowsConfig, pluginSection, favoriteLabelMap)};
+		})
+		.filter((row) => isRowEnabled(row, gates));
+	return [...fromSections, ...pendingRows]
+		.filter((row) => !placedIds.has(row.id))
+		.map((row) => ({
+			...row,
+			items: [],
+			type: AUDIO_SECTIONS.includes(row.id) ? 'square' : 'portrait',
+			isPlaceholder: true
+		}));
+};
+
+export const buildBrowseRows = ({allRowData, seerrRows, externalRows, homeRowsConfig, pluginSectionsConfig, settings, pendingSections = [], pendingRows = []}) => {
 	const enabledRowIdsSet = buildEnabledIds(homeRowsConfig);
 	const enabledPluginIds = pluginSectionsConfig.filter((section) => section.enabled).map((section) => section.id);
 	const rowOrderMap = buildRowOrder(homeRowsConfig, pluginSectionsConfig);
@@ -244,10 +273,17 @@ export const buildBrowseRows = ({allRowData, seerrRows, externalRows, homeRowsCo
 		return subtitle && subtitle !== row.subtitle ? {...row, subtitle} : row;
 	};
 
-	return orderRows(
-		filterBlockedRatings([...result, ...seerrRows, ...externalRows].map(withSubtitles), settings.blockedRatings),
-		rowOrderMap
-	);
+	const rows = filterBlockedRatings([...result, ...seerrRows, ...externalRows].map(withSubtitles), settings.parentalFilter);
+	const placeholders = placeholderRows({
+		pendingSections,
+		pendingRows,
+		placedIds: new Set(rows.map((row) => row.id)),
+		gates,
+		homeRowsConfig,
+		pluginSectionsConfig,
+		favoriteLabelMap
+	});
+	return orderRows([...rows, ...placeholders.map(withSubtitles)], rowOrderMap);
 };
 
 // Rebuilding produces a new array every time, which would reload every card on screen. Only

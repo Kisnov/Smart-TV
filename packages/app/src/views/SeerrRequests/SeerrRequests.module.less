@@ -248,6 +248,26 @@
 	color: var(--theme-status-pending, #eab308);
 }
 
+.iconBtn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	min-width: 52px;
+	height: 46px;
+	padding: 0 12px;
+
+	svg {
+		width: 26px;
+		height: 26px;
+		fill: currentColor;
+	}
+
+	&:focus {
+		border-color: currentColor;
+	}
+}
+
 .cancelBtnPlain {
 	background: rgba(var(--theme-on-surface-rgb, 255, 255, 255), 0.08);
 	color: var(--theme-text-primary, #ffffff);
@@ -379,26 +399,24 @@
 }
 
 .tileBy,
+.tileRequester,
 .tileDate {
 	width: 100%;
 	font-size: 16px;
+	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
-.tileDate {
-	white-space: nowrap;
+// The name sits under its own label, so a long one gets the tile's full width rather than being
+// cut out of a sentence.
+.tileBy,
+.tileRequester {
+	color: rgba(var(--theme-on-surface-rgb, 255, 255, 255), 0.6);
 }
 
-// The name drops to a second line rather than being cut. Wrapping rather than
-// splitting the string keeps whatever word order a language puts it in.
 .tileBy {
-	color: rgba(var(--theme-on-surface-rgb, 255, 255, 255), 0.6);
 	margin-top: 6px;
-	display: -webkit-box;
-	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 2;
-	word-break: break-word;
 }
 
 .tileDate {

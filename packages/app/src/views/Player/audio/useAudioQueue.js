@@ -75,7 +75,7 @@ const useAudioQueue = (audioPlaylist, currentId) => {
 		return 'off';
 	}), []);
 
-	return {shuffleMode, repeatMode, toggleShuffle, cycleRepeat, getNext, getPrev, hasNext, hasPrev};
+	return {shuffleMode, repeatMode, toggleShuffle, cycleRepeat, setShuffleMode, setRepeatMode, getNext, getPrev, hasNext, hasPrev};
 };
 
 export default useAudioQueue;

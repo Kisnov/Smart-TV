@@ -6,26 +6,31 @@ import Spotlight from '@enact/spotlight';
 import {VirtualGridList} from '@enact/sandstone/VirtualList';
 import {useAuth} from '../../context/AuthContext';
 import {createApiForServer} from '../../services/jellyfinApi';
-import LoadingSpinner from '../../components/LoadingSpinner';
 import MusicBrowse from '../MusicBrowse';
 import BackdropLayer from '../../components/BackdropLayer';
 import {getImageUrl, getPrimaryImageId, formatDuration} from '../../utils/helpers';
 import useQuickReturnGrid from '../../hooks/useQuickReturnGrid';
 import {useSettings} from '../../context/SettingsContext';
 import {isMdblistEnabled} from '../../services/mdblistApi';
+import {withoutBlockedItems} from '../../services/parentalControls';
 import MediaRow from '../../components/MediaRow';
 import {LIBRARY_GROUP_OPTIONS, groupLibraryItems} from '../../utils/libraryGroupBy';
-import {groupPlaylists, playlistCategoryFromItems, playlistNeedsItemCheck} from '../../utils/playlistGrouping';
+import {PLAYLIST_SAMPLE_SIZE, groupPlaylists, playlistCategoryFromItems, playlistNeedsItemCheck, playlistSummaryCategory} from '../../utils/playlistGrouping';
 import {isScrolledAway} from '../../utils/quickReturn';
 import RatingsRow from '../../components/RatingsRow';
 import SpottableInput from '../../components/SpottableInput/SpottableInput';
 import {useStorage} from '../../hooks/useStorage';
 import {buildFilterParams} from '../../utils/libraryFilters';
+import {foldForSearch} from '../../utils/accentFolding';
 import {keepFocusInView} from '../../utils/focusScroll';
+import {PanelContainer} from '../../utils/spotlightContainers';
 import {KEYS} from '../../utils/keys';
 import useSortSettingsPanels from '../../hooks/useSortSettingsPanels';
 import useStartLetter from '../../hooks/useStartLetter';
+import {useUserDataList} from '../../hooks/useUserDataSync';
+import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
 import {GRID_DIRECTIONS, IMAGE_SIZES, IMAGE_TYPES, LETTERS, capitalize, createGridKeyDown, createToolbarKeyDown, cycleValue, focusOverhang, horizontalCellPad, stopPropagation} from '../../utils/gridChrome';
+import LibrarySkeleton from './LibrarySkeleton';
 
 import css from './Library.module.less';
 
@@ -33,8 +38,6 @@ const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
 const ToolbarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
 const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
-const SortPanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
-const SettingsPanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
 
 // Every sort ends on SortName so items the server ranks equally keep a stable
 // order between pages, which a bare key leaves to whatever the database returns.
@@ -203,6 +206,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const [allItems, setAllItems] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [totalCount, setTotalCount] = useState(0);
+	// What the ratings filter dropped from the fetched pages, so the count shown leaves it out.
+	const [blockedCount, setBlockedCount] = useState(0);
+	const shownCount = Math.max(0, totalCount - blockedCount);
 	const [favoritesOnly, setFavoritesOnly] = useState(false);
 	const [playedFilter, setPlayedFilter] = useState('all');
 	const [likedFilter, setLikedFilter] = useState('all');
@@ -265,14 +271,27 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const playlistGrouped = isPlaylistLibrary && playlistGroupingOn && !isFolderView;
 	const groupedActive = (canGroup && groupBy !== 'none') || playlistGrouped;
 
+	// The watched state can move while the grid is up, so it draws from the items
+	// with what's known now laid over them.
+	const syncedItems = useUserDataList(allItems);
+
 	// The header search narrows the items already loaded. It reads the sort name
 	// the server orders by, so a title held as "Matrix, The" still answers to
-	// "matrix".
+	// "matrix". The server folds accents for the searches it answers, so this
+	// does too, and the folded names are kept per set of loaded items rather
+	// than worked out again on each keystroke. Laying the watched state over the
+	// items keeps their order, so the names still line up with them.
+	const foldedNamesRef = useRef({source: null, names: []});
 	const searchedItems = useMemo(() => {
-		const query = searchQuery.trim().toLowerCase();
-		if (!query) return allItems;
-		return allItems.filter((item) => (item.SortName || item.Name || '').toLowerCase().indexOf(query) !== -1);
-	}, [allItems, searchQuery]);
+		const query = foldForSearch(searchQuery.trim());
+		if (!query) return syncedItems;
+		const folded = foldedNamesRef.current;
+		if (folded.source !== allItems) {
+			folded.names = allItems.map((item) => foldForSearch(item.SortName || item.Name || ''));
+			folded.source = allItems;
+		}
+		return syncedItems.filter((item, index) => folded.names[index].indexOf(query) !== -1);
+	}, [allItems, syncedItems, searchQuery]);
 
 	const {startLetter, handleLetterSelect, items} = useStartLetter({
 		allItems: searchedItems,
@@ -282,6 +301,10 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 	const itemsRef = useRef(items);
 	itemsRef.current = items;
+
+	// Holding OK on a card opens its menu, found from the card the press landed on.
+	const itemAtCard = useCallback((target) => itemsRef.current[cardIndexOf(target)] || null, []);
+	const menuHold = useItemMenuHold(itemAtCard);
 
 	const [playlistCategories, setPlaylistCategories] = useState({});
 	const playlistResolveRef = useRef({});
@@ -358,6 +381,19 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			loadingMoreRef.current = true;
 		}
 
+		// Paging runs on what the server sent, while the list and count leave out what the ratings
+		// filter dropped.
+		const showPage = (fetched) => {
+			const visibleItems = withoutBlockedItems(fetched);
+			setBlockedCount(prev => (append ? prev : 0) + fetched.length - visibleItems.length);
+			setAllItems(prev => {
+				if (!append) return visibleItems;
+				const combined = [...prev, ...visibleItems];
+				const seen = new Set();
+				return combined.filter(i => { if (seen.has(i.Id)) return false; seen.add(i.Id); return true; });
+			});
+		};
+
 		try {
 			const sortOption = SORT_OPTIONS.find(o => o.key === sortKey) || MUSIC_SORT_OPTIONS.find(o => o.key === sortKey) || SORT_OPTIONS[0];
 			// Picking the sort already in use flips its direction, so a stored order
@@ -405,12 +441,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				}
 				if (generation !== fetchGenerationRef.current) return;
 				apiFetchIndexRef.current = append ? apiFetchIndexRef.current + newItems.length : newItems.length;
-				setAllItems(prev => {
-					if (!append) return newItems;
-					const combined = [...prev, ...newItems];
-					const seen = new Set();
-					return combined.filter(i => { if (seen.has(i.Id)) return false; seen.add(i.Id); return true; });
-				});
+				showPage(newItems);
 				setTotalCount(result.TotalRecordCount || 0);
 			} else {
 				const params = {
@@ -491,12 +522,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 				apiFetchIndexRef.current = append ? apiFetchIndexRef.current + (result.Items?.length || 0) : (result.Items?.length || 0);
 				if (generation !== fetchGenerationRef.current) return;
-				setAllItems(prev => {
-					if (!append) return newItems;
-					const combined = [...prev, ...newItems];
-					const seen = new Set();
-					return combined.filter(i => { if (seen.has(i.Id)) return false; seen.add(i.Id); return true; });
-				});
+				showPage(newItems);
 				setTotalCount(result.TotalRecordCount || 0);
 			}
 		} catch (err) { console.error('[Library] loadItems error:', err); } finally {
@@ -516,8 +542,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		}
 	}, [groupedActive, isLoading, totalCount, allItems.length]);
 
-	// The summary cant tell music from audiobooks, so those playlists are read
-	// once and remembered. A small batch at a time keeps the requests gentle.
+	// The summary cant tell music from audiobooks or music videos from movies, so
+	// those playlists are read once and remembered. A small batch at a time keeps
+	// the requests gentle.
 	useEffect(() => {
 		if (!playlistGrouped || isLoading) return undefined;
 		const pending = allItems.filter((item) => playlistNeedsItemCheck(item) && !playlistResolveRef.current[item.Id]);
@@ -529,10 +556,10 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				const resolved = await Promise.all(chunk.map(async (item) => {
 					playlistResolveRef.current[item.Id] = true;
 					try {
-						const res = await effectiveApi.getPlaylistItems(item.Id);
+						const res = await effectiveApi.getPlaylistItems(item.Id, PLAYLIST_SAMPLE_SIZE);
 						return [item.Id, playlistCategoryFromItems(res?.Items)];
 					} catch {
-						return [item.Id, 'Mixed'];
+						return [item.Id, playlistSummaryCategory(item)];
 					}
 				}));
 				if (cancelled) return;
@@ -585,6 +612,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			setIsLoading(true);
 			setAllItems([]);
 			setTotalCount(0);
+			setBlockedCount(0);
 			loadingMoreRef.current = false;
 			apiFetchIndexRef.current = 0;
 			initialFocusDoneRef.current = false;
@@ -618,15 +646,6 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		apiFetchIndexRef.current = 0;
 		initialFocusDoneRef.current = false;
 	}, []);
-
-	useEffect(() => {
-		if (items.length > 0 && !isLoading && !initialFocusDoneRef.current) {
-			setTimeout(() => {
-				Spotlight.focus(groupedActive ? 'library-group-row-0' : 'library-grid');
-				initialFocusDoneRef.current = true;
-			}, 100);
-		}
-	}, [items.length, isLoading, groupedActive]);
 
 	const handleItemClick = useCallback((ev) => {
 		const itemIndex = ev.currentTarget?.dataset?.index;
@@ -719,6 +738,18 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		onBack: handleBackBeyondPanels,
 		enabled: !isMusicBrowseHome
 	});
+	// The grid takes focus once a list has landed, but not while a panel is up, since that's
+	// the viewer still picking. A pick that closes the panel runs this before the reload has
+	// cleared the old list, so it also waits for the new first page.
+	useEffect(() => {
+		if (showSortPanel || showSettingsPanel || apiFetchIndexRef.current === 0) return undefined;
+		if (items.length === 0 || isLoading || initialFocusDoneRef.current) return undefined;
+		const id = setTimeout(() => {
+			Spotlight.focus(groupedActive ? 'library-group-row-0' : 'library-grid');
+			initialFocusDoneRef.current = true;
+		}, 100);
+		return () => clearTimeout(id);
+	}, [items.length, isLoading, groupedActive, showSortPanel, showSettingsPanel]);
 
 	// Choosing the sort already in use turns it around rather than doing nothing.
 	const handleSortSelect = useCallback((ev) => {
@@ -1223,12 +1254,12 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 										)}
 									</span>
 								))}
-								<div className={css.itemCount}>{totalCount} {$L('Items')}</div>
+								<div className={css.itemCount}>{shownCount} {$L('Items')}</div>
 							</div>
 						) : (
 							<>
 								<div className={css.libraryTitle}>{displayName}</div>
-								<div className={css.itemCount}>{totalCount} {$L('Items')}</div>
+								<div className={css.itemCount}>{shownCount} {$L('Items')}</div>
 							</>
 						)}
 					</div>
@@ -1319,8 +1350,16 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 				<GridContainer className={css.gridContainer}>
 					{isLoading && items.length === 0 ? (
-						<div className={css.loading}>
-							<LoadingSpinner />
+						<div className={css.gridWrapper}>
+							<LibrarySkeleton
+								gridWidth={window.innerWidth - GRID_INSET}
+								cardWidth={cardWidth}
+								posterHeight={posterHeight}
+								padX={cellPadX}
+								minRowGap={MIN_ROW_GAP}
+								showText={showCardText}
+								horizontal={gridDirection === 'horizontal'}
+							/>
 						</div>
 					) : items.length === 0 ? (
 						<div className={css.empty}>{$L('No items found')}</div>
@@ -1345,7 +1384,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							))}
 						</div>
 					) : (
-						<div className={css.gridWrapper}>
+						<div className={css.gridWrapper} {...menuHold}>
 							<VirtualGridList
 								className={css.grid}
 								cbScrollTo={getGridScrollTo}
@@ -1366,13 +1405,13 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 				<div className={css.statusBar}>
 					<div className={css.statusText}>{statusText}</div>
-					<div className={css.statusCount}>{items.length} | {totalCount}</div>
+					<div className={css.statusCount}>{items.length} | {shownCount}</div>
 				</div>
 			</div>
 
 			{showSortPanel && (
 				<div className={css.sortPanelOverlay} onClick={handleCloseSortPanel}>
-					<SortPanelContainer
+					<PanelContainer
 						className={css.sortPanel}
 						onFocus={keepFocusInView}
 						spotlightId="sort-panel"
@@ -1570,13 +1609,13 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 								</SpottableButton>
 							</div>
 						)}
-					</SortPanelContainer>
+					</PanelContainer>
 				</div>
 			)}
 
 			{showSettingsPanel && (
 				<div className={css.sortPanelOverlay} onClick={handleCloseSettingsPanel}>
-					<SettingsPanelContainer
+					<PanelContainer
 						className={css.sortPanel}
 						onFocus={keepFocusInView}
 						spotlightId="settings-panel"
@@ -1664,7 +1703,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 								<div className={css.settingValue}>{isFolderView ? $L('On') : $L('Off')}</div>
 							</SpottableButton>
 						)}
-					</SettingsPanelContainer>
+					</PanelContainer>
 				</div>
 			)}
 		</div>

@@ -1464,9 +1464,9 @@
 }
 
 /* ============================================
-   Loading
+   Blocked Rating
    ============================================ */
-.loading {
+.blocked {
 	position: absolute;
 	top: 50%;
 	left: 50%;
@@ -1474,13 +1474,19 @@
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	color: rgba(255, 255, 255, 0.6);
-	font-size: 19px;
+	color: rgba(255, 255, 255, 0.54);
 	z-index: 5;
+}
 
-	> * + * {
-		margin-top: 16px;
-	}
+.blockedIcon {
+	width: 48px;
+	height: 48px;
+	margin-bottom: 16px;
+}
+
+.blockedText {
+	font-size: 19px;
+	text-align: center;
 }
 
 /* ============================================

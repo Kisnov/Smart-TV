@@ -175,14 +175,23 @@ describe('filterByStartLetter', () => {
 		expect(filterByStartLetter(noSortName, 'C')).toEqual(noSortName);
 	});
 
-	// An item with neither name would otherwise read as an empty first character, which
-	// matches no letter but does match the hash test.
-	test('an item with no name at all falls to hash', () => {
-		expect(filterByStartLetter([{}], '#')).toEqual([{}]);
+	test('an item with no name at all matches nothing', () => {
+		expect(filterByStartLetter([{}], '#')).toEqual([]);
 		expect(filterByStartLetter([{}], 'A')).toEqual([]);
 	});
 
 	test('a letter nothing starts with comes back empty', () => {
 		expect(filterByStartLetter(items, 'Z')).toEqual([]);
+	});
+
+	// An accent doesn't make it a different word, and the viewer looking for it reaches for A
+	// rather than the bucket the symbols sit in.
+	test('files an accented name under the letter under the accent', () => {
+		const accented = [{Name: 'Ángel'}, {Name: 'Øster'}, {Name: 'Łódź'}, {Name: '東京'}];
+
+		expect(filterByStartLetter(accented, 'A')).toEqual([{Name: 'Ángel'}]);
+		expect(filterByStartLetter(accented, 'O')).toEqual([{Name: 'Øster'}]);
+		expect(filterByStartLetter(accented, 'L')).toEqual([{Name: 'Łódź'}]);
+		expect(filterByStartLetter(accented, '#')).toEqual([{Name: '東京'}]);
 	});
 });

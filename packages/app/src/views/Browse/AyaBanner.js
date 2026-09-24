@@ -5,6 +5,7 @@ import {getImageUrl, getBackdropId} from '../../utils/helpers';
 import {KEYS} from '../../utils/keys';
 import useTrailerPreview from './useTrailerPreview';
 import css from './Browse.module.less';
+import {carouselIntervalMs} from '../../utils/carouselTiming';
 
 const BACKDROP_OPTS = {maxWidth: 1600, quality: 85};
 const LOGO_OPTS = {maxWidth: 680, quality: 90};
@@ -54,7 +55,7 @@ const AyaBanner = memo(({
 		if (featuredItems.length > 1) setActiveIndex((prev) => (prev + 1) % featuredItems.length);
 	}, [featuredItems.length]);
 
-	const {trailerContainerRef, trailerActive} = useTrailerPreview({
+	const {trailerContainerRef, trailerHolding} = useTrailerPreview({
 		currentItem: currentFeatured,
 		isVisible: isVisible && browseVisible,
 		enabled: settingsLoaded && settings.featuredTrailerPreview,
@@ -121,16 +122,16 @@ const AyaBanner = memo(({
 			clearInterval(carouselIntervalRef.current);
 			carouselIntervalRef.current = null;
 		}
-		const autoAdvanceEnabled = settings.autoAdvance !== false;
-		const configuredInterval = Number(settings.autoAdvanceInterval);
-		const carouselSpeed = Number.isFinite(configuredInterval) && configuredInterval > 0
-			? configuredInterval * 1000
-			: (settings.carouselSpeed || 8000);
-		if (!autoAdvanceEnabled || !isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerActive) return;
+		const carouselSpeed = carouselIntervalMs(
+			settings.autoAdvance,
+			settings.autoAdvanceInterval,
+			settings.carouselSpeed
+		);
+		if (!isVisible || featuredItems.length <= 1 || !featuredFocused || carouselSpeed <= 0 || trailerHolding) return;
 		carouselIntervalRef.current = setInterval(() => {
 			setActiveIndex((prev) => (prev + 1) % featuredItems.length);
 		}, carouselSpeed);
-	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerActive]);
+	}, [isVisible, featuredItems.length, featuredFocused, settings.autoAdvance, settings.autoAdvanceInterval, settings.carouselSpeed, trailerHolding]);
 
 	useEffect(() => {
 		startCarouselTimer();
