@@ -5,10 +5,6 @@ import {createApiForServer, getApiKey, getServerUrl as getDefaultServerUrl} from
 import css from './Browse.module.less';
 
 const TRAILER_REVEAL_MS = 3000;
-// How long a preview may take to reach its playing event while it holds the
-// carousel. A trailer that never starts, and never errors either, would
-// otherwise park the bar on one item for good.
-const TRAILER_HOLD_TIMEOUT_MS = 8000;
 // the preview plays into a plain HTML5 video element which cant decode a server
 // transcode on Tizen, so direct play the original trailer file instead
 const LOCAL_TRAILER_STREAM_PARAMS = {
@@ -20,11 +16,8 @@ const LOCAL_TRAILER_STREAM_PARAMS = {
 // the caller renders, and reveals it after a short delay.
 export default function useTrailerPreview({currentItem, isVisible, enabled, preferMuted, showCaptions = false, captionLanguage = '', api, getItemServerUrl, onEnded}) {
 	const [trailerActive, setTrailerActive] = useState(false);
-	// trailerActive only flips at the reveal, TRAILER_REVEAL_MS after playback
-	// starts, and playback itself is preceded by a source lookup and a buffering
-	// wait that on a cold panel run into seconds. The banners hold their carousel
-	// on trailerHolding instead, which covers all of that: the item must not
-	// change out from under a preview that is on its way up.
+	// Set from the playing event, a few seconds before trailerActive reveals the video, so the
+	// banners can hold their carousel while the trailer is already audible.
 	const [trailerHolding, setTrailerHolding] = useState(false);
 	const [screensaverActive, setScreensaverActive] = useState(false);
 
@@ -41,7 +34,6 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 	const trailerStateRef = useRef('idle');
 	const trailerVideoIdRef = useRef(null);
 	const trailerRevealTimerRef = useRef(null);
-	const trailerHoldTimerRef = useRef(null);
 	const sponsorSegmentsRef = useRef([]);
 	const trailerCaptionBlobRef = useRef(null);
 	const trailerCaptionBoxRef = useRef(null);
@@ -67,18 +59,6 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		}
 	}, []);
 
-	const clearHoldTimeout = useCallback(() => {
-		if (trailerHoldTimerRef.current) {
-			clearTimeout(trailerHoldTimerRef.current);
-			trailerHoldTimerRef.current = null;
-		}
-	}, []);
-
-	const releaseCarousel = useCallback(() => {
-		clearHoldTimeout();
-		setTrailerHolding(false);
-	}, [clearHoldTimeout]);
-
 	const stopTrailer = useCallback(() => {
 		if (trailerRevealTimerRef.current) {
 			clearTimeout(trailerRevealTimerRef.current);
@@ -89,7 +69,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 			trailerSkipIntervalRef.current = null;
 		}
 		setTrailerActive(false);
-		releaseCarousel();
+		setTrailerHolding(false);
 		const video = trailerVideoRef.current;
 		if (video) {
 			try { video.pause(); } catch (e) { /* ignore */ }
@@ -108,7 +88,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		trailerStateRef.current = 'idle';
 		trailerVideoIdRef.current = null;
 		sponsorSegmentsRef.current = [];
-	}, [removeCaptionTrack, releaseCarousel]);
+	}, [removeCaptionTrack]);
 
 	const getRemoteTrailersForItem = useCallback(async (item) => {
 		if (!item?.Id) return [];
@@ -224,14 +204,13 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		if (directUrl) attempts.push({url: directUrl});
 		if (videoId) attempts.push({id: videoId});
 
-		// Giving up has to hand the carousel back as well as clear the class,
-		// because the banner holds its timer for as long as this preview claims
-		// the slide.
+		// Giving up has to clear trailerActive as well as the class, because the
+		// banner holds its carousel timer while that flag is set.
 		const markUnavailable = () => {
 			trailerStateRef.current = 'unavailable';
 			video.classList.remove(css.trailerVisible);
 			setTrailerActive(false);
-			releaseCarousel();
+			setTrailerHolding(false);
 		};
 
 		const tryAttempt = async (index) => {
@@ -302,9 +281,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 			video.onplaying = () => {
 				if (trailerStateRef.current === 'resolving' && trailerVideoIdRef.current === requestId) {
 					trailerStateRef.current = 'playing';
-					// Playback reached the element, so the start deadline is spent. The
-					// hold now runs until the trailer ends, errors or is stopped.
-					clearHoldTimeout();
+					setTrailerHolding(true);
 					// A seek past a sponsor segment can fire this again, so the pending
 					// reveal is dropped rather than left to run after the trailer stops.
 					if (trailerRevealTimerRef.current) clearTimeout(trailerRevealTimerRef.current);
@@ -351,7 +328,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		};
 
 		tryAttempt(0);
-	}, [stopTrailer, preferMuted, showCaptions, captionLanguage, removeCaptionTrack, releaseCarousel, clearHoldTimeout]);
+	}, [stopTrailer, preferMuted, showCaptions, captionLanguage, removeCaptionTrack]);
 
 	useEffect(() => {
 		if (!enabled || !isVisible || !currentItem || screensaverActive) {
@@ -361,17 +338,6 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 
 		stopTrailer();
 		let cancelled = false;
-
-		// Taken before the lookup, not when playback starts: resolving a source and
-		// filling the video buffer can outlast a short auto advance interval, and
-		// the bar would turn over to the next item mid preview. Released below when
-		// there is no trailer to play, and by the timeout when one never starts.
-		setTrailerHolding(true);
-		clearHoldTimeout();
-		trailerHoldTimerRef.current = setTimeout(() => {
-			trailerHoldTimerRef.current = null;
-			if (trailerStateRef.current !== 'playing') setTrailerHolding(false);
-		}, TRAILER_HOLD_TIMEOUT_MS);
 
 		const resolveAndStartTrailer = async () => {
 			try {
@@ -409,8 +375,6 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 
 				if (resolvedVideoId || directUrl) {
 					startTrailerPreview(resolvedVideoId, directUrl);
-				} else {
-					releaseCarousel();
 				}
 			} catch (e) {
 				if (!cancelled) stopTrailer();
@@ -423,7 +387,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 			cancelled = true;
 			stopTrailer();
 		};
-	}, [currentItem, isVisible, screensaverActive, enabled, getLocalTrailerStreamUrlForItem, getRemoteTrailersForItem, startTrailerPreview, stopTrailer, releaseCarousel, clearHoldTimeout]);
+	}, [currentItem, isVisible, screensaverActive, enabled, getLocalTrailerStreamUrlForItem, getRemoteTrailersForItem, startTrailerPreview, stopTrailer]);
 
 	useEffect(() => {
 		const handleScreensaver = (e) => setScreensaverActive(!!e.detail?.active);

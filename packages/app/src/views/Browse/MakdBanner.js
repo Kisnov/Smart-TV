@@ -44,9 +44,6 @@ const MakdBanner = memo(({
 		if (featuredItems.length > 1) setCurrentIndex((prev) => (prev + 1) % featuredItems.length);
 	}, [featuredItems.length]);
 
-	// The carousel holds on trailerHolding rather than trailerActive: a preview
-	// spends its lookup, its buffering and its reveal delay before it ever goes
-	// visible, and turning the item over inside any of that cuts it off.
 	const {trailerActive, trailerHolding, trailerContainerRef} = useTrailerPreview({
 		currentItem: currentFeatured,
 		isVisible: isVisible && browseVisible,
