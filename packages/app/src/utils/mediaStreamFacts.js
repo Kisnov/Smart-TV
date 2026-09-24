@@ -1,6 +1,6 @@
 import $L from '@enact/i18n/$L';
 
-import {videoRangeLabel} from './videoRange';
+export {videoRangeLabel as getHdrType} from './videoRange';
 
 // How a media stream is described in words. The player's playback information panel has read these
 // for a long time, and the details screen's file information footer reads the same ones, so they
@@ -12,10 +12,6 @@ export const formatBitrate = (bitrate) => {
 	if (bitrate >= 1000) return `${(bitrate / 1000).toFixed(0)} Kbps`;
 	return `${bitrate} bps`;
 };
-
-// The panel's wording for the range, which is the same reading the HDR styling is
-// switched on by, so the two cannot disagree about a stream.
-export const getHdrType = (videoStream) => videoRangeLabel(videoStream);
 
 export const getVideoCodec = (videoStream) => {
 	if (!videoStream) return $L('Unknown');
