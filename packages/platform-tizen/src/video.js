@@ -258,9 +258,13 @@ export const getPlayMethod = (mediaSource, capabilities, _options, passthroughOp
 	const videoRangeType = videoRangeTypeOf(videoStream);
 	if (videoRangeType) {
 		const rangeType = videoRangeType.toUpperCase();
-		if (rangeType.includes('DOVIWITH')) {
-			// dual layer Dolby Vision has a compatible base layer, an HDR10
-			// panel plays that layer directly and an SDR fallback plays anywhere
+		if (rangeType.includes('DOVIWITHEL')) {
+			// profile 7 carries an enhancement layer that freezes the picture on a
+			// panel without Dolby Vision, so it goes through the server's remux
+			hdrOk = capabilities.dolbyVision;
+		} else if (rangeType.includes('DOVIWITH')) {
+			// Dolby Vision over a compatible base layer plays that layer on an
+			// HDR10 panel, and an SDR base plays anywhere
 			hdrOk = rangeType.includes('SDR') ? true : (capabilities.hdr10 || capabilities.dolbyVision);
 		} else if (rangeType.includes('DOLBY') || rangeType.includes('DOVI')) {
 			// a bare DOVI is profile 5, which carries no HDR10 base layer to
