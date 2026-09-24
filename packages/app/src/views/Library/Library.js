@@ -107,8 +107,7 @@ const QUALITY_FILTERS = [
 // A tag list can run to thousands of entries, and each one costs a focusable
 // row, so a facet opens on this many and grows a page at a time.
 const FACET_PAGE = 50;
-// Under this a list is quicker to read down than to type at, so the box only
-// turns up where it earns the row it costs.
+// Shorter lists are quicker to scroll than to search.
 const FACET_SEARCH_THRESHOLD = 15;
 
 // Sorting is what the panel is opened for most of the time, so it is the one section
@@ -844,18 +843,14 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		setFacetLimit(prev => prev + FACET_PAGE);
 	}, []);
 
-	// The on screen keyboard reports what was typed as a plain object rather than
-	// a DOM event, so the facet has to travel in the closure: there is no element
-	// on the other side to hang a data attribute off. One handler is kept per
-	// facet so the prop holds its identity between renders.
+	// The on-screen keyboard sends a plain object, not an event, so each facet caches its own handler.
 	const facetSearchHandlers = useRef({});
 	const facetSearchHandler = useCallback((facetKey) => {
 		const cached = facetSearchHandlers.current;
 		if (!cached[facetKey]) {
 			cached[facetKey] = (ev) => {
 				setFacetQueries(prev => ({...prev, [facetKey]: ev?.target?.value || ''}));
-				// A narrowed list starts from the top, so the page cap it was left
-				// on does not carry over and hide the first matches.
+				// A new query starts back on the first page.
 				setFacetLimit(FACET_PAGE);
 			};
 		}
@@ -1118,16 +1113,14 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		// Tags and genres are whatever the library owner typed, and a spotlight
 		// id ends up in a CSS selector, so the position identifies the row.
 		const chosen = options.filter(o => selected.includes(o.value)).length;
-		// Hundreds of tags are quicker to type at than to scroll through. Folded
-		// so a tag answers to the accents it was typed with, or without.
+		// Long lists get a search box, folded so accents don't matter.
 		const searchable = options.length > FACET_SEARCH_THRESHOLD;
 		const query = searchable ? foldForSearch((facetQueries[facetKey] || '').trim()) : '';
 		const matching = query
 			? options.filter(option => foldForSearch(option.name).includes(query))
 			: options;
 		// Anything already picked stays on screen however far down the list it
-		// sits, otherwise a page limit could hide the only way to clear it. A
-		// typed query is the viewer asking for less, so it narrows first.
+		// sits, otherwise a page limit could hide the only way to clear it.
 		let room = facetLimit;
 		const visible = matching.filter(option => {
 			if (selected.includes(option.value)) return true;
