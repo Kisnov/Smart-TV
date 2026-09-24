@@ -2339,8 +2339,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		} else if (e.key === 'Enter' || e.keyCode === 13) {
 			e.preventDefault();
 			if (resumeHeldScrub()) return;
+			// OK lands a jump that's still waiting, and toggles playback once there's none.
+			const hadPendingSeek = pendingSeekMsRef.current != null;
 			executeDeferredSeek();
 			setIsSeeking(false);
+			if (!hadPendingSeek) handlePlayPause();
 		} else if (e.key === 'ArrowUp' || e.keyCode === 38) {
 			e.preventDefault();
 			executeDeferredSeek();
@@ -2357,7 +2360,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				window.requestAnimationFrame(() => Spotlight.focus('play-pause-btn'));
 			}
 		}
-	}, [settings.seekStep, showControls, scrubBy, executeDeferredSeek, resumeHeldScrub, isAudioMode]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [settings.seekStep, showControls, scrubBy, executeDeferredSeek, resumeHeldScrub, handlePlayPause, isAudioMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const handleProgressBlur = useCallback(() => {
 		executeDeferredSeek();
@@ -2870,6 +2873,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}
 				if (key === 'Enter' || e.keyCode === 13) {
 					e.preventDefault();
+					// Hidden controls keep focus, so the focused one would get this key
+					// too and toggle playback straight back.
+					e.stopPropagation();
 					handlePlayPause();
 					return;
 				}
@@ -2878,6 +2884,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}
 				if (key === 'ArrowLeft' || e.keyCode === 37 || key === 'ArrowRight' || e.keyCode === 39) {
 					e.preventDefault();
+					// Same as Enter, or the focused progress bar adds a second step.
+					e.stopPropagation();
 					if (isLiveTV) { showControls(); return; }
 					showControls();
 					setFocusRow('progress');

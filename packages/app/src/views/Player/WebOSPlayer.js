@@ -2450,7 +2450,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			e.preventDefault();
 			scrubBy(step);
 		} else if (e.key === 'Enter' || e.keyCode === 13) {
-			if (resumeHeldScrub()) e.preventDefault();
+			e.preventDefault();
+			if (resumeHeldScrub()) return;
+			setIsSeeking(false);
+			handlePlayPause();
 		} else if (e.key === 'ArrowUp' || e.keyCode === 38) {
 			e.preventDefault();
 			settleHeldScrub();
@@ -2467,7 +2470,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				window.requestAnimationFrame(() => Spotlight.focus('play-pause-btn'));
 			}
 		}
-	}, [settings.seekStep, scrubBy, resumeHeldScrub, settleHeldScrub, showControls, isAudioMode]);
+	}, [settings.seekStep, scrubBy, resumeHeldScrub, settleHeldScrub, showControls, handlePlayPause, isAudioMode]);
 
 	const handleProgressBlur = useCallback(() => {
 		settleHeldScrub();
@@ -2848,6 +2851,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}
 				if (key === 'Enter' || e.keyCode === 13) {
 					e.preventDefault();
+					// Hidden controls keep focus, so the focused one would get this key
+					// too and toggle playback straight back.
+					e.stopPropagation();
 					handlePlayPause();
 					return;
 				}
@@ -2856,6 +2862,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}
 				if (key === 'ArrowLeft' || e.keyCode === 37 || key === 'ArrowRight' || e.keyCode === 39) {
 					e.preventDefault();
+					// Same as Enter, or the focused progress bar adds a second step.
+					e.stopPropagation();
 					if (isLiveTV) { showControls(); return; }
 					showControls();
 					setFocusRow('progress');
