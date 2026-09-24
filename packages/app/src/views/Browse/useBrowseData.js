@@ -46,12 +46,7 @@ const useBrowseData = ({
 	const fetchFreshFeaturedItems = useCallback(async (fallbackItems = null) => {
 		const s = settingsRef.current;
 		const configKey = featuredConfigKey(s);
-		// The bar is already holding a set made for these settings, and both draws are
-		// random, so another one would only reshuffle it. Not drawing at all is the
-		// point: a set drawn and kept back still reaches the viewer, because the home
-		// screen is built again every time it is returned to and reads the cache on
-		// the way in. They would leave an item, come back, and find a bar they have
-		// never seen. Only an empty bar, or one made for other settings, draws.
+		// The bar already holds a set for these settings, and a new random draw would only reshuffle it.
 		if (memoryCache.featuredItems?.length > 0 && memoryCache.featuredConfigKey === configKey) {
 			return null;
 		}
@@ -194,8 +189,7 @@ const useBrowseData = ({
 	}, [accessToken]);
 
 	useEffect(() => {
-		// detail.featured marks the callers that changed what the bar may hold, which
-		// today is a library being hidden or shown. The rest only want the rows back.
+		// detail.featured marks refreshes that change what the bar may hold, like hiding a library.
 		const handleBrowseRefresh = (e) => {
 			clearMemoryCache({keepFeatured: !e?.detail?.featured});
 		};
@@ -218,10 +212,7 @@ const useBrowseData = ({
 		// nothing remembered there is still nothing to show until the request answers.
 		const primeFeaturedItems = async (remembered, rememberedConfigKey) => {
 			if (remembered?.length) {
-				// Recorded as what the bar is holding, so the draw behind it can tell a
-				// reshuffle of these items from a set made for other settings. Under the
-				// same settings it finds nothing to do, which is what keeps the bar the
-				// same one on the way back in.
+				// Records which settings the bar's items were drawn for.
 				memoryCache.featuredItems = remembered;
 				memoryCache.featuredConfigKey = rememberedConfigKey;
 				dispatch({type: 'SET_FEATURED_ITEMS', items: remembered});

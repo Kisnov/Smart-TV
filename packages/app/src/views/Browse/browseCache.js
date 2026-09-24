@@ -21,11 +21,7 @@ export const memoryCache = {
 	// Which shape of the recent rows these were built for, since a cache of per
 	// library rows says nothing about the merged ones and the other way round.
 	rowConfigKey: null,
-	// Which media bar settings the featured items the bar is showing were drawn
-	// for. A set drawn for other settings is not a refresh of this one, it is a
-	// different bar, and has to replace what is on screen rather than wait for the
-	// next visit. Cleared with the rest, so an account change or an explicit
-	// refresh always redraws.
+	// The media bar settings the shown items were drawn for; a set drawn for other settings replaces them.
 	featuredConfigKey: null,
 	// Whose rows these are. Kept so a fresh mount can tell an account change, which has to
 	// throw the rows away, apart from an ordinary return to the home screen, which is the
@@ -34,11 +30,7 @@ export const memoryCache = {
 	owner: null
 };
 
-// Most things that ask for a refresh are asking about the rows: playback ended,
-// something was marked watched, the home screen was returned to. None of that
-// changes which items the media bar may hold, and throwing the bar away would
-// hand the viewer a different one every time. Only a caller that says so, or one
-// clearing up after another account, takes the bar with it.
+// A refresh keeps the media bar unless the caller asks for it, or an account change clears everything.
 export const clearMemoryCache = ({keepFeatured = false} = {}) => {
 	memoryCache.rowData = null;
 	memoryCache.libraries = null;

@@ -27,9 +27,7 @@ describe('clearMemoryCache', () => {
 		expect(memoryCache.rowConfigKey).toBeNull();
 	});
 
-	// Playback ending, an item being marked watched and a return to the home screen
-	// all ask for this. None of them changes which items the bar may hold, and
-	// dropping it would hand the viewer a different bar each time.
+	// Playback ending, marking watched and returning home don't change what the bar may hold.
 	test('keeps the media bar when asked to', () => {
 		clearMemoryCache({keepFeatured: true});
 
