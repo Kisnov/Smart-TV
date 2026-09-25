@@ -41,6 +41,14 @@ export const videoRangeTypeOf = (videoStream) => {
 	return 'DolbyVision';
 };
 
+// The format under the Dolby Vision, named after DOVIWith in the range type. A profile 7 enhancement
+// layer sits on HDR10 unless HDR10+ is named with it, and bare Dolby Vision has nothing under it.
+export const baseLayerLabel = (videoStream) => {
+	const match = normalizeToken(videoRangeTypeOf(videoStream)).match(/^DOVIWITH(?:EL)?(.*)$/);
+	if (!match) return null;
+	return videoRangeLabel({VideoRangeType: match[1] || 'HDR10'});
+};
+
 export const findVideoStream = (mediaSource) =>
 	(mediaSource?.MediaStreams || []).find((s) => s.Type === 'Video') || null;
 

@@ -1,6 +1,6 @@
 import $L from '@enact/i18n/$L';
 
-export {videoRangeLabel as getHdrType} from './videoRange';
+import {baseLayerLabel, videoRangeLabel} from './videoRange';
 
 // How a media stream is described in words. The player's playback information panel has read these
 // for a long time, and the details screen's file information footer reads the same ones, so they
@@ -11,6 +11,13 @@ export const formatBitrate = (bitrate) => {
 	if (bitrate >= 1000000) return `${(bitrate / 1000000).toFixed(1)} Mbps`;
 	if (bitrate >= 1000) return `${(bitrate / 1000).toFixed(0)} Kbps`;
 	return `${bitrate} bps`;
+};
+
+// A panel that cant decode Dolby Vision shows the base layer instead, so that's the format named.
+export const getHdrType = (videoStream, showsDolbyVision = true) => {
+	const label = videoRangeLabel(videoStream);
+	if (label !== 'Dolby Vision' || showsDolbyVision) return label;
+	return baseLayerLabel(videoStream) || label;
 };
 
 export const getVideoCodec = (videoStream) => {

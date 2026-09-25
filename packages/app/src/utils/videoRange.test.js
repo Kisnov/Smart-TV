@@ -1,4 +1,4 @@
-import {isHdrVideoStream, findVideoStream, isHdrOutput, videoRangeLabel, videoRangeTypeOf} from './videoRange';
+import {baseLayerLabel, isHdrVideoStream, findVideoStream, isHdrOutput, videoRangeLabel, videoRangeTypeOf} from './videoRange';
 
 describe('isHdrVideoStream', () => {
 	it.each(['HDR10', 'HDR10Plus', 'HLG', 'DOVI'])('treats %s as HDR', (rangeType) => {
@@ -136,5 +136,30 @@ describe('videoRangeTypeOf', () => {
 		expect(videoRangeTypeOf({Type: 'Video', ExtendedVideoType: 'Hdr10', VideoRange: 'HDR 10'})).toBe('');
 		expect(videoRangeTypeOf({Type: 'Video'})).toBe('');
 		expect(videoRangeTypeOf(null)).toBe('');
+	});
+});
+
+describe('baseLayerLabel', () => {
+	it.each([
+		['DOVIWithHDR10', 'HDR10'],
+		['DOVIWithHDR10Plus', 'HDR10+'],
+		['DOVIWithHLG', 'HLG'],
+		['DOVIWithSDR', 'SDR'],
+		['DOVIWithEL', 'HDR10'],
+		['DOVIWithELHDR10Plus', 'HDR10+']
+	])('names the layer under a Jellyfin %s as %s', (rangeType, expected) => {
+		expect(baseLayerLabel({VideoRangeType: rangeType})).toBe(expected);
+	});
+
+	it('reads the layer under an Emby profile from its sub type', () => {
+		expect(baseLayerLabel(embyDolbyVision('DoviProfile81'))).toBe('HDR10');
+		expect(baseLayerLabel(embyDolbyVision('DoviProfile76'))).toBe('HDR10');
+	});
+
+	it('has nothing to name for bare Dolby Vision or a stream without it', () => {
+		expect(baseLayerLabel({VideoRangeType: 'DOVI'})).toBeNull();
+		expect(baseLayerLabel(embyDolbyVision('DoviProfile50'))).toBeNull();
+		expect(baseLayerLabel({VideoRangeType: 'HDR10'})).toBeNull();
+		expect(baseLayerLabel(null)).toBeNull();
 	});
 });

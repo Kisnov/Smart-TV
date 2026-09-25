@@ -731,7 +731,7 @@ const PlayerControls = ({
 										</div>
 										<div className={css.infoRow}>
 											<span className={css.infoLabel}>{$L('HDR')}</span>
-											<span className={css.infoValue}>{getHdrType(videoStream)}</span>
+											<span className={css.infoValue}>{getHdrType(videoStream, session?.capabilities?.dolbyVision !== false)}</span>
 										</div>
 										<div className={css.infoRow}>
 											<span className={css.infoLabel}>{$L('Codec')}</span>

@@ -23,6 +23,14 @@ describe('getHdrType', () => {
 		expect(getHdrType({VideoRangeType: 'HDR10'})).toBe('HDR10');
 	});
 
+	it('names the base layer when the panel cant decode Dolby Vision', () => {
+		expect(getHdrType({VideoRangeType: 'DOVIWithELHDR10Plus'}, false)).toBe('HDR10+');
+		expect(getHdrType({VideoRangeType: 'DOVIWithHDR10'}, false)).toBe('HDR10');
+		expect(getHdrType({VideoRangeType: 'DOVI'}, false)).toBe('Dolby Vision');
+		expect(getHdrType({VideoRangeType: 'DOVIWithELHDR10Plus'}, true)).toBe('Dolby Vision');
+		expect(getHdrType({VideoRangeType: 'HDR10Plus'}, false)).toBe('HDR10+');
+	});
+
 	it('falls back to the coarse field, and to SDR when there is nothing', () => {
 		expect(getHdrType({VideoRange: 'HDR'})).toBe('HDR');
 		expect(getHdrType({VideoRangeType: 'SDR'})).toBe('SDR');

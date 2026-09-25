@@ -851,6 +851,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					container: result.mediaSource?.Container,
 					videoStream: describeVideoStream(findVideoStream(result.mediaSource)),
 					videoSupport,
+					forceDirectPlay: Boolean(playbackInfoOptions.forceDirectPlay),
 					forceTruehdPassthrough: Boolean(settings.forceTruehdPassthrough),
 					audioOutputStatus: audioCaps?.audioOutputStatus,
 					defaultAudioStreamIndex: result.defaultAudioStreamIndex,

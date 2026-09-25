@@ -1272,9 +1272,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					selectedAudioStreamIndex: result.selectedAudioStreamIndex,
 					transcodingContainer: result.mediaSource?.TranscodingContainer,
 					transcodingSubProtocol: result.mediaSource?.TranscodingSubProtocol,
-					// what the server was willing to offer, so a report explains the play method
+					// what the server was willing to offer, and whether Force Direct Play overrode it,
+					// so a report explains the play method
 					supportsDirectPlay: result.mediaSource?.SupportsDirectPlay,
 					supportsDirectStream: result.mediaSource?.SupportsDirectStream,
+					forceDirectPlay: Boolean(playbackInfoOptions.forceDirectPlay),
 					// profile and title are where Atmos is named, which is what forces a transcode
 					audioStreams: (result.mediaSource?.MediaStreams || [])
 						.filter((s) => s.Type === 'Audio')
