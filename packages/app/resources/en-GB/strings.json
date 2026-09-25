@@ -47,7 +47,7 @@
     "episode": "Episode",
     "episodes": "Episodes",
     "failed": "Failed",
-    "genres": "Genres",
+    "genres": "genres",
     "items": "Items",
     "requested": "Requested",
     "Add a comment": "Add a comment",
@@ -951,5 +951,6 @@
     "All items": "All items",
     "Allow DTS passthrough when available": "Allow DTS passthrough when available",
     "Allow DTS-HD and DTS:X passthrough when available": "Allow DTS-HD and DTS:X passthrough when available",
-    "Allow Dolby Digital Plus passthrough when available": "Allow Dolby Digital Plus passthrough when available"
+    "Allow Dolby Digital Plus passthrough when available": "Allow Dolby Digital Plus passthrough when available",
+    "1 (Play only)": "1 (Play only)"
 }
