@@ -1,4 +1,4 @@
-name: Auto-label platform and type
+name: Auto-label platform, server and type
 
 on:
   issues:
@@ -20,7 +20,7 @@ jobs:
   label:
     runs-on: ubuntu-latest
     steps:
-      - name: Apply platform and type labels
+      - name: Apply platform, server and type labels
         uses: actions/github-script@v7
         with:
           script: |
@@ -70,6 +70,11 @@ jobs:
               ['webOS', /\bwebOS\b/i]
             ];
 
+            const SERVERS = [
+              ['Jellyfin', /\bJellyfin\b/i],
+              ['Emby', /\bEmby\b/i]
+            ];
+
             const TYPES = [
               ['Bug', /\bBug\s*fix\b/i],
               ['Feature Request', /\bNew\s*feature\b/i],
@@ -103,11 +108,20 @@ jobs:
               apply(PLATFORMS, both ? ['Tizen', 'webOS'] : items);
             }
 
+            // "Both" on the feature request form gets both labels, so filtering by
+            // either server still finds it.
+            const serverLines = section(body, /^server$/i);
+            if (serverLines) {
+              const items = selected(serverLines);
+              const both = items.some(i => /^both\b/i.test(i));
+              apply(SERVERS, both ? ['Jellyfin', 'Emby'] : items);
+            }
+
             const typeLines = section(body, /^type of change\b/i);
             if (typeLines) apply(TYPES, selected(typeLines));
 
             if (!managed.size) {
-              core.info('No Platform or Type of Change section found, leaving labels alone.');
+              core.info('No Platform, Server or Type of Change section found, leaving labels alone.');
               return;
             }
 
