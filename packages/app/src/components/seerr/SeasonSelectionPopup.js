@@ -90,12 +90,25 @@ export const SeasonSelectionPopup = memo(({open, title, seasons, seasonStatusMap
 		}
 	}, []);
 
-	const handleSeasonButtonKeyDown = useCallback((e) => {
+	// Up from Request goes to the last season and up from Cancel goes to Request. The buttons sit
+	// inside the list's container, so focusing the container would land back on the button.
+	const handleRequestButtonKeyDown = useCallback((e) => {
+		if (e.keyCode !== KEYS.UP) return;
+
+		const list = e.currentTarget.closest(`.${css.seasonsList}`);
+		const seasonItems = list ? list.querySelectorAll(`.${css.seasonCheckItem}`) : [];
+		if (!seasonItems.length) return;
+		e.preventDefault();
+		e.stopPropagation();
+		safeFocus(seasonItems[seasonItems.length - 1]);
+	}, []);
+
+	const handleCancelButtonKeyDown = useCallback((e) => {
 		if (e.keyCode !== KEYS.UP) return;
 
 		e.preventDefault();
 		e.stopPropagation();
-		safeFocus('season-selection');
+		safeFocus('season-request-button');
 	}, []);
 
 	// TV quota counts seasons, so the selection is capped at what remains.
@@ -169,12 +182,12 @@ export const SeasonSelectionPopup = memo(({open, title, seasons, seasonStatusMap
 							spotlightId="season-request-button"
 							className={`${css.seasonConfirmButton} ${!canConfirm ? css.seasonButtonDisabled : ''}`}
 							onClick={handleConfirm}
-							onKeyDown={handleSeasonButtonKeyDown}
+							onKeyDown={handleRequestButtonKeyDown}
 							disabled={!canConfirm}
 						>
 							{$L('Request')} {selectedSeasons.size} {selectedSeasons.size !== 1 ? $L('Seasons') : $L('Season')}
 						</Button>
-						<Button spotlightId="season-cancel-button" className={css.seasonCancelButton} onClick={onClose} onKeyDown={handleSeasonButtonKeyDown}>
+						<Button spotlightId="season-cancel-button" className={css.seasonCancelButton} onClick={onClose} onKeyDown={handleCancelButtonKeyDown}>
 							{$L('Cancel')}
 						</Button>
 					</div>

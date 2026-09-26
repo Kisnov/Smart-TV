@@ -119,11 +119,13 @@ const useDetailsModals = ({backHandlerRef, onArtworkClosed, seerrBackRef, overvi
 	// BACK closes the innermost overlay. The artwork modal browses within itself, so it gets
 	// first refusal before the whole thing is dismissed. The Seerr popups and the expanded
 	// overview run off their own state, so they answer through refs rather than flags of ours.
+	// A Seerr popup floats over everything the detail styles draw, their own menus and section
+	// modals included, so it answers before them.
 	useEffect(() => {
 		if (!backHandlerRef) return;
 		const handler = () => {
-			if (spotlightBackRef?.current?.()) return true;
 			if (seerrBackRef?.current?.()) return true;
+			if (spotlightBackRef?.current?.()) return true;
 			if (showArtworkModal) {
 				if (artworkModalBackRef.current?.()) return true;
 				handleCloseArtworkModal();
