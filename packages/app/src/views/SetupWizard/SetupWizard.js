@@ -15,6 +15,7 @@ import {getActiveServer} from '../../services/multiServerManager';
 import {isBuiltInThemeId, resolveThemeById} from '../../theme/themeRegistry';
 import {toCssColor, toRgbTriplet} from '../../theme/themeSpec';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import {rootScale} from '../../utils/rootScale';
 import {remainingSteps, markComplete, deferThisLaunch, SETUP_QUESTION_STEPS} from '../../utils/setupWizardGate';
 import {ensurePreviewItemsLoaded} from './setupPreviewData';
 import {MediaBarPreview, NavbarPreview, HomeRowsPreview, DetailStylePreview, SetupIcon, usePreviewPalette} from './SetupPreviews';
@@ -30,6 +31,12 @@ const MEDIA_BAR_COLUMNS = 4;
 
 // What each card adds to its own width, from the margin the card carries.
 const CARD_GUTTER = 24;
+
+// Spotlight goes to whatever is nearest in a direction, and the cards just above the buttons are
+// nearer than Next at the far end of the row. These point Right from Back and from the last card
+// at Next, and Left from Next at Back.
+const NEXT_TARGET = '[data-spotlight-id="setup-wizard-next"]';
+const BACK_TARGET = '[data-spotlight-id="setup-wizard-back"]';
 
 const mediaBarLabel = (mode) => {
 	switch (mode) {
@@ -74,13 +81,14 @@ const useBodySize = () => {
 };
 
 // One pickable layout, shown rather than described.
-const OptionCard = ({spotlightId, label, hint, selected, preview, onSelect, width, t}) => {
+const OptionCard = ({spotlightId, label, hint, selected, preview, onSelect, width, t, ...rest}) => {
 	const [focused, setFocused] = useState(false);
 	const handleFocus = useCallback(() => setFocused(true), []);
 	const handleBlur = useCallback(() => setFocused(false), []);
 	const borderColor = focused ? t.onSurface : t.onSurfaceA(selected ? 0.34 : 0.14);
 	return (
 		<SpottableDiv
+			{...rest}
 			spotlightId={spotlightId}
 			className={css.optionCard}
 			style={{width}}
@@ -111,7 +119,7 @@ const OptionCard = ({spotlightId, label, hint, selected, preview, onSelect, widt
 	);
 };
 
-const TextButton = ({spotlightId, label, onSelect, onFocusChange, t}) => {
+const TextButton = ({spotlightId, label, onSelect, onFocusChange, t, ...rest}) => {
 	const [focused, setFocused] = useState(false);
 	const handleFocus = useCallback(() => {
 		setFocused(true);
@@ -123,6 +131,7 @@ const TextButton = ({spotlightId, label, onSelect, onFocusChange, t}) => {
 	}, [onFocusChange]);
 	return (
 		<SpottableDiv
+			{...rest}
 			spotlightId={spotlightId}
 			className={css.textButton}
 			style={{
@@ -138,12 +147,13 @@ const TextButton = ({spotlightId, label, onSelect, onFocusChange, t}) => {
 	);
 };
 
-const PrimaryButton = ({spotlightId, label, onSelect, t}) => {
+const PrimaryButton = ({spotlightId, label, onSelect, t, ...rest}) => {
 	const [focused, setFocused] = useState(false);
 	const handleFocus = useCallback(() => setFocused(true), []);
 	const handleBlur = useCallback(() => setFocused(false), []);
 	return (
 		<SpottableDiv
+			{...rest}
 			spotlightId={spotlightId}
 			className={css.primaryButton}
 			style={{
@@ -401,11 +411,15 @@ const SetupWizard = ({onDone, backHandlerRef}) => {
 	// Sized from the width the row gives each card and from the height the
 	// body can hold, so a focused card grows without running out of the step.
 	// labelAllowance is the room the text under the preview needs.
+	// The body is measured in screen pixels, while the gutter, the label room
+	// and the card's margin come from the stylesheet and grow with the UI
+	// scale, so they're scaled to match.
 	const cardWidthFor = useCallback((columns, rows, labelAllowance) => {
 		if (!bodySize.width) return 240;
-		const byWidth = (bodySize.width - CARD_GUTTER * columns) / columns;
-		const byHeight = ((bodySize.height / rows) - labelAllowance - 24) * (16 / 9);
-		return Math.min(840, Math.max(160, Math.min(byWidth, byHeight)));
+		const scale = rootScale();
+		const byWidth = (bodySize.width - CARD_GUTTER * scale * columns) / columns;
+		const byHeight = ((bodySize.height / rows) - (labelAllowance + 24) * scale) * (16 / 9);
+		return Math.floor(Math.min(840, Math.max(160, Math.min(byWidth, byHeight))));
 	}, [bodySize]);
 
 	const pick = useCallback((settingKey, value) => {
@@ -424,7 +438,7 @@ const SetupWizard = ({onDone, backHandlerRef}) => {
 			return (
 				<div className={css.optionRow}>
 					<OptionCard spotlightId='setup-card-navbar-top' label={$L('Top Bar')} selected={selected === 'top'} preview={<NavbarPreview position='top' />} onSelect={() => pick('navbarPosition', 'top')} width={width} t={t} /> {/* eslint-disable-line react/jsx-no-bind */}
-					<OptionCard spotlightId='setup-card-navbar-left' label={$L('Left Sidebar')} selected={selected === 'left'} preview={<NavbarPreview position='left' />} onSelect={() => pick('navbarPosition', 'left')} width={width} t={t} /> {/* eslint-disable-line react/jsx-no-bind */}
+					<OptionCard spotlightId='setup-card-navbar-left' label={$L('Left Sidebar')} selected={selected === 'left'} preview={<NavbarPreview position='left' />} onSelect={() => pick('navbarPosition', 'left')} width={width} t={t} data-spot-right={NEXT_TARGET} /> {/* eslint-disable-line react/jsx-no-bind */}
 				</div>
 			);
 		}
@@ -432,9 +446,11 @@ const SetupWizard = ({onDone, backHandlerRef}) => {
 			const selected = selectedFor('featuredBarStyle');
 			const width = cardWidthFor(MEDIA_BAR_COLUMNS, 2, 60);
 			// Capping the row keeps the wrap at four. A card sized down to fit
-			// the height would otherwise let a fifth slip onto the line.
+			// the height would otherwise let a fifth slip onto the line. The
+			// spare pixel keeps rounding in the scaled margins from wrapping the
+			// fourth, and is far too little to let a fifth in.
 			const rowStyle = {
-				maxWidth: MEDIA_BAR_COLUMNS * (width + CARD_GUTTER),
+				maxWidth: MEDIA_BAR_COLUMNS * (width + CARD_GUTTER * rootScale()) + 1,
 				margin: '0 auto'
 			};
 			return (
@@ -449,6 +465,7 @@ const SetupWizard = ({onDone, backHandlerRef}) => {
 							onSelect={() => pick('featuredBarStyle', mode)} // eslint-disable-line react/jsx-no-bind
 							width={width}
 							t={t}
+							data-spot-right={mode === MEDIA_BAR_MODES[MEDIA_BAR_MODES.length - 1] ? NEXT_TARGET : undefined}
 						/>
 					))}
 				</div>
@@ -460,7 +477,7 @@ const SetupWizard = ({onDone, backHandlerRef}) => {
 			return (
 				<div className={css.optionRow}>
 					<OptionCard spotlightId='setup-card-homeRows-v1' label={$L('Classic')} hint={$L('Compact. More rows on screen at once.')} selected={selected === 'v1'} preview={<HomeRowsPreview modern={false} />} onSelect={() => pick('homeRowsStyle', 'v1')} width={width} t={t} /> {/* eslint-disable-line react/jsx-no-bind */}
-					<OptionCard spotlightId='setup-card-homeRows-v2' label={$L('Modern')} hint={$L('Larger cards with titles underneath.')} selected={selected === 'v2'} preview={<HomeRowsPreview modern />} onSelect={() => pick('homeRowsStyle', 'v2')} width={width} t={t} /> {/* eslint-disable-line react/jsx-no-bind */}
+					<OptionCard spotlightId='setup-card-homeRows-v2' label={$L('Modern')} hint={$L('Larger cards with titles underneath.')} selected={selected === 'v2'} preview={<HomeRowsPreview modern />} onSelect={() => pick('homeRowsStyle', 'v2')} width={width} t={t} data-spot-right={NEXT_TARGET} /> {/* eslint-disable-line react/jsx-no-bind */}
 				</div>
 			);
 		}
@@ -473,7 +490,7 @@ const SetupWizard = ({onDone, backHandlerRef}) => {
 					<OptionCard spotlightId='setup-card-detailStyle-v2' label={$L('Modern')} hint={$L('Cinematic, with tabs for cast and extras.')} selected={selected === 'v2'} preview={<DetailStylePreview variant='v2' />} onSelect={() => pick('detailScreenStyle', 'v2')} width={width} t={t} /> {/* eslint-disable-line react/jsx-no-bind */}
 					<OptionCard spotlightId='setup-card-detailStyle-v3' label={$L('Spotlight')} hint={$L('Artwork first, with cards that open what they name.')} selected={selected === 'v3'} preview={<DetailStylePreview variant='v3' />} onSelect={() => pick('detailScreenStyle', 'v3')} width={width} t={t} /> {/* eslint-disable-line react/jsx-no-bind */}
 					<OptionCard spotlightId='setup-card-detailStyle-v4' label={$L('Nouveau')} hint={$L('Every section stacked down one page.')} selected={selected === 'v4'} preview={<DetailStylePreview variant='v4' />} onSelect={() => pick('detailScreenStyle', 'v4')} width={width} t={t} /> {/* eslint-disable-line react/jsx-no-bind */}
-					<OptionCard spotlightId='setup-card-detailStyle-v5' label={$L('Minimalist')} hint={$L('Artwork, one play button and the episodes.')} selected={selected === 'v5'} preview={<DetailStylePreview variant='v5' />} onSelect={() => pick('detailScreenStyle', 'v5')} width={width} t={t} /> {/* eslint-disable-line react/jsx-no-bind */}
+					<OptionCard spotlightId='setup-card-detailStyle-v5' label={$L('Minimalist')} hint={$L('Artwork, one play button and the episodes.')} selected={selected === 'v5'} preview={<DetailStylePreview variant='v5' />} onSelect={() => pick('detailScreenStyle', 'v5')} width={width} t={t} data-spot-right={NEXT_TARGET} /> {/* eslint-disable-line react/jsx-no-bind */}
 				</div>
 			);
 		}
@@ -523,7 +540,7 @@ const SetupWizard = ({onDone, backHandlerRef}) => {
 						</div>
 						<div className={css.actions}>
 							{index > 0 && (
-								<TextButton spotlightId='setup-wizard-back' label={$L('Back')} onSelect={goBack} t={t} />
+								<TextButton spotlightId='setup-wizard-back' label={$L('Back')} onSelect={goBack} t={t} data-spot-right={NEXT_TARGET} />
 							)}
 							<div className={css.actionsSpacer} />
 							<PrimaryButton
@@ -531,6 +548,7 @@ const SetupWizard = ({onDone, backHandlerRef}) => {
 								label={isLast ? $L('Done') : $L('Next')}
 								onSelect={advance}
 								t={t}
+								data-spot-left={index > 0 ? BACK_TARGET : undefined}
 							/>
 						</div>
 					</>
