@@ -676,7 +676,7 @@ const PlayerControls = ({
 
 				return (
 					<div className={css.trackModal} onClick={closeModal}>
-						<div className={`${css.modalContent} ${css.videoInfoModal}`} onClick={stopPropagation}>
+						<ModalContainer className={`${css.modalContent} ${css.videoInfoModal}`} onClick={stopPropagation} data-modal="info" spotlightId="info-modal">
 							<h2 className={css.modalTitle}>{$L('Playback Information')}</h2>
 							<Scroller
 								className={css.videoInfoContent}
@@ -804,7 +804,7 @@ const PlayerControls = ({
 								)}
 							</Scroller>
 							<p className={css.modalFooter}>{$L('Press BACK to close')}</p>
-						</div>
+						</ModalContainer>
 					</div>
 				);
 			})()}
