@@ -79,7 +79,8 @@ const SpotlightSectionModal = ({card, serverUrl, actions, seerr, onNearEnd}) => 
 
 	// Enact brings a newly focused card into view by its unfocused box and stops flush against
 	// the edge, which both hides the heading above the top row and clips the growth a focused
-	// card gains. The scroll is corrected here once Enact has settled its own.
+	// card gains. The scroll is corrected here while Enact's own is usually still running, so the
+	// correction animates too rather than cutting it off.
 	const handleSectionFocus = useCallback((ev) => {
 		const section = ev.currentTarget;
 		const cell = ev.target.closest('.spottable');
@@ -103,13 +104,13 @@ const SpotlightSectionModal = ({card, serverUrl, actions, seerr, onNearEnd}) => 
 			// The top row carries its heading with it, whichever way focus arrived.
 			if (heading !== grid && cellBox.top - grid.getBoundingClientRect().top <= 8) {
 				const offset = heading.getBoundingClientRect().top - contentTop;
-				scrollTo({position: {y: Math.max(0, offset - HEADING_CLEARANCE)}, animate: false});
+				scrollTo({position: {y: Math.max(0, offset - HEADING_CLEARANCE)}, animate: true});
 				return;
 			}
 			if (cellBox.top < view.top + CARD_CLEARANCE) {
-				scrollTo({position: {y: Math.max(0, scrolled - (view.top + CARD_CLEARANCE - cellBox.top))}, animate: false});
+				scrollTo({position: {y: Math.max(0, scrolled - (view.top + CARD_CLEARANCE - cellBox.top))}, animate: true});
 			} else if (cellBox.bottom > view.bottom - CARD_CLEARANCE) {
-				scrollTo({position: {y: scrolled + (cellBox.bottom - view.bottom + CARD_CLEARANCE)}, animate: false});
+				scrollTo({position: {y: scrolled + (cellBox.bottom - view.bottom + CARD_CLEARANCE)}, animate: true});
 			}
 		}));
 	}, []);

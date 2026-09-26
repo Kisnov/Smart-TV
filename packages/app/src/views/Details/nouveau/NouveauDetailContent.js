@@ -3,6 +3,7 @@ import $L from '@enact/i18n/$L';
 import Spotlight from '@enact/spotlight';
 
 import {getImageUrl} from '../../../utils/helpers';
+import {rem, rootScale} from '../../../utils/rootScale';
 import {castPhotoUrl, seriesThumbUrl} from '../detailsMedia';
 import {RowContainer, SpottableDiv} from '../detailsSpottables';
 import {spotlightItemImageUrl} from '../spotlight/spotlightImages';
@@ -30,7 +31,7 @@ import {
 } from './nouveauCollectionSort';
 import {chapterDisplayName, collectionSubtitle, extraSubtitle} from './nouveauLabels';
 import {
-	RAIL_GAP, SECTION_INSET, TV_RAIL_GAP, discoveryCardWidth, discoveryPosterHeight,
+	RAIL_GAP, SECTION_INSET, TOP_BAR_CLEARANCE, TV_RAIL_GAP, discoveryCardWidth, discoveryPosterHeight,
 	collectionCardHeight, collectionCardWidth, episodeCardWidth, episodeImageHeight,
 	mediaRailArtworkHeight, mediaRailCardWidth,
 	peopleAvatarSize, peopleCardWidth
@@ -48,6 +49,11 @@ import css from './NouveauDetailContent.module.less';
 
 // The room a docked sidebar takes, which the stylesheet pads the content by.
 const SIDEBAR_OFFSET = 120;
+
+const HERO_UNDER_TOP_BAR = {paddingTop: rem(TOP_BAR_CLEARANCE)};
+
+// Older Tizen and webOS WebKit have no smooth scrolling, so they jump instead.
+const SMOOTH_SCROLL = typeof document !== 'undefined' && 'scrollBehavior' in document.documentElement.style;
 
 // Looking an item up in the list a card came from, which every rail's select handler needs.
 const findIn = (list, key) => list.find((candidate) => String(candidate.Id) === key);
@@ -341,7 +347,9 @@ const NouveauDetailContent = (props) => {
 
 	// Focusing a card leaves the browser to decide how far to scroll, which lands a rail against the
 	// bottom edge with its heading out of sight. Putting the rail's own top at a fixed clearance
-	// brings the heading with it and lands in the same place every time.
+	// brings the heading with it and lands in the same place every time. With the bar along the top
+	// it also has to clear the bar.
+	const topBar = settings.navbarPosition !== 'left';
 	const pinToNode = useCallback((spotlightId) => {
 		const scroller = scrollerRef.current;
 		if (!scroller) return;
@@ -351,8 +359,25 @@ const NouveauDetailContent = (props) => {
 
 		// The hero and its overview sit above the first section, so there is nothing to pin them to
 		// and the top of the page is where they belong.
-		scroller.scrollTop = section ? Math.max(0, section.offsetTop - SECTION_INSET) : 0;
-	}, []);
+		let top = 0;
+		if (section) {
+			const inset = (topBar ? TOP_BAR_CLEARANCE : SECTION_INSET) * rootScale();
+			const offsetOf = (node) => node.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+			top = offsetOf(section) - inset;
+			// A section holding two rails, like Similar and Recommendations, can be taller than the
+			// screen. A rail that wont fit under the section's top is pinned by its own top instead.
+			if (target !== section && offsetOf(target) + target.offsetHeight - top > scroller.clientHeight) {
+				top = offsetOf(target) - inset;
+			}
+		}
+		top = Math.max(0, top);
+
+		if (SMOOTH_SCROLL) {
+			scroller.scrollTo({top, behavior: 'smooth'});
+		} else {
+			scroller.scrollTop = top;
+		}
+	}, [topBar]);
 
 	// A stop can name something that is not on screen: the overview only takes focus when its text
 	// is long enough to be worth expanding, and a rail that came back empty draws nothing at all. A
@@ -722,8 +747,8 @@ const NouveauDetailContent = (props) => {
 				{backdropUrl && <img className={css.backdropImage} src={backdropUrl} alt="" />}
 			</div>
 			<div ref={scrollerRef} className={css.scroller}>
-				<div className={`${css.content} ${settings.navbarPosition === 'left' ? css.sidebarOffset : ''}`}>
-					<div className={css.hero}>
+				<div className={`${css.content} ${topBar ? '' : css.sidebarOffset}`}>
+					<div className={css.hero} style={topBar ? HERO_UNDER_TOP_BAR : undefined}>
 						<NouveauHero
 							{...props}
 							menuBackRef={menuBackRef}

@@ -13,6 +13,10 @@ export const RAIL_GAP = 40;
 
 export const SECTION_INSET = 56;
 
+// With the navigation bar along the top, the bar and the avatar beside it end a little above
+// this. The hero starts here and a pinned rail's heading stops here.
+export const TOP_BAR_CLEARANCE = 135;
+
 export const EPISODE_VISIBLE_COUNT = 3.25;
 export const COLLECTION_VISIBLE_COUNT = 5.5;
 export const DISCOVERY_VISIBLE_COUNT = 6.15;

@@ -482,7 +482,8 @@ const ModernDetailContent = (props) => {
 	// Enact pulls a newly focused card up to the top of the viewport, which takes the
 	// heading above it off the screen. Landing on the first row of a grid scrolls to the
 	// heading instead, so the row keeps its name. The page already holds its top padding
-	// clear of the navbar, so the heading is left the same room the first row gets.
+	// clear of the navbar, so the heading is left the same room the first row gets. It animates
+	// because Enact's own scroll is still running here, and a jump would cut it off.
 	const handleSeerrRowFocus = useCallback((ev) => {
 		const section = ev.currentTarget;
 		const card = ev.target.closest('.spottable');
@@ -496,7 +497,7 @@ const ModernDetailContent = (props) => {
 			if (card.getBoundingClientRect().top - grid.getBoundingClientRect().top > 8) return;
 			const offset = heading.getBoundingClientRect().top - content.getBoundingClientRect().top;
 			const clearance = parseFloat(window.getComputedStyle(content).paddingTop) || 0;
-			scrollToRef.current?.({position: {y: Math.max(0, offset - clearance)}, animate: false});
+			scrollToRef.current?.({position: {y: Math.max(0, offset - clearance)}, animate: true});
 		});
 	}, []);
 
