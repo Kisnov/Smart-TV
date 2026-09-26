@@ -326,6 +326,7 @@ const SeerrRequests = ({onSelectItem, onClose, initialTab = 'requests', backHand
 	const [myUserId, setMyUserId] = useState(contextUser?.seerrUserId ?? null);
 	const [activeIssue, setActiveIssue] = useState(null);
 	const loadingMoreRef = useRef(false);
+	const focusFirstRequestRef = useRef(false);
 
 	const canManage = seerrApi.canManageRequests(permissions);
 	const canManageIssuesPerm = seerrApi.canManageIssues(permissions);
@@ -370,6 +371,7 @@ const SeerrRequests = ({onSelectItem, onClose, initialTab = 'requests', backHand
 
 	const reload = useCallback(async (activeTab, filter) => {
 		if (!isAuthenticated) return;
+		focusFirstRequestRef.current = activeTab === 'requests';
 		setLoading(true);
 		setError(null);
 		try {
@@ -418,10 +420,12 @@ const SeerrRequests = ({onSelectItem, onClose, initialTab = 'requests', backHand
 		}
 	}, [tab, requestFilter, issueFilter, requests, issues, hasMore, loadPage]);
 
+	// Only once per load. The download poll, load more and approve all hand back a new list too,
+	// and none of those should move focus.
 	useEffect(() => {
-		if (!loading && tab === 'requests' && requests.length > 0) {
-			Spotlight.focus('[data-spotlight-id="request-0"]');
-		}
+		if (loading || tab !== 'requests' || requests.length === 0 || !focusFirstRequestRef.current) return;
+		focusFirstRequestRef.current = false;
+		Spotlight.focus('[data-spotlight-id="request-0"]');
 	}, [loading, tab, requests]);
 
 	// Quiet first-page refetch that only overwrites the status and download
