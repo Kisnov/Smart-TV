@@ -5,6 +5,7 @@ jest.mock('@enact/i18n/$L', () => ({__esModule: true, default: (str) => str}));
 import {defaultSettings} from '../../context/defaultSettings';
 
 import {KIND, SETTINGS_SCHEMA, resolve, spotlightIdOf} from './settingsSchema';
+import {buildSettingsIndex, resultSpotlightId} from './settingsSearch';
 
 // Guards the hand-written schema against the mistakes that would otherwise be invisible:
 // a key that does not exist writes junk into settings, and a repeated spotlight id makes
@@ -135,5 +136,11 @@ describe('settings schema', () => {
 				}
 			});
 		expect(mismatched).toEqual([]);
+	});
+
+	test('every search result has its own id that spotlight can focus by name', () => {
+		const ids = buildSettingsIndex(SETTINGS_SCHEMA, ctx, {resolve, spotlightIdOf}).map(resultSpotlightId);
+		expect(ids.filter((id) => !/^[\w\d-]+$/.test(id))).toEqual([]);
+		expect(new Set(ids).size).toBe(ids.length);
 	});
 });

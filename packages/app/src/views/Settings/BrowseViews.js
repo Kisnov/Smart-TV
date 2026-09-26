@@ -7,6 +7,7 @@ import {renderSettingsIcon, renderChevron, renderRadio} from './settingsIcons';
 import {SpottableDiv} from './settingsSpottables';
 import {SectionTitle} from './settingsRows';
 import SettingsView from './SettingsView';
+import {resultSpotlightId} from './settingsSearch';
 
 import css from './Settings.module.less';
 
@@ -19,7 +20,7 @@ const ResultItem = ({entry, index, onOpen, onKeyDown}) => (
 		data-result-index={index}
 		onClick={() => onOpen(entry)}
 		onKeyDown={onKeyDown}
-		spotlightId={`settings-result-${entry.id}`}
+		spotlightId={resultSpotlightId(entry)}
 	>
 		{renderSettingsIcon(entry.icon)}
 		<div className={css.listItemBody}>

@@ -30,7 +30,7 @@ import QrLinkView from './QrLinkView';
 import {formatPlaybackTimeSlot} from '../../utils/playbackTimeLabels';
 import {getHomeRowsStyleOptions, getImageTypeOptions, getLabel} from './settingsOptions';
 import {SCHEMA_BY_KEY, SETTINGS_SCHEMA, resolve, spotlightIdOf} from './settingsSchema';
-import {MIN_QUERY_LENGTH, buildSettingsIndex, matchSettings} from './settingsSearch';
+import {MIN_QUERY_LENGTH, buildSettingsIndex, matchSettings, resultSpotlightId} from './settingsSearch';
 import {PLUGIN_SECTION_RENDER_STEP} from './homeSectionsModel';
 import useSeerrAccount from './useSeerrAccount';
 import useThemeStore from './useThemeStore';
@@ -178,7 +178,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 				const results = searchResultsRef.current;
 				if (searchQueryRef.current) {
 					Spotlight.focus(results.length > 0
-						? `settings-result-${results[0].id}`
+						? resultSpotlightId(results[0])
 						: 'settings-search-input');
 					return;
 				}
@@ -1192,10 +1192,12 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 
 	const handleSearchKeyDown = useCallback((e) => {
 		// SpottableInput only forwards keys while the field is not being typed into, so
-		// this is the not-typing case and Down should enter the results.
+		// this is the not-typing case and Down should enter the results. Spotlight's own key
+		// handler ignores preventDefault, so the event is stopped or it moves on to the second result.
 		if (e.keyCode === 40 && searchResultsRef.current.length > 0) {
 			e.preventDefault();
-			Spotlight.focus(`settings-result-${searchResultsRef.current[0].id}`);
+			e.stopPropagation();
+			Spotlight.focus(resultSpotlightId(searchResultsRef.current[0]));
 		}
 	}, []);
 
@@ -1238,7 +1240,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			categoryId: entry.categoryId,
 			subcategoryId: entry.subcategoryId,
 			label: entry.subcategoryLabel,
-			returnFocusTo: `settings-result-${entry.id}`
+			returnFocusTo: resultSpotlightId(entry)
 		});
 	}, [pushView]);
 

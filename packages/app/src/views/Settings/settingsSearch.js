@@ -18,6 +18,10 @@ export const normalize = (value) => {
 	return out.replace(/\s+/g, ' ').trim();
 };
 
+// Entry ids carry dots and colons. Spotlight only treats a string as a spotlight id when it's
+// letters, digits, dashes and underscores, and reads anything else as a CSS selector.
+export const resultSpotlightId = (entry) => `settings-result-${String(entry.id).replace(/[^\w-]/g, '_')}`;
+
 const isIndexable = (row) => {
 	if (row.search === false) return false;
 	if (row.search === true) return true;

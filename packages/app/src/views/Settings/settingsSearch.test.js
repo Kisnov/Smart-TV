@@ -1,4 +1,4 @@
-import {MAX_RESULTS, buildSettingsIndex, matchSettings, normalize} from './settingsSearch';
+import {MAX_RESULTS, buildSettingsIndex, matchSettings, normalize, resultSpotlightId} from './settingsSearch';
 
 // A stand-in schema so these tests never reach for i18n or the real settings tree.
 const resolve = (value, ctx) => (typeof value === 'function' ? value(ctx) : value);
@@ -176,5 +176,16 @@ describe('normalize', () => {
 	test('handles null and undefined', () => {
 		expect(normalize(null)).toBe('');
 		expect(normalize(undefined)).toBe('');
+	});
+});
+
+describe('resultSpotlightId', () => {
+	// The same check Spotlight.focus makes before it looks a string up as a spotlight id rather
+	// than as a CSS selector.
+	test('gives every entry an id spotlight can focus by name', () => {
+		const entries = build(ctxWith({showHidden: true, settings: {subtitlePosition: 'absolute'}}));
+		entries.forEach((entry) => {
+			expect(resultSpotlightId(entry)).toMatch(/^[\w\d-]+$/);
+		});
 	});
 });
