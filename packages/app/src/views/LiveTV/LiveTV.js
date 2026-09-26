@@ -365,6 +365,17 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 	// Scrolling
 	// ------------------------------------------------------------------------------------------
 
+	// Picks the rows to draw from the scroll offset. Setting the offset from script fires no scroll
+	// event when it hasnt changed, as when a reloaded grid is sent back to row 0, so scrollToRow
+	// calls this too.
+	const syncScrollRow = useCallback(() => {
+		const scroller = gridRef.current;
+		if (!scroller) return;
+		const first = Math.floor(scroller.scrollTop / rowHeightRef.current);
+		const next = Math.max(0, first - OVERSCAN_ROWS);
+		setScrollRow((prev) => (prev === next ? prev : next));
+	}, []);
+
 	// The focused row scrolls to the top of the grid, so the rows below it are the ones in view.
 	const scrollToRow = useCallback((index, {animate = true} = {}) => {
 		if (lastFocusedRowRef.current === index) return;
@@ -375,7 +386,8 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 		const target = Math.max(0, Math.min(max, index * rowHeightRef.current));
 		if (animate) animateScrollTop(scroller, target, 200);
 		else scroller.scrollTop = target;
-	}, []);
+		syncScrollRow();
+	}, [syncScrollRow]);
 
 	const rowsPerViewport = useCallback(() => {
 		const scroller = gridRef.current;
@@ -401,14 +413,10 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 	}, [store]);
 
 	const handleScroll = useCallback(() => {
-		const scroller = gridRef.current;
-		if (!scroller) return;
-		const first = Math.floor(scroller.scrollTop / rowHeightRef.current);
-		const next = Math.max(0, first - OVERSCAN_ROWS);
-		setScrollRow((prev) => (prev === next ? prev : next));
+		syncScrollRow();
 		clearTimeout(artworkScrollTimerRef.current);
 		artworkScrollTimerRef.current = setTimeout(queueArtworkPrefetch, 250);
-	}, [queueArtworkPrefetch]);
+	}, [queueArtworkPrefetch, syncScrollRow]);
 
 	useEffect(() => () => clearTimeout(artworkScrollTimerRef.current), []);
 
@@ -845,6 +853,9 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 
 	const resetToEntryState = useCallback(async () => {
 		resettingRef.current = true;
+		// Cleared before the reload so neither the re-anchor after it nor the focus restore once the
+		// grid is back puts focus on the program that was left.
+		selectionRef.current = null;
 		try {
 			await goToNow();
 		} finally {
