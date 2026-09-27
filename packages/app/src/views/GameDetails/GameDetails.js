@@ -6,6 +6,7 @@ import Button from '@enact/sandstone/Button';
 import AdminMessageDialog from '../../components/AdminMessageDialog';
 import GameCard from '../../components/GameCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import {GAME_ICON_PATHS} from '../../components/icons/gameIcons';
 import {iconViewBox} from '../../components/icons/iconViewBox';
 import * as gamesApi from '../../services/gamesApi';
 import {isSupported, unsupportedMessage} from '../../utils/emulatorjs';
@@ -22,10 +23,6 @@ const metaLine = (game) => [
 	game.players ? (game.players === 1 ? $L('1 player') : $L('{count} players').replace('{count}', game.players)) : null
 ].filter(Boolean).join('  ·  ');
 
-// Material Symbols refresh and hourglass_top, filled.
-const REFRESH_ICON = 'M480-160q-133 0-226.5-93.5T160-480q0-133 93.5-226.5T480-800q85 0 149 34.5T740-671v-129h60v254H546v-60h168q-38-60-97-97t-137-37q-109 0-184.5 75.5T220-480q0 109 75.5 184.5T480-220q83 0 152-47.5T728-393h62q-29 105-115 169t-195 64Z';
-const HOURGLASS_ICON = 'M308-140h344v-127q0-72-50-121.5T480-438q-72 0-122 49.5T308-267v127ZM160-80v-60h88v-127q0-71 40-129t106-84q-66-27-106-85t-40-129v-126h-88v-60h640v60h-88v126q0 71-40 129t-106 85q66 26 106 84t40 129v127h88v60H160Z';
-
 const ButtonIcon = ({path}) => (
 	<svg className={css.buttonIcon} viewBox={iconViewBox(path)} fill="currentColor">
 		<path d={path} />
@@ -33,8 +30,8 @@ const ButtonIcon = ({path}) => (
 );
 
 const primaryAction = (saveReadiness) => {
-	if (saveReadiness === 'checking') return {icon: HOURGLASS_ICON, label: $L('Checking for save…')};
-	if (saveReadiness === 'failed') return {icon: REFRESH_ICON, label: $L('Retry save check')};
+	if (saveReadiness === 'checking') return {icon: GAME_ICON_PATHS.hourglassTop, label: $L('Checking for save…')};
+	if (saveReadiness === 'failed') return {icon: GAME_ICON_PATHS.refresh, label: $L('Retry save check')};
 	return {icon: DETAIL_ICON_PATHS.play, label: saveReadiness === 'available' ? $L('Continue') : $L('Play')};
 };
 
@@ -153,7 +150,7 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 						</Button>
 						{saveReadiness === 'available' ? (
 							<Button className={css.actionButton} onClick={handleRestart}>
-								<ButtonIcon path={REFRESH_ICON} />
+								<ButtonIcon path={GAME_ICON_PATHS.refresh} />
 								{$L('Restart')}
 							</Button>
 						) : null}

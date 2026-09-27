@@ -6,11 +6,14 @@ import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDeco
 
 import AdminMessageDialog from '../../components/AdminMessageDialog';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import {GAME_ICON_PATHS} from '../../components/icons/gameIcons';
+import {iconViewBox} from '../../components/icons/iconViewBox';
 import * as gamesApi from '../../services/gamesApi';
 import serverLogger from '../../services/serverLogger';
 import {initVideo, keepScreenOn, setupVisibilityHandler} from '../../services/video';
 import * as ejs from '../../utils/emulatorjs';
 import {gameStateKey, loadGameStateWithMigration} from '../../utils/gameSaves';
+import {DETAIL_ICON_PATHS} from '../Details/detailIcons';
 
 import css from './GamePlayer.module.less';
 
@@ -20,6 +23,12 @@ const OverlayContainer = SpotlightContainerDecorator({
 	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
+
+const RowIcon = ({path}) => (
+	<svg className={css.rowIcon} viewBox={iconViewBox(path)} fill="currentColor">
+		<path d={path} />
+	</svg>
+);
 
 // One emulator-setting row. OK / right cycles the value forward, left cycles back.
 const SettingRow = memo(({opt, first, onChange}) => {
@@ -49,11 +58,21 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 	const [options, setOptions] = useState([]);
 	const [fastForward, setFastForward] = useState(false);
 	const [hasSave, setHasSave] = useState(false);
+	const [confirmingExit, setConfirmingExit] = useState(false);
+	const [toast, setToast] = useState(null);
 
 	const blobs = useRef([]);
 	const exiting = useRef(false);
 	const stateRef = useRef({overlayOpen: false, settingsOpen: false});
-	stateRef.current = {overlayOpen, settingsOpen, error, unsupported};
+	stateRef.current = {overlayOpen, settingsOpen, confirmingExit, error, unsupported};
+
+	const showMessage = useCallback((message) => setToast({message, key: Date.now()}), []);
+
+	useEffect(() => {
+		if (!toast) return undefined;
+		const timer = setTimeout(() => setToast(null), 3000);
+		return () => clearTimeout(timer);
+	}, [toast]);
 
 	// Fire-and-forget state upload for paths that can't await, like unmount and backgrounding.
 	const flushState = useCallback(() => {
@@ -130,17 +149,23 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 		};
 	}, [library, game, startFresh, flushState]);
 
+	// True only when a state reached the server. A game with nothing to save yet gives false, and
+	// a failed upload throws so the caller can say so.
 	const saveState = useCallback(async () => {
-		try {
-			const bytes = ejs.getState();
-			if (bytes && bytes.length) { await gamesApi.putStateBytes(gameStateKey(game.id, game.core), bytes); setHasSave(true); }
-		} catch (e) { /* ignore */ }
+		let bytes = null;
+		try { bytes = ejs.getState(); } catch (e) { /* no game loaded yet */ }
+		if (!bytes || !bytes.length) return false;
+		await gamesApi.putStateBytes(gameStateKey(game.id, game.core), bytes);
+		setHasSave(true);
+		return true;
 	}, [game]);
 
-	const exit = useCallback(async () => {
+	const exit = useCallback(async ({stateSaved = false} = {}) => {
 		if (exiting.current) return;
 		exiting.current = true;
-		await saveState();
+		if (!stateSaved) {
+			try { await saveState(); } catch (e) { /* leaving either way */ }
+		}
 		try { gamesApi.putSettingsBlob(ejs.getSettingsJson()); } catch (e) { /* ignore */ }
 		if (onBack) onBack();
 	}, [saveState, onBack]);
@@ -156,8 +181,14 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 	const closeOverlay = useCallback(() => {
 		setOverlayOpen(false);
 		setSettingsOpen(false);
+		setConfirmingExit(false);
 		Spotlight.pause();
 		ejs.setPaused(false);
+	}, []);
+
+	const cancelExitConfirmation = useCallback(() => {
+		setConfirmingExit(false);
+		setTimeout(() => Spotlight.focus('game-overlay-first'), 0);
 	}, []);
 
 	// BACK toggles the overlay (a TV remote has no Start/Select); Exit lives in the overlay.
@@ -167,6 +198,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 			const s = stateRef.current;
 			if (s.unsupported) { /* the unsupported dialog dismisses itself on BACK */ }
 			else if (s.error) { if (onBack) onBack(); }
+			else if (s.confirmingExit) { cancelExitConfirmation(); }
 			else if (s.settingsOpen) { setSettingsOpen(false); setTimeout(() => Spotlight.focus('game-overlay-first'), 0); }
 			else if (s.overlayOpen) { closeOverlay(); }
 			else { openOverlay(); }
@@ -174,7 +206,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 		};
 		backHandlerRef.current = handler;
 		return () => { if (backHandlerRef.current === handler) backHandlerRef.current = null; };
-	}, [backHandlerRef, openOverlay, closeOverlay, onBack]);
+	}, [backHandlerRef, openOverlay, closeOverlay, cancelExitConfirmation, onBack]);
 
 	// Pause Spotlight once the game is running (resumed by the overlay).
 	useEffect(() => {
@@ -232,22 +264,52 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 		setFastForward((prev) => { ejs.toggleFastForward(!prev); return !prev; });
 	}, []);
 
-	const loadSave = useCallback(async () => {
+	const runAndClose = useCallback(async (action, failure) => {
 		try {
-			const bytes = await loadGameStateWithMigration(game.id, game.core);
-			if (bytes) ejs.loadState(bytes);
-		} catch (e) { /* ignore */ }
+			await action();
+		} catch (e) {
+			showMessage(failure);
+		}
 		closeOverlay();
-	}, [game, closeOverlay]);
+	}, [showMessage, closeOverlay]);
 
-	const actions = [
-		{label: $L('Resume'), fn: closeOverlay},
-		{label: $L('Save state'), fn: async () => { await saveState(); closeOverlay(); }},
-		hasSave ? {label: $L('Load state'), fn: loadSave} : null,
-		{label: $L('Restart'), fn: () => { ejs.restart(); closeOverlay(); }},
-		{label: `${$L('Fast-forward')}  ${fastForward ? $L('On') : $L('Off')}`, fn: toggleFF},
-		{label: $L('Emulator settings'), fn: openSettings},
-		{label: $L('Exit'), fn: exit, danger: true}
+	const loadSave = useCallback(async () => {
+		const bytes = await loadGameStateWithMigration(game.id, game.core);
+		if (bytes) ejs.loadState(bytes);
+	}, [game]);
+
+	// A game that never got going has nothing to lose, so it leaves without asking.
+	const requestExit = useCallback(() => {
+		if (error || !ready) {
+			exit();
+			return;
+		}
+		setConfirmingExit(true);
+		setTimeout(() => Spotlight.focus('game-overlay-first'), 0);
+	}, [error, ready, exit]);
+
+	// Leaves only once the state is stored. Leaving on a failed save is what the confirmation is
+	// there to prevent, so the game stays and says so.
+	const saveAndExit = useCallback(async () => {
+		const saved = await saveState().catch(() => false);
+		if (saved) exit({stateSaved: true});
+		else showMessage($L('Could not save state. Still playing.'));
+	}, [saveState, exit, showMessage]);
+
+	// Back comes first so the highlight a confirmation opens on can't end the game. It returns
+	// to the pause menu, which stays paused.
+	const actions = confirmingExit ? [
+		{label: $L('Back'), icon: GAME_ICON_PATHS.arrowBack, fn: cancelExitConfirmation},
+		{label: $L('Save & exit'), icon: GAME_ICON_PATHS.save, fn: saveAndExit},
+		{label: $L('Exit'), icon: GAME_ICON_PATHS.close, fn: () => exit(), danger: true}
+	] : [
+		{label: $L('Resume'), icon: DETAIL_ICON_PATHS.play, fn: closeOverlay},
+		{label: $L('Save state'), icon: GAME_ICON_PATHS.save, fn: () => runAndClose(saveState, $L('Could not save state.'))},
+		hasSave ? {label: $L('Load state'), icon: GAME_ICON_PATHS.download, fn: () => runAndClose(loadSave, $L('Could not load state.'))} : null,
+		{label: $L('Restart'), icon: GAME_ICON_PATHS.refresh, fn: () => runAndClose(ejs.restart, $L('Could not restart.'))},
+		{label: $L('Fast-forward'), icon: GAME_ICON_PATHS.fastForward, trailing: fastForward ? $L('On') : $L('Off'), fn: toggleFF},
+		{label: $L('Emulator settings'), icon: GAME_ICON_PATHS.tune, fn: openSettings},
+		{label: $L('Exit'), icon: GAME_ICON_PATHS.close, fn: requestExit, danger: true}
 	].filter(Boolean);
 
 	return (
@@ -265,7 +327,10 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 			{overlayOpen && !settingsOpen ? (
 				<div className={css.scrim}>
 					<OverlayContainer className={css.panel}>
-						<div className={css.panelTitle}>{game.title}</div>
+						<div className={css.panelTitle}>
+							{game.title}
+							<div className={css.panelSubtitle}>{$L('Paused')}</div>
+						</div>
 						{actions.map((a, i) => (
 							<SpottableRow
 								key={a.label}
@@ -273,7 +338,9 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 								className={a.danger ? `${css.row} ${css.danger}` : css.row}
 								onClick={a.fn}
 							>
+								<RowIcon path={a.icon} />
 								{a.label}
+								{a.trailing ? <span className={css.trailing}>{a.trailing}</span> : null}
 							</SpottableRow>
 						))}
 					</OverlayContainer>
@@ -292,6 +359,8 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 					</OverlayContainer>
 				</div>
 			) : null}
+
+			{toast ? <div key={toast.key} className={css.toast}>{toast.message}</div> : null}
 		</div>
 	);
 };

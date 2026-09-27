@@ -70,6 +70,13 @@
 	text-overflow: ellipsis;
 }
 
+.panelSubtitle {
+	font-size: 0.75em;
+	font-weight: 400;
+	opacity: 0.54;
+	margin-top: 2px;
+}
+
 .row,
 .settingRow {
 	display: flex;
@@ -92,6 +99,25 @@
 	justify-content: space-between;
 }
 
+// Sized against the row text the way Core sizes a 20px icon and 12px gap against 15px text.
+.rowIcon {
+	flex: 0 0 auto;
+	width: 1.33em;
+	height: 1.33em;
+	margin-right: 0.8em;
+}
+
+.trailing {
+	margin-left: auto;
+	padding-left: 16px;
+	font-size: 0.87em;
+	opacity: 0.38;
+}
+
+.row:global(.spottable):focus .trailing {
+	opacity: 0.7;
+}
+
 .settingValue {
 	color: var(--theme-on-surface-variant, #cfd6e0);
 }
@@ -105,4 +131,19 @@
 	text-align: center;
 	color: var(--theme-on-surface-variant, #8b95a3);
 	font-size: 24px;
+}
+
+.toast {
+	position: fixed;
+	bottom: 60px;
+	left: 50%;
+	-webkit-transform: translateX(-50%);
+	transform: translateX(-50%);
+	padding: 14px 28px;
+	border-radius: 12px;
+	background: rgba(30, 30, 40, 0.9);
+	color: #fff;
+	font-size: 20px;
+	z-index: 60;
+	pointer-events: none;
 }
