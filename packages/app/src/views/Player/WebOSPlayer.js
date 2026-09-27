@@ -576,7 +576,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		pgsInitRef.current = null;
 		try {
 			let renderer = stream.inBand ?
-				await initPgsInBandRenderer(videoRef.current, stream, {startTime: videoRef.current.currentTime}) :
+				await initPgsInBandRenderer(videoRef.current, stream, {startTime: videoRef.current.currentTime, timeOffset: -subtitleOffsetRef.current}) :
 				await initPgsRenderer(videoRef.current, stream);
 			if (!isCurrent()) {
 				if (renderer) disposePgsRenderer(renderer);
@@ -2310,9 +2310,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			} else {
 				setSubtitleTrackEvents(null);
 			}
+			setCurrentSubtitleText(null);
 		}
-		setCurrentSubtitleText(null);
+
 		saveSubtitlePref(item, index, streamList || []);
+
 		if (shouldClose) {
 			closeModal();
 		}
