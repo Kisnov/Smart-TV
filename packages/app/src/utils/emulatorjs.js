@@ -260,6 +260,216 @@ export const getOptions = () => {
 	return out;
 };
 
+// EmulatorJS's own button-mapping screen, driven by the remote. It reaches into EmulatorJS
+// internals, so every entry point checks the pieces it needs and does nothing when they're missing.
+const CONTROL_HIGHLIGHT = '3px solid #00a4dc';
+const INPUT_HIGHLIGHT = '2px solid #00a4dc';
+const AREA_ROW = 'row';
+const AREA_TAB = 'tab';
+const AREA_GAMEPAD = 'gamepad';
+const AREA_FOOTER = 'footer';
+
+let controlFocus = {area: AREA_ROW, index: 0, column: 0};
+// The row a gamepad binding is being captured for, and what it held before.
+let pendingCapture = null;
+
+const controlRows = (emu) => Array.prototype.slice.call(emu.controlMenu.querySelectorAll('.ejs_control_bar'))
+	.filter((row) => row.getClientRects().length > 0);
+const controlFooter = (emu) => Array.prototype.slice.call(emu.controlMenu.querySelectorAll(':scope > .ejs_button'));
+const controlTabs = (emu) => Array.prototype.slice.call(emu.controlMenu.querySelectorAll('.ejs_control_player_bar > li'));
+const capturePopup = (emu) => emu.controlPopup.parentElement.parentElement;
+
+const selectPlayer = (emu, index) => {
+	const tabs = controlTabs(emu);
+	if (!tabs.length) return;
+	const next = (index + tabs.length) % tabs.length;
+	const link = tabs[next].querySelector('a');
+	// EmulatorJS switches players on click, while its control rows listen for mousedown.
+	if (link) link.click();
+	controlFocus.area = AREA_TAB;
+	controlFocus.index = next;
+};
+
+const highlightControls = (emu) => {
+	const rows = controlRows(emu);
+	const tabs = controlTabs(emu);
+	const footer = controlFooter(emu);
+	const current = controlFocus;
+	const count = {[AREA_ROW]: rows.length, [AREA_TAB]: tabs.length, [AREA_FOOTER]: footer.length}[current.area];
+	if (count !== undefined) current.index = Math.max(0, Math.min(count - 1, current.index));
+	rows.forEach((row, index) => {
+		const onRow = current.area === AREA_ROW && index === current.index;
+		row.style.outline = onRow ? CONTROL_HIGHLIGHT : '';
+		row.style.outlineOffset = '3px';
+		Array.prototype.slice.call(row.querySelectorAll('input')).forEach((input, column) => {
+			input.style.outline = onRow && column === current.column ? INPUT_HIGHLIGHT : '';
+		});
+	});
+	tabs.forEach((tab, index) => {
+		tab.style.outline = current.area === AREA_TAB && index === current.index ? CONTROL_HIGHLIGHT : '';
+	});
+	const selector = emu.controlMenu.querySelector('.ejs_gamepad_dropdown');
+	if (selector) selector.style.outline = current.area === AREA_GAMEPAD ? CONTROL_HIGHLIGHT : '';
+	footer.forEach((button, index) => {
+		button.style.outline = current.area === AREA_FOOTER && index === current.index ? CONTROL_HIGHLIGHT : '';
+	});
+	const target = {
+		[AREA_ROW]: rows[current.index],
+		[AREA_TAB]: tabs[current.index],
+		[AREA_GAMEPAD]: selector,
+		[AREA_FOOTER]: footer[current.index]
+	}[current.area];
+	if (target) target.scrollIntoView({block: 'nearest', inline: 'nearest'});
+};
+
+const openControlRow = (emu) => {
+	const row = controlRows(emu)[controlFocus.index];
+	if (!row) return;
+	// EmulatorJS opens its capture popup on mousedown.
+	row.dispatchEvent(new window.MouseEvent('mousedown', {bubbles: true}));
+	const player = Number(emu.controlPopup.getAttribute('player-num'));
+	const button = Number(emu.controlPopup.getAttribute('button-num'));
+	const binding = emu.controls[player] && emu.controls[player][button];
+	pendingCapture = {player, button, value2: binding ? binding.value2 : undefined};
+	emu.controlPopup.innerText = `[ ${row.getAttribute('data-label')} ]\n` +
+		(controlFocus.column === 0 ? $L('Press Gamepad') : $L('Press a physical keyboard key'));
+};
+
+// EmulatorJS keeps a player's controls as an object keyed by button, so this walks its keys.
+const clearDuplicateGamepadBinding = (emu, player, button, label) => {
+	const controls = emu.controls && emu.controls[player];
+	if (!controls) return;
+	Object.keys(controls).forEach((key) => {
+		if (Number(key) !== button && controls[key] && controls[key].value2 === label) {
+			controls[key].value2 = '';
+		}
+	});
+};
+
+// EmulatorJS binds a gamepad button to the waiting row without taking it off the others, so one
+// button could drive two actions. Every binding it makes is saved through saveSettings, so that
+// is where a new gamepad binding is made the only one for its button.
+const watchGamepadCaptures = (emu) => {
+	if (emu.moonfinWatchesCaptures) return;
+	emu.moonfinWatchesCaptures = true;
+	const save = emu.saveSettings.bind(emu);
+	emu.saveSettings = () => {
+		const capture = pendingCapture;
+		pendingCapture = null;
+		const binding = capture && emu.controls[capture.player] && emu.controls[capture.player][capture.button];
+		if (binding && binding.value2 && binding.value2 !== capture.value2) {
+			clearDuplicateGamepadBinding(emu, capture.player, capture.button, binding.value2);
+			emu.checkGamepadInputs();
+		}
+		save();
+	};
+};
+
+const clearCurrentControl = (emu) => {
+	const button = Number(emu.controlPopup.getAttribute('button-num'));
+	const player = Number(emu.controlPopup.getAttribute('player-num'));
+	if (!Number.isFinite(button) || !Number.isFinite(player)) return;
+	if (!emu.controls[player]) emu.controls[player] = {};
+	if (!emu.controls[player][button]) emu.controls[player][button] = {};
+	emu.controls[player][button].value2 = '';
+	capturePopup(emu).setAttribute('hidden', '');
+	emu.checkGamepadInputs();
+	emu.saveSettings();
+};
+
+const changeGamepad = (emu, delta) => {
+	const selector = emu.controlMenu.querySelector('.ejs_gamepad_dropdown');
+	if (!selector || !selector.options.length) return;
+	selector.selectedIndex = (selector.selectedIndex + delta + selector.options.length) % selector.options.length;
+	selector.dispatchEvent(new Event('change', {bubbles: true}));
+};
+
+// Opens the mapping screen on its first row. False when EmulatorJS doesn't have it.
+export const openControls = () => {
+	try {
+		const emu = window.EJS_emulator;
+		if (!emu || !emu.controlMenu || !emu.controlPopup || !emu.controls) return false;
+		watchGamepadCaptures(emu);
+		emu.controlMenu.style.display = '';
+		controlFocus = {area: AREA_ROW, index: 0, column: 0};
+		pendingCapture = null;
+		highlightControls(emu);
+		return emu.controlMenu.style.display !== 'none';
+	} catch (e) {
+		return false;
+	}
+};
+
+// Takes a remote press as DPAD_UP, DPAD_DOWN, DPAD_LEFT, DPAD_RIGHT, BUTTON_2 (OK) or BACK.
+// Returns 'back' or 'close' once the screen has closed, otherwise null.
+export const controlInput = (label) => {
+	try {
+		const emu = window.EJS_emulator;
+		if (!emu || !emu.controlMenu || emu.controlMenu.style.display === 'none') return null;
+		const popup = capturePopup(emu);
+		const popupOpen = popup.getAttribute('hidden') === null;
+		if (label === 'BACK') {
+			if (popupOpen) {
+				popup.setAttribute('hidden', '');
+				pendingCapture = null;
+			} else {
+				emu.controlMenu.style.display = 'none';
+			}
+			return emu.controlMenu.style.display === 'none' ? 'back' : null;
+		}
+		// A remote isn't a gamepad, so while the popup waits for a button OK clears the binding.
+		if (popupOpen) {
+			if (label === 'BUTTON_2') clearCurrentControl(emu);
+			return null;
+		}
+		const current = controlFocus;
+		const rows = controlRows(emu);
+		const tabs = controlTabs(emu);
+		const footer = controlFooter(emu);
+		if (label === 'DPAD_UP') {
+			if (current.area === AREA_ROW) {
+				if (current.index > 0) current.index--;
+				else current.area = AREA_GAMEPAD;
+			} else if (current.area === AREA_GAMEPAD) {
+				current.area = AREA_TAB;
+				current.index = Math.max(0, tabs.findIndex((tab) => tab.classList.contains('ejs_control_selected')));
+			} else if (current.area === AREA_FOOTER) {
+				current.area = AREA_ROW;
+				current.index = Math.max(0, rows.length - 1);
+			}
+		} else if (label === 'DPAD_DOWN') {
+			if (current.area === AREA_TAB) {
+				current.area = AREA_GAMEPAD;
+			} else if (current.area === AREA_GAMEPAD) {
+				current.area = AREA_ROW;
+				current.index = 0;
+			} else if (current.area === AREA_ROW) {
+				if (current.index < rows.length - 1) {
+					current.index++;
+				} else {
+					current.area = AREA_FOOTER;
+					current.index = 0;
+				}
+			}
+		} else if (label === 'DPAD_LEFT' || label === 'DPAD_RIGHT') {
+			const dir = label === 'DPAD_LEFT' ? -1 : 1;
+			if (current.area === AREA_TAB) selectPlayer(emu, current.index + dir);
+			else if (current.area === AREA_GAMEPAD) changeGamepad(emu, dir);
+			else if (current.area === AREA_ROW) current.column = dir < 0 ? 0 : 1;
+			else if (current.area === AREA_FOOTER && footer.length) current.index = (current.index + dir + footer.length) % footer.length;
+		} else if (label === 'BUTTON_2') {
+			if (current.area === AREA_TAB) selectPlayer(emu, current.index);
+			else if (current.area === AREA_ROW) openControlRow(emu);
+			else if (current.area === AREA_FOOTER && footer[current.index]) footer[current.index].click();
+		}
+		highlightControls(emu);
+		// A footer button, Close among them, can hide the screen straight away.
+		return emu.controlMenu.style.display === 'none' ? 'close' : null;
+	} catch (e) {
+		return null;
+	}
+};
+
 // Tears the emulator down: stops the loop, clears the container, drops EJS globals + loader.
 export const destroyEmulator = () => {
 	try { setPaused(true); } catch (e) { /* ignore */ }

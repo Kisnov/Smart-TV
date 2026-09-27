@@ -13,6 +13,7 @@ import serverLogger from '../../services/serverLogger';
 import {initVideo, keepScreenOn, setupVisibilityHandler} from '../../services/video';
 import * as ejs from '../../utils/emulatorjs';
 import {gameStateKey, loadGameStateWithMigration} from '../../utils/gameSaves';
+import {KEYS, isBackKey} from '../../utils/keys';
 import {DETAIL_ICON_PATHS} from '../Details/detailIcons';
 
 import css from './GamePlayer.module.less';
@@ -27,6 +28,16 @@ const OverlayContainer = SpotlightContainerDecorator({
 // The longest Exit waits on the save before leaving anyway. The upload keeps going after the
 // player closes.
 const EXIT_SAVE_TIMEOUT = 3000;
+
+// What the remote means on the controller screen. Left to EmulatorJS, these keys would be recorded
+// as keyboard bindings.
+const CONTROL_KEYS = {
+	[KEYS.UP]: 'DPAD_UP',
+	[KEYS.DOWN]: 'DPAD_DOWN',
+	[KEYS.LEFT]: 'DPAD_LEFT',
+	[KEYS.RIGHT]: 'DPAD_RIGHT',
+	[KEYS.ENTER]: 'BUTTON_2'
+};
 
 const focusSoon = (spotlightId) => setTimeout(() => Spotlight.focus(spotlightId), 0);
 
@@ -103,12 +114,13 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 	const [fastForward, setFastForward] = useState(false);
 	const [hasSave, setHasSave] = useState(false);
 	const [confirmingExit, setConfirmingExit] = useState(false);
+	const [controlsOpen, setControlsOpen] = useState(false);
 	const [toast, setToast] = useState(null);
 
 	const blobs = useRef([]);
 	const exiting = useRef(false);
 	const stateRef = useRef({overlayOpen: false, settingsOpen: false});
-	stateRef.current = {overlayOpen, settingsOpen, pickerOpen: pickerIndex !== null, confirmingExit, error, unsupported};
+	stateRef.current = {overlayOpen, settingsOpen, pickerOpen: pickerIndex !== null, controlsOpen, confirmingExit, error, unsupported};
 
 	const showMessage = useCallback((message) => setToast({message, key: Date.now()}), []);
 
@@ -237,6 +249,25 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 		ejs.setPaused(false);
 	}, []);
 
+	// The game stays paused behind the controller screen, like it does behind the pause menu.
+	const openControllerSettings = useCallback(() => {
+		if (!ejs.openControls()) {
+			showMessage($L('Could not reach the game to open controller settings.'));
+			return;
+		}
+		setOverlayOpen(false);
+		setConfirmingExit(false);
+		Spotlight.pause();
+		setControlsOpen(true);
+	}, [showMessage]);
+
+	// Back returns to the pause menu. The screen's own Close goes straight back to the game.
+	const closeControls = useCallback((reason) => {
+		setControlsOpen(false);
+		if (reason === 'back') openOverlay();
+		else ejs.setPaused(false);
+	}, [openOverlay]);
+
 	const cancelExitConfirmation = useCallback(() => {
 		setConfirmingExit(false);
 		focusSoon('game-overlay-first');
@@ -262,6 +293,10 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 			else if (s.error) { if (onBack) onBack(); }
 			else if (s.confirmingExit) { cancelExitConfirmation(); }
 			else if (s.pickerOpen) { closePicker(); }
+			else if (s.controlsOpen) {
+				const reason = ejs.controlInput('BACK');
+				if (reason) closeControls(reason);
+			}
 			else if (s.settingsOpen) { closeSettings(); }
 			else if (s.overlayOpen) { closeOverlay(); }
 			else { openOverlay(); }
@@ -269,7 +304,28 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 		};
 		backHandlerRef.current = handler;
 		return () => { if (backHandlerRef.current === handler) backHandlerRef.current = null; };
-	}, [backHandlerRef, openOverlay, closeOverlay, cancelExitConfirmation, closePicker, closeSettings, onBack]);
+	}, [backHandlerRef, openOverlay, closeOverlay, cancelExitConfirmation, closePicker, closeControls, closeSettings, onBack]);
+
+	// Arrows and OK drive the controller screen, and they and Back never reach EmulatorJS. This runs
+	// in capture so it gets there first. Back itself still goes through the handler above.
+	useEffect(() => {
+		if (!controlsOpen) return undefined;
+		const onKey = (ev) => {
+			const label = CONTROL_KEYS[ev.keyCode];
+			if (!label && !isBackKey(ev)) return;
+			ev.preventDefault();
+			ev.stopPropagation();
+			if (!label || ev.type !== 'keydown') return;
+			const reason = ejs.controlInput(label);
+			if (reason) closeControls(reason);
+		};
+		window.addEventListener('keydown', onKey, true);
+		window.addEventListener('keyup', onKey, true);
+		return () => {
+			window.removeEventListener('keydown', onKey, true);
+			window.removeEventListener('keyup', onKey, true);
+		};
+	}, [controlsOpen, closeControls]);
 
 	// Pause Spotlight once the game is running (resumed by the overlay).
 	useEffect(() => {
@@ -302,7 +358,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 				},
 				() => {
 					const s = stateRef.current;
-					if (!s.overlayOpen && !s.settingsOpen && !s.error) ejs.setPaused(false);
+					if (!s.overlayOpen && !s.settingsOpen && !s.controlsOpen && !s.error) ejs.setPaused(false);
 				}
 			);
 		}).catch(() => {});
@@ -401,6 +457,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 		hasSave ? {label: $L('Load state'), icon: GAME_ICON_PATHS.download, fn: () => runAndClose(loadSave, $L('Could not load state.'))} : null,
 		{label: $L('Restart'), icon: GAME_ICON_PATHS.refresh, fn: () => runAndClose(ejs.restart, $L('Could not restart.'))},
 		{label: $L('Fast-forward'), icon: GAME_ICON_PATHS.fastForward, trailing: fastForward ? $L('On') : $L('Off'), fn: toggleFF},
+		{label: $L('Controller settings'), icon: GAME_ICON_PATHS.gamepad, fn: openControllerSettings},
 		{label: $L('Emulator settings'), icon: GAME_ICON_PATHS.tune, fn: openSettings, spotlightId: 'game-overlay-settings'},
 		{label: $L('Exit'), icon: GAME_ICON_PATHS.close, fn: requestExit, danger: true}
 	].filter(Boolean);

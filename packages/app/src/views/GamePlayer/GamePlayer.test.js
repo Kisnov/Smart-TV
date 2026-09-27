@@ -62,7 +62,9 @@ jest.mock('../../utils/emulatorjs', () => ({
 	toggleFastForward: jest.fn(),
 	getSettingsJson: () => null,
 	getOptions: jest.fn(),
-	setOption: jest.fn()
+	setOption: jest.fn(),
+	openControls: jest.fn(),
+	controlInput: jest.fn()
 }));
 
 const game = {id: 'g1', core: 'nes', title: 'Game', fileName: 'game.nes'};
@@ -86,6 +88,8 @@ beforeEach(() => {
 	ejs.startEmulator.mockResolvedValue(undefined);
 	ejs.getState.mockReturnValue(new Uint8Array([1]));
 	ejs.getOptions.mockReturnValue([]);
+	ejs.openControls.mockReturnValue(true);
+	ejs.controlInput.mockReturnValue(null);
 });
 
 afterEach(() => jest.useRealTimers());
@@ -272,4 +276,68 @@ test('up and down wrap around the settings and the values', async () => {
 
 	fireEvent.keyDown(rowOf('sabr'), {key: 'ArrowDown'});
 	await waitFor(() => expect(Spotlight.focus).toHaveBeenLastCalledWith('game-choice-0'));
+});
+
+const openControllerSettings = async () => {
+	await openMenu();
+	fireEvent.click(screen.getByText('Controller settings'));
+};
+
+test('Controller settings opens the mapping screen with the game still paused', async () => {
+	await openControllerSettings();
+
+	expect(ejs.openControls).toHaveBeenCalled();
+	expect(screen.queryByText('Resume')).toBeNull();
+	expect(ejs.setPaused).not.toHaveBeenCalledWith(false);
+});
+
+test('says so when the mapping screen will not open', async () => {
+	ejs.openControls.mockReturnValue(false);
+	await openMenu();
+
+	fireEvent.click(screen.getByText('Controller settings'));
+
+	await screen.findByText('Could not reach the game to open controller settings.');
+	expect(screen.getByText('Resume')).toBeTruthy();
+});
+
+test('arrows and OK drive the mapping screen and never reach EmulatorJS', async () => {
+	await openControllerSettings();
+	const reachedEmulator = jest.fn();
+	document.body.addEventListener('keydown', reachedEmulator);
+	document.body.addEventListener('keyup', reachedEmulator);
+
+	fireEvent.keyDown(document.body, {keyCode: 40});
+	fireEvent.keyUp(document.body, {keyCode: 40});
+	fireEvent.keyDown(document.body, {keyCode: 13});
+	fireEvent.keyUp(document.body, {keyCode: 13});
+	expect(ejs.controlInput.mock.calls).toEqual([['DPAD_DOWN'], ['BUTTON_2']]);
+	expect(reachedEmulator).not.toHaveBeenCalled();
+
+	// Any other key is left for EmulatorJS to record as a keyboard binding.
+	fireEvent.keyDown(document.body, {keyCode: 65});
+	expect(reachedEmulator).toHaveBeenCalledTimes(1);
+
+	document.body.removeEventListener('keydown', reachedEmulator);
+	document.body.removeEventListener('keyup', reachedEmulator);
+});
+
+test('back leaves the mapping screen for the pause menu', async () => {
+	ejs.controlInput.mockImplementation((label) => (label === 'BACK' ? 'back' : null));
+	await openControllerSettings();
+
+	act(() => { backHandler.current(); });
+
+	expect(ejs.controlInput).toHaveBeenCalledWith('BACK');
+	expect(screen.getByText('Resume')).toBeTruthy();
+});
+
+test('Close on the mapping screen goes straight back to the game', async () => {
+	ejs.controlInput.mockReturnValue('close');
+	await openControllerSettings();
+
+	fireEvent.keyDown(document.body, {keyCode: 13});
+
+	expect(ejs.setPaused).toHaveBeenLastCalledWith(false);
+	expect(screen.queryByText('Resume')).toBeNull();
 });
