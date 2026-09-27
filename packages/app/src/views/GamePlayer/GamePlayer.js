@@ -70,10 +70,13 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 		}
 		let cancelled = false;
 		const libraryId = library?.Id;
+		// Arcade cores find a game by its zip name, which EmulatorJS takes from the ROM URL, or
+		// from the game name when the ROM is a Blob.
+		const arcadeFileName = game.core === 'mame' || game.core === 'arcade' ? game.fileName : null;
 		(async () => {
 			try {
 				const [rom, settingsJson, existing] = await Promise.all([
-					gamesApi.getRomUrl(libraryId, game.id),
+					gamesApi.getRomUrl(libraryId, game.id, arcadeFileName),
 					gamesApi.getSettingsBlob(),
 					// Read on Restart too so Load state is still offered. A failed read counts as
 					// no save instead of stopping the game.
@@ -94,7 +97,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 					core: game.core,
 					gameUrl: romUrl,
 					biosUrl,
-					gameName: game.title,
+					gameName: isBlob && arcadeFileName ? arcadeFileName : game.title,
 					settingsJson,
 					stateBytes: startFresh ? null : existing
 				});

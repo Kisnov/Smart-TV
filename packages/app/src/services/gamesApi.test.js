@@ -86,6 +86,25 @@ describe('getRomUrl', () => {
 		expect(global.URL.createObjectURL).not.toHaveBeenCalled();
 	});
 
+	test('ends the direct url in the file name it is given', async () => {
+		fetchWithTimeout.mockResolvedValueOnce(probeOf(4 * MB));
+
+		const rom = await getRomUrl('lib', 'game', 'sf2 (world).zip');
+
+		expect(rom.url).toBe('https://server/Moonfin/Games/lib/Rom/game/sf2%20(world).zip?ApiKey=key');
+		expect(fetchWithTimeout.mock.calls[0][0]).toBe(rom.url);
+	});
+
+	test('fetches the blob fallback from the plain rom route', async () => {
+		fetchWithTimeout
+			.mockRejectedValueOnce(new Error('network'))
+			.mockResolvedValueOnce(response({headers: {'content-length': String(2 * MB)}}));
+
+		await getRomUrl('lib', 'game', 'sf2.zip');
+
+		expect(fetchWithTimeout.mock.calls[1][0]).toBe('https://server/Moonfin/Games/lib/Rom/game');
+	});
+
 	test('goes straight to the blob when there is no token to put in the query', async () => {
 		mockToken = null;
 		fetchWithTimeout.mockResolvedValueOnce(response({headers: {'content-length': String(2 * MB)}}));

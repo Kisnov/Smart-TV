@@ -103,10 +103,11 @@ export const getBiosBlobUrl = (libraryId, biosId) =>
 
 // The ROM endpoint takes the token in the query, which is how EmulatorJS's own XHR
 // authenticates. Null when there is no token to put there.
-const romDirectUrl = (libraryId, gameId) => {
+const romDirectUrl = (libraryId, gameId, fileName) => {
 	const token = getApiKey();
 	if (!token) return null;
-	return `${base()}/Moonfin/Games/${enc(libraryId)}/Rom/${enc(gameId)}?${getTokenParam()}=${enc(token)}`;
+	const name = fileName ? `/${enc(fileName)}` : '';
+	return `${base()}/Moonfin/Games/${enc(libraryId)}/Rom/${enc(gameId)}${name}?${getTokenParam()}=${enc(token)}`;
 };
 
 // Asks for the first byte only. The endpoint streams with range processing on, so a 206 comes
@@ -131,8 +132,8 @@ const probeRom = async (url) => {
 // streams the file itself and no second copy passes through the app. The Blob URL covers the
 // platforms where a plain fetch to the server does not get through, such as old webOS behind
 // Let's Encrypt, and isBlob tells the caller whether it has a URL to revoke afterwards.
-export const getRomUrl = async (libraryId, gameId) => {
-	const direct = romDirectUrl(libraryId, gameId);
+export const getRomUrl = async (libraryId, gameId, fileName) => {
+	const direct = romDirectUrl(libraryId, gameId, fileName);
 	const probe = direct ? await probeRom(direct) : {ok: false, totalBytes: null};
 	if (probe.totalBytes && probe.totalBytes > MAX_ROM_BYTES) throw romTooLarge(probe.totalBytes);
 	if (probe.ok) return {url: direct, isBlob: false};
