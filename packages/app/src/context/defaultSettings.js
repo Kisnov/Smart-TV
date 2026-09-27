@@ -50,6 +50,7 @@ export const defaultSettings = {
 	trickPlayPauseWhileScrubbing: true,
 	showChapterMarkers: false,
 	assDirectPlay: true,
+	waitForAssSubtitles: false,
 	audioPassthroughMode: 'auto',
 	maxAudioChannels: 0,
 	downmixToStereo: false,

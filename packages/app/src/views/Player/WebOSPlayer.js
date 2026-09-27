@@ -13,6 +13,7 @@ import {handleAudioFocusKey, exitAudioPanel, nextAudioFocusRow, AUDIO_FOCUS_IDS}
 import {detectWebOSVersion, getH264FallbackProfile} from '@moonfin/platform-webos/deviceProfile';
 import {initPgsRenderer, initPgsInBandRenderer, disposePgsRenderer} from '../../utils/pgsRenderer';
 import {supportsAssRenderer, initAssCanvasRenderer, disposeAssRenderer, setAssTime, clearAssCanvas} from '../../utils/assRenderer';
+import {waitForAssReady} from '../../utils/assRendererReady';
 import {
 	initLunaAPI,
 	registerAppStateObserver,
@@ -55,7 +56,7 @@ import {createSkipGovernor, chooseCorrection, STALL_DEBOUNCE_MS} from '../../uti
 import {syncLog} from '../../utils/syncLog';
 import {
 	NextEpisodeContainer, CONTROLS_HIDE_DELAY,
-	withTimeout, SEGMENT_FETCH_TIMEOUT
+	withTimeout, SEGMENT_FETCH_TIMEOUT, ASS_READY_WAIT
 } from './PlayerConstants';
 import {
 	toSubtitleLanguage,
@@ -508,7 +509,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		return () => window.removeEventListener('resize', handleResize);
 	}, [applyWebOSZoomWindow]);
 
-	const initAssRendererForStream = useCallback(async (stream) => {
+	const initAssRendererForStream = useCallback(async (stream, {waitMs = 0} = {}) => {
 		if (!stream?.isAss || !assCanvasRef.current) {
 			return false;
 		}
@@ -542,6 +543,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				assRendererRef.current = renderer;
 				setSubtitleTrackEvents(null);
 				applyVideoAndAssGeometry();
+				if (waitMs) await waitForAssReady(renderer, waitMs, isCurrent);
 				return true;
 			}
 		} catch (err) {
@@ -987,9 +989,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					if (supportsAss) {
 						// The canvas is always mounted, so the renderer boots alongside the rest of
 						// the start. Its worker fetches and parses the whole track and its fonts,
-						// which takes seconds on a slow TV, so the start doesn't wait on it.
+						// which takes seconds on a slow TV, so the start only waits on it when the
+						// viewer would rather not miss the first lines.
 						setSubtitleTrackEvents(null);
-						initAssRendererForStream(sub);
+						if (settings.waitForAssSubtitles) {
+							await initAssRendererForStream(sub, {waitMs: ASS_READY_WAIT});
+						} else {
+							initAssRendererForStream(sub);
+						}
 					} else if (sub && sub.isTextBased) {
 						try {
 							const data = await playback.fetchSubtitleData(sub);
@@ -1023,6 +1030,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					// nothing to fetch and render on top of it.
 					if (!initialSubtitleChoice.isBurnIn) await loadSubtitleData(initialSubtitleChoice);
 				}
+				// Waiting on the subtitles can outlast this item, and whatever replaced it owns
+				// the player now.
+				if (cancelled) return;
 
 				let displayTitle = item.Name;
 				let displaySubtitle = '';
@@ -1075,7 +1085,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					setError(err.message || $L('Failed to load media'));
 				}
 			} finally {
-				setIsLoading(false);
+				if (!cancelled) setIsLoading(false);
 			}
 		};
 
