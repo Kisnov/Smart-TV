@@ -4,8 +4,8 @@ import {streamTitleText} from './streamTitle';
 // Picks the audio track a fresh playback starts on, following the same order the
 // other clients follow: an explicit pick, then commentary and audio description
 // filtered out, then the default track shortcut, then preferred language,
-// fallback language and English, each of those preferring the track the viewer
-// last chose by hand before ranking what is left.
+// fallback language, the file's default track and English, each language
+// preferring the track the viewer last chose by hand before ranking what is left.
 
 const COMMENTARY = /\b(commentary|director\s*commentary|commentaries|directors\s*commentary)\b/;
 const AUDIO_DESCRIPTION = /\b(audio\s+description|descriptive\s+audio|visual\s+description|descriptive|description|ad)\b/;
@@ -106,15 +106,18 @@ export const selectPreferredAudioStream = (audioStreams, settings = {}) => {
 		lastTitle: lastExplicitAudioTitle ? String(lastExplicitAudioTitle).trim().toLowerCase() : ''
 	};
 
-	if (preferDefaultAudioTrack) {
-		const defaults = candidates.filter((stream) => stream.isDefault === true);
-		if (defaults.length) return rankAudioCandidates(defaults, prefs);
-	}
+	const defaults = candidates.filter((stream) => stream.isDefault === true);
+	if (preferDefaultAudioTrack && defaults.length) return rankAudioCandidates(defaults, prefs);
 
-	for (const language of [audioLanguage, fallbackAudioLanguage, 'eng']) {
+	for (const language of [audioLanguage, fallbackAudioLanguage]) {
 		const matches = candidates.filter((stream) => languageMatches(stream.language, language));
 		if (matches.length) return preferRemembered(matches, prefs);
 	}
+
+	if (defaults.length) return rankAudioCandidates(defaults, prefs);
+
+	const english = candidates.filter((stream) => languageMatches(stream.language, 'eng'));
+	if (english.length) return preferRemembered(english, prefs);
 
 	return rankAudioCandidates(candidates, prefs);
 };

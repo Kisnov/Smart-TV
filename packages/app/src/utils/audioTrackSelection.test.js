@@ -24,6 +24,12 @@ describe('selectPreferredAudioStream', () => {
 		expect(selectPreferredAudioStream([track(1, 'ita'), fre], {audioLanguage: 'jpn'})).toBe(fre);
 	});
 
+	test('the file default comes before English when neither language is there', () => {
+		const list = [track(1, 'jpn', {isDefault: true}), track(2, 'eng')];
+		expect(selectPreferredAudioStream(list, {audioLanguage: 'cat', fallbackAudioLanguage: 'spa'})).toBe(list[0]);
+		expect(selectPreferredAudioStream(list, {})).toBe(list[0]);
+	});
+
 	test('with no preference at all the loudest track wins, which is the old complaint', () => {
 		const list = [track(1, 'fre', {channels: 6}), track(2, 'ger')];
 		expect(selectPreferredAudioStream(list, {})).toBe(list[0]);
