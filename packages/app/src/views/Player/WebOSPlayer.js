@@ -842,6 +842,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 						? {streamIndex: autoAudio.index, audioStreams: result.audioStreams || []}
 						: null;
 				}
+				serverLogger.playback('Audio: initial track chosen', {
+					switchAfterPrepare: Boolean(pendingAudioRef.current),
+					stream: startingAudio
+				});
 
 				const audioCaps = playback.getCurrentSession()?.capabilities;
 				const videoSupport = await readVideoSupport();

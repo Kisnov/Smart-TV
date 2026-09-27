@@ -1462,6 +1462,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 				const wantsNativeAudio = pendingAudioIndex != null && result.playMethod !== playback.PlayMethod.Transcode;
 				const wantsNativeSub = pendingSubAction?.type === 'native' && !!pendingSubAction.stream;
+				serverLogger.playback('Audio: initial track chosen', {
+					switchAfterPrepare: wantsNativeAudio,
+					stream: startingAudio
+				});
 				pendingTracksRef.current = {
 					audioIndex: wantsNativeAudio ? pendingAudioIndex : null,
 					audioApplied: !wantsNativeAudio,
