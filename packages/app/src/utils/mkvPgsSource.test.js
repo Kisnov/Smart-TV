@@ -341,7 +341,7 @@ describe('mkvPgsSource', () => {
 		expect(await source.ready).toBe(false);
 	});
 
-	test('falls back when it can't read the first block', async () => {
+	test("falls back when it can't read the first block", async () => {
 		serveFile(buildFile({subtitleTimes: [1000, 2000], fillerBytes: 32, brokenIndex: 0}));
 		const source = openSource();
 		await expect(source.ready).rejects.toThrow(/no subtitle block/);
