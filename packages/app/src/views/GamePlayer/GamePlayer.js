@@ -28,27 +28,66 @@ const OverlayContainer = SpotlightContainerDecorator({
 // player closes.
 const EXIT_SAVE_TIMEOUT = 3000;
 
-const RowIcon = ({path}) => (
-	<svg className={css.rowIcon} viewBox={iconViewBox(path)} fill="currentColor">
+const focusSoon = (spotlightId) => setTimeout(() => Spotlight.focus(spotlightId), 0);
+
+// Sends focus to a fixed row instead of wherever Spotlight would move it.
+const jumpTo = (ev, spotlightId) => {
+	ev.stopPropagation();
+	Spotlight.focus(spotlightId);
+};
+
+const choiceIndex = (opt) => Math.max(0, opt.choices.findIndex((c) => c.value === opt.current));
+
+const Icon = ({path, className}) => (
+	<svg className={className} viewBox={iconViewBox(path)} fill="currentColor">
 		<path d={path} />
 	</svg>
 );
 
-// One emulator-setting row. OK / right cycles the value forward, left cycles back.
-const SettingRow = memo(({opt, first, onChange}) => {
-	const cur = opt.choices.find((c) => c.value === opt.current);
-	const next = useCallback(() => onChange(opt, 1), [onChange, opt]);
-	const prev = useCallback(() => onChange(opt, -1), [onChange, opt]);
+// Left and right step through the values and stop at either end. OK opens the full list.
+const SettingRow = memo(({opt, index, onStep, onOpen, onWrapDown}) => {
+	const current = choiceIndex(opt);
+	const prev = useCallback(() => onStep(opt, -1), [onStep, opt]);
+	const next = useCallback(() => onStep(opt, 1), [onStep, opt]);
+	const open = useCallback(() => onOpen(index), [onOpen, index]);
 	return (
 		<SpottableRow
-			spotlightId={first ? 'game-setting-0' : undefined}
+			spotlightId={`game-setting-${index}`}
 			className={css.settingRow}
-			onClick={next}
+			onClick={open}
 			onSpotlightLeft={prev}
 			onSpotlightRight={next}
+			onSpotlightDown={onWrapDown}
 		>
 			<span className={css.settingLabel}>{opt.label}</span>
-			<span className={css.settingValue}>{cur ? cur.label : opt.current}</span>
+			<Icon className={current > 0 ? css.chevron : css.chevronOff} path={GAME_ICON_PATHS.chevronLeft} />
+			<span className={css.settingValue}>{opt.choices[current].label}</span>
+			<Icon className={current < opt.choices.length - 1 ? css.chevron : css.chevronOff} path={GAME_ICON_PATHS.chevronRight} />
+		</SpottableRow>
+	);
+});
+
+const ListPanel = ({header, children}) => (
+	<div className={css.scrim}>
+		<OverlayContainer className={`${css.panel} ${css.listPanel}`}>
+			<div className={css.panelHeader}>{header}</div>
+			<div className={css.panelBody}>{children}</div>
+		</OverlayContainer>
+	</div>
+);
+
+const ChoiceRow = memo(({choice, index, current, onPick, onWrapUp, onWrapDown}) => {
+	const pick = useCallback(() => onPick(index), [onPick, index]);
+	return (
+		<SpottableRow
+			spotlightId={`game-choice-${index}`}
+			className={css.settingRow}
+			onClick={pick}
+			onSpotlightUp={onWrapUp}
+			onSpotlightDown={onWrapDown}
+		>
+			<span className={css.settingLabel}>{choice.label}</span>
+			{current ? <Icon className={css.check} path={GAME_ICON_PATHS.check} /> : null}
 		</SpottableRow>
 	);
 });
@@ -60,6 +99,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 	const [overlayOpen, setOverlayOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [options, setOptions] = useState([]);
+	const [pickerIndex, setPickerIndex] = useState(null);
 	const [fastForward, setFastForward] = useState(false);
 	const [hasSave, setHasSave] = useState(false);
 	const [confirmingExit, setConfirmingExit] = useState(false);
@@ -68,7 +108,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 	const blobs = useRef([]);
 	const exiting = useRef(false);
 	const stateRef = useRef({overlayOpen: false, settingsOpen: false});
-	stateRef.current = {overlayOpen, settingsOpen, confirmingExit, error, unsupported};
+	stateRef.current = {overlayOpen, settingsOpen, pickerOpen: pickerIndex !== null, confirmingExit, error, unsupported};
 
 	const showMessage = useCallback((message) => setToast({message, key: Date.now()}), []);
 
@@ -186,11 +226,12 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 		ejs.setPaused(true);
 		Spotlight.resume();
 		setOverlayOpen(true);
-		setTimeout(() => Spotlight.focus('game-overlay-first'), 0);
+		focusSoon('game-overlay-first');
 	}, []);
 	const closeOverlay = useCallback(() => {
 		setOverlayOpen(false);
 		setSettingsOpen(false);
+		setPickerIndex(null);
 		setConfirmingExit(false);
 		Spotlight.pause();
 		ejs.setPaused(false);
@@ -198,8 +239,19 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 
 	const cancelExitConfirmation = useCallback(() => {
 		setConfirmingExit(false);
-		setTimeout(() => Spotlight.focus('game-overlay-first'), 0);
+		focusSoon('game-overlay-first');
 	}, []);
+
+	const closeSettings = useCallback(() => {
+		setPickerIndex(null);
+		setSettingsOpen(false);
+		focusSoon('game-overlay-settings');
+	}, []);
+
+	const closePicker = useCallback(() => {
+		focusSoon(`game-setting-${pickerIndex}`);
+		setPickerIndex(null);
+	}, [pickerIndex]);
 
 	// BACK toggles the overlay (a TV remote has no Start/Select); Exit lives in the overlay.
 	useEffect(() => {
@@ -209,14 +261,15 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 			if (s.unsupported) { /* the unsupported dialog dismisses itself on BACK */ }
 			else if (s.error) { if (onBack) onBack(); }
 			else if (s.confirmingExit) { cancelExitConfirmation(); }
-			else if (s.settingsOpen) { setSettingsOpen(false); setTimeout(() => Spotlight.focus('game-overlay-first'), 0); }
+			else if (s.pickerOpen) { closePicker(); }
+			else if (s.settingsOpen) { closeSettings(); }
 			else if (s.overlayOpen) { closeOverlay(); }
 			else { openOverlay(); }
 			return true;
 		};
 		backHandlerRef.current = handler;
 		return () => { if (backHandlerRef.current === handler) backHandlerRef.current = null; };
-	}, [backHandlerRef, openOverlay, closeOverlay, cancelExitConfirmation, onBack]);
+	}, [backHandlerRef, openOverlay, closeOverlay, cancelExitConfirmation, closePicker, closeSettings, onBack]);
 
 	// Pause Spotlight once the game is running (resumed by the overlay).
 	useEffect(() => {
@@ -257,18 +310,48 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 	}, [ready, flushState]);
 
 	const openSettings = useCallback(() => {
-		setOptions(ejs.getOptions());
+		const list = ejs.getOptions();
+		setOptions(list);
 		setSettingsOpen(true);
-		setTimeout(() => Spotlight.focus('game-setting-0'), 0);
+		focusSoon(list.length ? 'game-setting-0' : 'game-settings-close');
 	}, []);
 
-	const changeOption = useCallback((opt, dir) => {
-		const idx = opt.choices.findIndex((c) => c.value === opt.current);
-		const next = ((idx < 0 ? 0 : idx) + dir + opt.choices.length) % opt.choices.length;
-		const value = opt.choices[next].value;
+	const setChoice = useCallback((opt, index) => {
+		const value = opt.choices[index].value;
 		ejs.setOption(opt.id, value);
 		setOptions((prev) => prev.map((o) => (o.id === opt.id ? {...o, current: value} : o)));
 	}, []);
+
+	const stepOption = useCallback((opt, dir) => {
+		const current = choiceIndex(opt);
+		const next = Math.min(opt.choices.length - 1, Math.max(0, current + dir));
+		if (next !== current) setChoice(opt, next);
+	}, [setChoice]);
+
+	const openPicker = useCallback((index) => {
+		setPickerIndex(index);
+		focusSoon(`game-choice-${choiceIndex(options[index])}`);
+	}, [options]);
+
+	const pickChoice = useCallback((index) => {
+		setChoice(options[pickerIndex], index);
+		closePicker();
+	}, [options, pickerIndex, setChoice, closePicker]);
+
+	// Up and down wrap around each list, and the close button counts as the top of the settings.
+	const lastSetting = options.length - 1;
+	const wrapToClose = useCallback((ev) => jumpTo(ev, 'game-settings-close'), []);
+	const closeUp = useCallback((ev) => {
+		if (lastSetting >= 0) jumpTo(ev, `game-setting-${lastSetting}`);
+	}, [lastSetting]);
+	const closeDown = useCallback((ev) => {
+		if (lastSetting >= 0) jumpTo(ev, 'game-setting-0');
+	}, [lastSetting]);
+	const pickerOption = pickerIndex === null ? null : options[pickerIndex];
+	const pickerCurrent = pickerOption ? choiceIndex(pickerOption) : -1;
+	const lastChoice = pickerOption ? pickerOption.choices.length - 1 : 0;
+	const wrapToLastChoice = useCallback((ev) => jumpTo(ev, `game-choice-${lastChoice}`), [lastChoice]);
+	const wrapToFirstChoice = useCallback((ev) => jumpTo(ev, 'game-choice-0'), []);
 
 	const toggleFF = useCallback(() => {
 		setFastForward((prev) => { ejs.toggleFastForward(!prev); return !prev; });
@@ -295,7 +378,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 			return;
 		}
 		setConfirmingExit(true);
-		setTimeout(() => Spotlight.focus('game-overlay-first'), 0);
+		focusSoon('game-overlay-first');
 	}, [error, ready, exit]);
 
 	// Leaves only once the state is stored. Leaving on a failed save is what the confirmation is
@@ -318,7 +401,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 		hasSave ? {label: $L('Load state'), icon: GAME_ICON_PATHS.download, fn: () => runAndClose(loadSave, $L('Could not load state.'))} : null,
 		{label: $L('Restart'), icon: GAME_ICON_PATHS.refresh, fn: () => runAndClose(ejs.restart, $L('Could not restart.'))},
 		{label: $L('Fast-forward'), icon: GAME_ICON_PATHS.fastForward, trailing: fastForward ? $L('On') : $L('Off'), fn: toggleFF},
-		{label: $L('Emulator settings'), icon: GAME_ICON_PATHS.tune, fn: openSettings},
+		{label: $L('Emulator settings'), icon: GAME_ICON_PATHS.tune, fn: openSettings, spotlightId: 'game-overlay-settings'},
 		{label: $L('Exit'), icon: GAME_ICON_PATHS.close, fn: requestExit, danger: true}
 	].filter(Boolean);
 
@@ -344,11 +427,11 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 						{actions.map((a, i) => (
 							<SpottableRow
 								key={a.label}
-								spotlightId={i === 0 ? 'game-overlay-first' : undefined}
+								spotlightId={i === 0 ? 'game-overlay-first' : a.spotlightId}
 								className={a.danger ? `${css.row} ${css.danger}` : css.row}
 								onClick={a.fn}
 							>
-								<RowIcon path={a.icon} />
+								<Icon className={css.rowIcon} path={a.icon} />
 								{a.label}
 								{a.trailing ? <span className={css.trailing}>{a.trailing}</span> : null}
 							</SpottableRow>
@@ -357,17 +440,57 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 				</div>
 			) : null}
 
-			{settingsOpen ? (
-				<div className={css.scrim}>
-					<OverlayContainer className={css.panel}>
+			{settingsOpen && pickerOption ? (
+				<ListPanel
+					header={<>
+						{/* Pointer only, like Core's. The remote's Back does the same. */}
+						<div className={css.headerButton} onClick={closePicker}>
+							<Icon className={css.headerIcon} path={GAME_ICON_PATHS.arrowBack} />
+						</div>
+						<div className={css.panelTitle}>{pickerOption.label}</div>
+					</>}
+				>
+					{pickerOption.choices.map((c, i) => (
+						<ChoiceRow
+							key={c.value}
+							choice={c}
+							index={i}
+							current={i === pickerCurrent}
+							onPick={pickChoice}
+							onWrapUp={i === 0 ? wrapToLastChoice : undefined}
+							onWrapDown={i === lastChoice ? wrapToFirstChoice : undefined}
+						/>
+					))}
+				</ListPanel>
+			) : settingsOpen ? (
+				<ListPanel
+					header={<>
 						<div className={css.panelTitle}>{$L('Emulator settings')}</div>
-						{options.length === 0 ? (
-							<div className={css.empty}>{$L('This core has no adjustable options.')}</div>
-						) : options.map((opt, i) => (
-							<SettingRow key={opt.id} opt={opt} first={i === 0} onChange={changeOption} />
-						))}
-					</OverlayContainer>
-				</div>
+						<SpottableRow
+							spotlightId="game-settings-close"
+							className={css.headerButton}
+							aria-label={$L('Close')}
+							onClick={closeSettings}
+							onSpotlightUp={closeUp}
+							onSpotlightDown={closeDown}
+						>
+							<Icon className={css.headerIcon} path={GAME_ICON_PATHS.close} />
+						</SpottableRow>
+					</>}
+				>
+					{options.length === 0 ? (
+						<div className={css.empty}>{$L('This core has no adjustable options.')}</div>
+					) : options.map((opt, i) => (
+						<SettingRow
+							key={opt.id}
+							opt={opt}
+							index={i}
+							onStep={stepOption}
+							onOpen={openPicker}
+							onWrapDown={i === lastSetting ? wrapToClose : undefined}
+						/>
+					))}
+				</ListPanel>
 			) : null}
 
 			{toast ? <div key={toast.key} className={css.toast}>{toast.message}</div> : null}

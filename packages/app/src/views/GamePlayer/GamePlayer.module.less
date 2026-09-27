@@ -70,6 +70,62 @@
 	text-overflow: ellipsis;
 }
 
+.listPanel {
+	display: flex;
+	flex-direction: column;
+	width: 690px;
+}
+
+.panelHeader {
+	display: flex;
+	align-items: center;
+	flex: 0 0 auto;
+	padding: 4px 4px 8px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+// The header draws the divider, so the title inside it drops its own.
+.panelHeader > .panelTitle {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 8px 12px;
+	border-bottom: 0;
+}
+
+.panelBody {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: hidden;
+	padding-top: 6px;
+}
+
+.headerButton {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 80px;
+	height: 80px;
+	border-radius: 18px;
+	color: #fff;
+	cursor: pointer;
+}
+
+.headerButton:global(.spottable) {
+	color: rgba(255, 255, 255, 0.54);
+
+	&:focus {
+		outline: none;
+		background: var(--theme-accent, #00a4dc);
+		color: var(--theme-on-accent, #fff);
+	}
+}
+
+.headerIcon {
+	width: 40px;
+	height: 40px;
+}
+
 .panelSubtitle {
 	font-size: 0.75em;
 	font-weight: 400;
@@ -90,13 +146,46 @@
 
 	&:global(.spottable):focus {
 		outline: none;
-		background: var(--theme-accent, #00a4dc);
-		color: var(--theme-on-accent, #fff);
 	}
 }
 
-.settingRow {
-	justify-content: space-between;
+.row:global(.spottable):focus {
+	background: var(--theme-accent, #00a4dc);
+	color: var(--theme-on-accent, #fff);
+}
+
+// Settings and their values light up with a tint and an outline, not the pause menu's fill.
+.settingRow:global(.spottable):focus {
+	background: rgba(0, 164, 220, 0.2);
+	box-shadow: inset 0 0 0 2px var(--theme-accent, #00a4dc);
+}
+
+.settingLabel {
+	flex: 1 1 auto;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.chevron,
+.chevronOff {
+	flex: 0 0 auto;
+	width: 1.2em;
+	height: 1.2em;
+	opacity: 0.54;
+}
+
+.chevronOff {
+	opacity: 0.12;
+}
+
+.check {
+	flex: 0 0 auto;
+	width: 1.2em;
+	height: 1.2em;
+	margin-left: 12px;
+	color: var(--theme-accent, #00a4dc);
 }
 
 // Sized against the row text the way Core sizes a 20px icon and 12px gap against 15px text.
@@ -119,7 +208,8 @@
 }
 
 .settingValue {
-	color: var(--theme-on-surface-variant, #cfd6e0);
+	padding: 0 0.3em;
+	font-size: 0.93em;
 }
 
 .danger {

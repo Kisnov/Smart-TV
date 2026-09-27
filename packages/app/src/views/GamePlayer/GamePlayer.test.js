@@ -7,7 +7,7 @@ import GamePlayer from './GamePlayer';
 
 jest.mock('react/jsx-dev-runtime', () => {
 	const React = require('react');
-	return {jsxDEV: (type, props, key, staticChildren) => {
+	return {Fragment: React.Fragment, jsxDEV: (type, props, key, staticChildren) => {
 		const config = key === undefined ? props : {...props, key};
 		return staticChildren && Array.isArray(props.children)
 			? React.createElement(type, config, ...props.children)
@@ -18,7 +18,14 @@ jest.mock('@enact/i18n/$L', () => (text) => text);
 jest.mock('@enact/spotlight', () => ({focus: jest.fn(() => true), pause: jest.fn(), resume: jest.fn()}));
 jest.mock('@enact/spotlight/Spottable', () => () => {
 	const React = require('react');
-	return ({onClick, className, children}) => React.createElement('div', {onClick, className}, children);
+	const directions = {ArrowLeft: 'onSpotlightLeft', ArrowRight: 'onSpotlightRight', ArrowUp: 'onSpotlightUp', ArrowDown: 'onSpotlightDown'};
+	return ({onClick, className, children, spotlightId, ...rest}) => React.createElement('div', {
+		onClick,
+		className,
+		'aria-label': rest['aria-label'],
+		'data-spotlight-id': spotlightId,
+		onKeyDown: (ev) => { if (rest[directions[ev.key]]) rest[directions[ev.key]](ev); }
+	}, children);
 });
 jest.mock('@enact/spotlight/SpotlightContainerDecorator', () => () => {
 	const React = require('react');
@@ -54,7 +61,7 @@ jest.mock('../../utils/emulatorjs', () => ({
 	setPaused: jest.fn(),
 	toggleFastForward: jest.fn(),
 	getSettingsJson: () => null,
-	getOptions: () => [],
+	getOptions: jest.fn(),
 	setOption: jest.fn()
 }));
 
@@ -78,6 +85,7 @@ beforeEach(() => {
 	loadGameStateWithMigration.mockResolvedValue(null);
 	ejs.startEmulator.mockResolvedValue(undefined);
 	ejs.getState.mockReturnValue(new Uint8Array([1]));
+	ejs.getOptions.mockReturnValue([]);
 });
 
 afterEach(() => jest.useRealTimers());
@@ -175,4 +183,93 @@ test('Exit syncs the emulator settings after the save', async () => {
 	await waitFor(() => expect(onBack).toHaveBeenCalled());
 	expect(gamesApi.putStateBytes.mock.invocationCallOrder[0])
 		.toBeLessThan(gamesApi.putSettingsBlob.mock.invocationCallOrder[0]);
+});
+
+const shader = {
+	id: 'shader',
+	label: 'Shader',
+	choices: [{value: 'disabled', label: 'disabled'}, {value: 'crt', label: 'crt'}, {value: 'sabr', label: 'sabr'}],
+	current: 'disabled'
+};
+const fps = {id: 'fps', label: 'FPS counter', choices: [{value: 'show', label: 'show'}, {value: 'hide', label: 'hide'}], current: 'hide'};
+
+const openSettings = async () => {
+	ejs.getOptions.mockReturnValue([shader, fps]);
+	await openMenu();
+	fireEvent.click(screen.getByText('Emulator settings'));
+};
+const rowOf = (text) => screen.getByText(text).closest('[data-spotlight-id]');
+
+test('left and right step a setting and stop at either end', async () => {
+	await openSettings();
+
+	fireEvent.keyDown(rowOf('Shader'), {key: 'ArrowLeft'});
+	expect(ejs.setOption).not.toHaveBeenCalled();
+
+	fireEvent.keyDown(rowOf('Shader'), {key: 'ArrowRight'});
+	fireEvent.keyDown(rowOf('Shader'), {key: 'ArrowRight'});
+	fireEvent.keyDown(rowOf('Shader'), {key: 'ArrowRight'});
+
+	expect(ejs.setOption.mock.calls).toEqual([['shader', 'crt'], ['shader', 'sabr']]);
+	expect(rowOf('Shader').textContent).toContain('sabr');
+});
+
+test('OK opens the values with a check on the current one, and picking one applies it', async () => {
+	await openSettings();
+
+	fireEvent.click(rowOf('Shader'));
+
+	expect(rowOf('disabled').querySelector('svg')).not.toBeNull();
+	expect(rowOf('crt').querySelector('svg')).toBeNull();
+	await waitFor(() => expect(Spotlight.focus).toHaveBeenCalledWith('game-choice-0'));
+
+	fireEvent.click(rowOf('crt'));
+
+	expect(ejs.setOption).toHaveBeenCalledWith('shader', 'crt');
+	expect(rowOf('Shader').textContent).toContain('crt');
+	await waitFor(() => expect(Spotlight.focus).toHaveBeenCalledWith('game-setting-0'));
+});
+
+test('back leaves the picker unchanged, then the settings for the row that opened them', async () => {
+	await openSettings();
+	fireEvent.click(rowOf('FPS counter'));
+
+	act(() => { backHandler.current(); });
+
+	expect(ejs.setOption).not.toHaveBeenCalled();
+	expect(rowOf('FPS counter').textContent).toContain('hide');
+	await waitFor(() => expect(Spotlight.focus).toHaveBeenCalledWith('game-setting-1'));
+
+	act(() => { backHandler.current(); });
+
+	expect(screen.getByText('Resume')).toBeTruthy();
+	await waitFor(() => expect(Spotlight.focus).toHaveBeenCalledWith('game-overlay-settings'));
+});
+
+test('the close button goes back to the pause menu', async () => {
+	await openSettings();
+
+	fireEvent.click(screen.getByLabelText('Close'));
+
+	expect(screen.getByText('Resume')).toBeTruthy();
+});
+
+test('up and down wrap around the settings and the values', async () => {
+	await openSettings();
+
+	fireEvent.keyDown(rowOf('FPS counter'), {key: 'ArrowDown'});
+	await waitFor(() => expect(Spotlight.focus).toHaveBeenCalledWith('game-settings-close'));
+
+	fireEvent.keyDown(screen.getByLabelText('Close'), {key: 'ArrowUp'});
+	await waitFor(() => expect(Spotlight.focus).toHaveBeenCalledWith('game-setting-1'));
+
+	fireEvent.keyDown(screen.getByLabelText('Close'), {key: 'ArrowDown'});
+	await waitFor(() => expect(Spotlight.focus).toHaveBeenLastCalledWith('game-setting-0'));
+
+	fireEvent.click(rowOf('Shader'));
+	fireEvent.keyDown(rowOf('disabled'), {key: 'ArrowUp'});
+	await waitFor(() => expect(Spotlight.focus).toHaveBeenCalledWith('game-choice-2'));
+
+	fireEvent.keyDown(rowOf('sabr'), {key: 'ArrowDown'});
+	await waitFor(() => expect(Spotlight.focus).toHaveBeenLastCalledWith('game-choice-0'));
 });
