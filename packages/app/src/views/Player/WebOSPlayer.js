@@ -739,17 +739,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				};
 				let result = await playback.getPlaybackInfo(item.Id, playbackInfoOptions);
 
-				// The local track preferences win, otherwise honor the Jellyfin user's
-				// preferred audio language via the server-computed defaultAudioStreamIndex
-				// (#186), then the file's default track. Renegotiation below never
-				// changes the audio streams, so this is safe to settle first.
+				// A track remembered for the series wins, then the local track preferences.
+				// Renegotiation below never changes the audio streams, so this is safe to settle first.
 				const defaultAudio = result.audioStreams?.find(s => s.isDefault);
-				// A track remembered for the series stands in front of the language
-				// preferences, the same order the other clients take these in.
 				const rememberedAudio = await resolveSeriesAudio(item, result.audioStreams);
-				const preferredAudio = selectPreferredAudioStream(result.audioStreams, settings);
-				const serverAudio = result.audioStreams?.find(s => s.index === result.defaultAudioStreamIndex);
-				const autoAudio = rememberedAudio || preferredAudio || serverAudio || defaultAudio;
+				const autoAudio = rememberedAudio || selectPreferredAudioStream(result.audioStreams, settings);
 				const startingAudio = initialAudioIndex != null
 					? result.audioStreams?.find(s => s.index === initialAudioIndex)
 					: autoAudio;

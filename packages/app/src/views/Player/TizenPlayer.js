@@ -1213,16 +1213,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					}).catch(() => {});
 				}
 
-				// Handle initial audio selection. The local track preferences win,
-				// otherwise honor the Jellyfin user's preferred audio language via the
-				// server computed defaultAudioStreamIndex, then the file default.
-				// A track remembered for the series stands in front of the language
-				// preferences, the same order the other clients take these in.
+				// A track remembered for the series wins, then the local track preferences.
 				const rememberedAudio = await resolveSeriesAudio(item, result.audioStreams);
-				const preferredAudio = rememberedAudio || selectPreferredAudioStream(result.audioStreams, settings);
-				const serverAudio = result.audioStreams?.find(s => s.index === result.defaultAudioStreamIndex);
+				const autoAudio = rememberedAudio || selectPreferredAudioStream(result.audioStreams, settings);
 				const fileDefaultAudio = result.audioStreams?.find(s => s.isDefault);
-				const autoAudio = preferredAudio || serverAudio || fileDefaultAudio;
 
 				// A remux or transcode carries only the track the server built it around, so
 				// switching on the player cant reach any other one. Direct play gets the
