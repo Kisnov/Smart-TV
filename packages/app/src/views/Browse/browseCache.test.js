@@ -1,9 +1,9 @@
-import {clearMemoryCache, memoryCache} from './browseCache';
+import {clearMemoryCache, memoryCache, saveBrowseCache} from './browseCache';
 
-// The module reaches storage on save and load, neither of which this touches.
+const mockSaveToStorage = jest.fn();
 jest.mock('../../services/storage', () => ({
 	getFromStorage: () => Promise.resolve(null),
-	saveToStorage: () => Promise.resolve()
+	saveToStorage: (...args) => mockSaveToStorage(...args)
 }));
 
 const fill = () => {
@@ -41,5 +41,27 @@ describe('clearMemoryCache', () => {
 
 		expect(memoryCache.featuredItems).toBeNull();
 		expect(memoryCache.featuredConfigKey).toBeNull();
+	});
+});
+
+describe('saveBrowseCache', () => {
+	beforeEach(() => {
+		jest.useFakeTimers();
+		fill();
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+	});
+
+	test('saves the media bar key the items were drawn for', () => {
+		saveBrowseCache(memoryCache.rowData, memoryCache.libraries, memoryCache.featuredItems, {serverUrl: 'http://server', userId: 'user'});
+		memoryCache.featuredItems = [{Id: 'item2'}];
+		memoryCache.featuredConfigKey = 'newer';
+		jest.runAllTimers();
+
+		const saved = mockSaveToStorage.mock.calls[0][1];
+		expect(saved.featuredItems).toEqual([{Id: 'item1'}]);
+		expect(saved.featuredConfigKey).toBe('key');
 	});
 });
