@@ -95,10 +95,10 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 					gameUrl: romUrl,
 					biosUrl,
 					gameName: game.title,
-					settingsJson
+					settingsJson,
+					stateBytes: startFresh ? null : existing
 				});
 				if (cancelled) return;
-				if (existing && !startFresh) { try { ejs.loadState(existing); } catch (e) { /* ignore */ } }
 				setReady(true);
 			} catch (e) {
 				// Backing out mid-load lands here too, and that is not worth reporting.

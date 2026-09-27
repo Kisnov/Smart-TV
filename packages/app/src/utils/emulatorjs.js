@@ -81,7 +81,9 @@ const emulatorStatusText = () => {
 };
 
 // Starts EmulatorJS in the element matching `selector` and resolves once the core is ready.
-export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, settingsJson}) =>
+// stateBytes is a save state EmulatorJS loads itself once the game has started, since
+// gameManager doesn't exist yet when ready fires.
+export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, settingsJson, stateBytes}) =>
 	new Promise((resolve, reject) => {
 		if (settingsJson) {
 			try { window.localStorage.setItem('ejs-settings', settingsJson); } catch (e) { /* ignore */ }
@@ -119,6 +121,7 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 		window.EJS_gameUrl = gameUrl;
 		if (biosUrl) window.EJS_biosUrl = biosUrl;
 		if (gameName) window.EJS_gameName = gameName;
+		if (stateBytes) window.EJS_loadStateURL = stateBytes;
 		window.EJS_pathtodata = CDN;
 		window.EJS_language = 'en-US';
 		window.EJS_startOnLoaded = true;
@@ -156,6 +159,8 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 					system: core,
 					biosUrl: biosUrl || '',
 					gameName: gameName || '',
+					// Set even when there's no save, or the cached config loads the last game's.
+					loadState: stateBytes,
 					dataPath: CDN,
 					startOnLoad: true,
 					threads: false,
@@ -267,7 +272,7 @@ export const destroyEmulator = () => {
 	}
 	loaderScript = null;
 	['EJS_emulator', 'EJS_player', 'EJS_core', 'EJS_gameUrl', 'EJS_biosUrl', 'EJS_gameName',
-		'EJS_pathtodata', 'EJS_startOnLoaded', 'EJS_threads', 'EJS_ready', 'EJS_defaultOptions',
-		'EJS_adBlocked']
+		'EJS_loadStateURL', 'EJS_pathtodata', 'EJS_startOnLoaded', 'EJS_threads', 'EJS_ready',
+		'EJS_defaultOptions', 'EJS_adBlocked']
 		.forEach((k) => { try { delete window[k]; } catch (e) { /* ignore */ } });
 };
