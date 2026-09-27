@@ -1,4 +1,4 @@
-import {getRomUrl, getStateBytes} from './gamesApi';
+import {getRomUrl, getStateBytes, putStateBytes} from './gamesApi';
 import {fetchWithTimeout} from '../utils/fetchTimeout';
 
 let mockToken = 'key';
@@ -154,5 +154,26 @@ describe('getStateBytes', () => {
 		fetchWithTimeout.mockRejectedValueOnce(new Error('network'));
 
 		await expect(getStateBytes('ejs-nes-game')).rejects.toThrow('network');
+	});
+});
+
+describe('putStateBytes', () => {
+	beforeEach(() => {
+		fetchWithTimeout.mockReset();
+	});
+
+	test('uploads the state under the save id it is given', async () => {
+		fetchWithTimeout.mockResolvedValueOnce({status: 204, ok: true});
+
+		await putStateBytes('ejs-nes-game', new Uint8Array([1]));
+
+		expect(fetchWithTimeout.mock.calls[0][0]).toBe('https://server/Moonfin/Games/Saves/ejs-nes-game?kind=state');
+		expect(fetchWithTimeout.mock.calls[0][1].method).toBe('PUT');
+	});
+
+	test('throws when the server turns the upload down', async () => {
+		fetchWithTimeout.mockResolvedValueOnce({status: 500, ok: false});
+
+		await expect(putStateBytes('ejs-nes-game', new Uint8Array([1]))).rejects.toMatchObject({status: 500});
 	});
 });

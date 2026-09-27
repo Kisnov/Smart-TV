@@ -161,11 +161,16 @@ export const getStateBytes = async (saveId) => {
 };
 
 export const putStateBytes = async (saveId, bytes) => {
-	await fetchWithTimeout(`${base()}/Moonfin/Games/Saves/${enc(saveId)}?kind=state`, {
+	const res = await fetchWithTimeout(`${base()}/Moonfin/Games/Saves/${enc(saveId)}?kind=state`, {
 		method: 'PUT',
 		headers: {...authHeaders(), 'Content-Type': 'application/octet-stream'},
 		body: bytes
 	}, 30000);
+	if (!res.ok) {
+		const err = new Error(`Save upload error: ${res.status}`);
+		err.status = res.status;
+		throw err;
+	}
 };
 
 // Settings blob (the EmulatorJS `ejs-settings` JSON, text) synced per user via the proxy.
