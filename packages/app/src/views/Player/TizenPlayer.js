@@ -231,6 +231,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Deferred seek: only execute actual avplaySeek after user stops pressing arrows
 	const seekDebounceRef = useRef(null);
 	const pendingSeekMsRef = useRef(null);
+	// The committed scrub whose seek is still landing, so only the newest one ends the scrub.
+	const landingScrubRef = useRef(null);
 	// A scrub that paused playback to hold the preview still, and whether it was playing before.
 	const scrubHoldRef = useRef({active: false, wasPlaying: false});
 	const subtitleTimeoutRef = useRef(null);
@@ -1564,6 +1566,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			}
 			useNativeSubtitleRef.current = false;
 			pendingSeekMsRef.current = null;
+			landingScrubRef.current = null;
 			scrubHoldRef.current = {active: false, wasPlaying: false};
 			pendingTracksRef.current = null;
 			activeNativeSubRef.current = null;
@@ -1896,13 +1899,24 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			noteSeek();
 			if (!groupSeekTo(Math.floor(seekMs * 10000))) {
 				// Until the seek lands the last poll still has the old spot, so the bar stays on the scrubbed one.
+				const commit = {};
+				landingScrubRef.current = commit;
 				avplaySeek(seekMs)
-					.then(() => setCurrentTime(seekMs / 1000), err => console.warn('[Player] Deferred seek failed:', err))
-					.then(() => { if (pendingSeekMsRef.current == null) setIsSeeking(false); });
+					.then(() => true, err => {
+						console.warn('[Player] Deferred seek failed:', err);
+						return false;
+					})
+					.then(landed => {
+						if (landingScrubRef.current !== commit) return;
+						landingScrubRef.current = null;
+						if (landed) setCurrentTime(seekMs / 1000);
+						if (pendingSeekMsRef.current == null) setIsSeeking(false);
+					});
 				return;
 			}
 		}
-		setIsSeeking(false);
+		// Leaving the bar right after a commit blurs it, and the scrub has to wait for that seek to land.
+		if (!landingScrubRef.current) setIsSeeking(false);
 	}, [groupSeekTo, noteSeek]);
 
 	const scheduleDeferredSeek = useCallback((targetMs) => {
@@ -1940,6 +1954,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			seekDebounceRef.current = null;
 		}
 		pendingSeekMsRef.current = null;
+		landingScrubRef.current = null;
 		setIsSeeking(false);
 		const held = scrubHoldRef.current;
 		scrubHoldRef.current = {active: false, wasPlaying: false};
