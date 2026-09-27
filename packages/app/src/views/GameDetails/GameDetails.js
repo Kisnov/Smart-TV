@@ -1,4 +1,4 @@
-import {useState, useEffect, useCallback, useRef} from 'react';
+import {useState, useEffect, useCallback, useMemo, useRef} from 'react';
 import $L from '@enact/i18n/$L';
 import Spotlight from '@enact/spotlight';
 import Button from '@enact/sandstone/Button';
@@ -6,15 +6,23 @@ import Button from '@enact/sandstone/Button';
 import AdminMessageDialog from '../../components/AdminMessageDialog';
 import GameCard from '../../components/GameCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import TrackOptionRow, {TrackDivider} from '../../components/TrackOptionRow';
 import {GAME_ICON_PATHS} from '../../components/icons/gameIcons';
 import {iconViewBox} from '../../components/icons/iconViewBox';
 import * as gamesApi from '../../services/gamesApi';
 import {isSupported, unsupportedMessage} from '../../utils/emulatorjs';
 import {gameDisplayTitle, gameFallbackColor} from '../../utils/gameArt';
 import {loadGameStateWithMigration} from '../../utils/gameSaves';
+import {ModalContainer} from '../../utils/spotlightContainers';
 import {DETAIL_ICON_PATHS} from '../Details/detailIcons';
+import {coreChoices, coreLabel} from './coreChoices';
 
 import css from './GameDetails.module.less';
+
+// Adds a class to the Sandstone button's background layer, which is where its fill is drawn.
+const CORE_BUTTON_CSS = {bg: css.coreBg};
+
+const focusCoreButton = () => setTimeout(() => Spotlight.focus('game-core-btn'), 0);
 
 const metaLine = (game) => [
 	game.system,
@@ -44,8 +52,19 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 	const saveCheck = useRef(0);
 	const [related, setRelated] = useState([]);
 	const [showUnsupported, setShowUnsupported] = useState(false);
+	const [corePickerOpen, setCorePickerOpen] = useState(false);
+	const [toast, setToast] = useState(null);
+	const currentGameId = useRef(gameId);
+	currentGameId.current = gameId;
 
 	const libraryId = library?.Id;
+	const choices = useMemo(() => coreChoices(game), [game]);
+
+	useEffect(() => {
+		if (!toast) return undefined;
+		const timer = setTimeout(() => setToast(null), 3000);
+		return () => clearTimeout(timer);
+	}, [toast]);
 
 	const checkSave = useCallback((g) => {
 		const generation = ++saveCheck.current;
@@ -83,13 +102,27 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 		return () => { cancelled = true; };
 	}, [libraryId, gameId, initialGame, checkSave]);
 
+	const openCorePicker = useCallback(() => {
+		setCorePickerOpen(true);
+		setTimeout(() => Spotlight.focus('game-core-modal'), 0);
+	}, []);
+	const closeCorePicker = useCallback(() => {
+		setCorePickerOpen(false);
+		focusCoreButton();
+	}, []);
+
 	useEffect(() => {
 		if (!backHandlerRef) return undefined;
-		// While the unsupported dialog is open it handles BACK itself, otherwise the app pops the panel.
-		const handler = () => showUnsupported;
+		// BACK closes the core picker first. While the unsupported dialog is open it handles BACK
+		// itself, otherwise the app pops the panel.
+		const handler = () => {
+			if (!corePickerOpen) return showUnsupported;
+			closeCorePicker();
+			return true;
+		};
 		backHandlerRef.current = handler;
 		return () => { if (backHandlerRef.current === handler) backHandlerRef.current = null; };
-	}, [backHandlerRef, showUnsupported]);
+	}, [backHandlerRef, showUnsupported, corePickerOpen, closeCorePicker]);
 
 	useEffect(() => {
 		if (game) setTimeout(() => Spotlight.focus('game-play-btn'), 0);
@@ -112,6 +145,22 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 		setShowUnsupported(false);
 		setTimeout(() => Spotlight.focus('game-play-btn'), 0);
 	}, []);
+	const stopPropagation = useCallback((e) => e.stopPropagation(), []);
+	// The save key includes the core, so the save is checked again for the one picked.
+	const pickCore = useCallback((e) => {
+		const core = e.currentTarget.dataset.core;
+		setCorePickerOpen(false);
+		gamesApi.setGameCoreOverride(libraryId, game.id, core)
+			.then((updated) => {
+				if (!updated || updated.id !== currentGameId.current) return;
+				setGame(updated);
+				checkSave(updated);
+			})
+			.catch(() => {
+				setToast({message: $L('Could not change the core.'), key: Date.now()});
+				focusCoreButton();
+			});
+	}, [libraryId, game, checkSave]);
 	const openRelated = useCallback((g) => onSelectGame && onSelectGame(library, g), [onSelectGame, library]);
 
 	if (loading) return <div className={css.center}><LoadingSpinner /></div>;
@@ -154,6 +203,17 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 								{$L('Restart')}
 							</Button>
 						) : null}
+						{choices.length > 1 ? (
+							<Button
+								spotlightId="game-core-btn"
+								className={`${css.actionButton} ${css.coreButton}`}
+								css={CORE_BUTTON_CSS}
+								onClick={openCorePicker}
+							>
+								<ButtonIcon path={GAME_ICON_PATHS.memory} />
+								{coreLabel(game.core)}
+							</Button>
+						) : null}
 					</div>
 				</div>
 			</div>
@@ -167,6 +227,28 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 					</div>
 				</div>
 			) : null}
+			{corePickerOpen ? (
+				<div className={css.coreModal} onClick={closeCorePicker}>
+					<ModalContainer className={css.coreModalPanel} onClick={stopPropagation} spotlightId="game-core-modal">
+						<h2 className={css.coreModalTitle}>{$L('Choose core')}</h2>
+						<div className={css.coreList}>
+							{choices.map((choice) => (
+								<TrackOptionRow
+									key={choice.core}
+									label={choice.label}
+									detail={choice.detail}
+									selected={choice.core === game.core}
+									data-core={choice.core}
+									onClick={pickCore}
+								/>
+							))}
+							<TrackDivider />
+							<TrackOptionRow label={$L('Cancel')} dimmed onClick={closeCorePicker} />
+						</div>
+					</ModalContainer>
+				</div>
+			) : null}
+			{toast ? <div key={toast.key} className={css.toast}>{toast.message}</div> : null}
 			<AdminMessageDialog
 				open={showUnsupported}
 				title={$L('Games')}

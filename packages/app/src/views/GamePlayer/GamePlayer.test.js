@@ -46,7 +46,8 @@ jest.mock('../../services/gamesApi', () => ({
 	getSettingsBlob: jest.fn(),
 	getBiosBlobUrl: jest.fn(),
 	putStateBytes: jest.fn(),
-	putSettingsBlob: jest.fn()
+	putSettingsBlob: jest.fn(),
+	getEmulatorDataPath: jest.fn()
 }));
 jest.mock('../../utils/gameSaves', () => ({
 	gameStateKey: (id, core) => `ejs-${core}-${id}`,
@@ -89,6 +90,7 @@ beforeEach(() => {
 	gamesApi.getRomUrl.mockResolvedValue({url: 'rom', isBlob: false});
 	gamesApi.getSettingsBlob.mockResolvedValue(null);
 	gamesApi.putStateBytes.mockResolvedValue(undefined);
+	gamesApi.getEmulatorDataPath.mockResolvedValue(null);
 	loadGameStateWithMigration.mockResolvedValue(null);
 	ejs.startEmulator.mockResolvedValue(undefined);
 	ejs.getState.mockReturnValue(new Uint8Array([1]));
@@ -438,4 +440,12 @@ test('the pad is left to EmulatorJS in the game and on the controller screen', a
 	expect(keys.sent).toEqual([]);
 	expect(ejs.controlInput).not.toHaveBeenCalled();
 	expect(screen.queryByText('Resume')).toBeNull();
+});
+
+test('loads EmulatorJS from the path the server resolved', async () => {
+	gamesApi.getEmulatorDataPath.mockResolvedValue('https://server/Moonfin/EmulatorJS/data/');
+
+	await startGame();
+
+	expect(ejs.startEmulator).toHaveBeenCalledWith(expect.objectContaining({dataPath: 'https://server/Moonfin/EmulatorJS/data/'}));
 });

@@ -22,10 +22,13 @@ const authHeaders = () => {
 };
 const enc = encodeURIComponent;
 
-const jsonRequest = async (path, {method = 'GET', timeout = 20000} = {}) => {
+const jsonRequest = async (path, {method = 'GET', body, timeout = 20000} = {}) => {
+	const headers = {...authHeaders(), Accept: 'application/json'};
+	if (body !== undefined) headers['Content-Type'] = 'application/json';
 	const res = await platformFetch(`${base()}/Moonfin/Games/${path}`, {
 		method,
-		headers: {...authHeaders(), Accept: 'application/json'}
+		headers,
+		body: body === undefined ? undefined : JSON.stringify(body)
 	}, timeout);
 	if (!res.ok) {
 		const err = new Error(`Games API error: ${res.status}`);
@@ -43,6 +46,9 @@ export const getGames = (libraryId, system) =>
 	jsonRequest(`${enc(libraryId)}/Games${system ? `?system=${enc(system)}` : ''}`);
 export const getGame = (libraryId, gameId) =>
 	jsonRequest(`${enc(libraryId)}/Games/${enc(gameId)}`);
+// Pins the current user's core for an arcade game and returns the game as it now plays.
+export const setGameCoreOverride = (libraryId, gameId, core) =>
+	jsonRequest(`${enc(libraryId)}/Games/${enc(gameId)}/Core`, {method: 'PUT', body: {core}});
 
 // Image tags can't send auth headers, so the token rides in the query.
 // kind defaults to boxart but also accepts snap or title.
@@ -140,6 +146,36 @@ export const getRomUrl = async (libraryId, gameId, fileName) => {
 	// A failed probe leaves the size unknown, so getRomBlobUrl applies the same ceiling from
 	// Content-Length. Falling back must not mean skipping the check.
 	return {url: await getRomBlobUrl(libraryId, gameId), isBlob: true};
+};
+
+// Where the server has EmulatorJS load its runtime and cores from: an admin's URL, its own copy,
+// or the CDN. The anonymous player page carries the path it resolved, so it's read from there. A
+// TV that can't reach that path directly, like old webOS behind Let's Encrypt, gets null and
+// stays on the CDN. Resolved once per server.
+let dataPathLookup = null;
+
+const resolveDataPath = async (server) => {
+	try {
+		const page = `${server}/Moonfin/EmulatorJS/player.html`;
+		const res = await platformFetch(page, {}, 10000);
+		if (!res.ok) return null;
+		const match = (await res.text()).match(/EJS_pathtodata\s*=\s*'([^']+)'/);
+		if (!match) return null;
+		const path = new URL(match[1], page).href;
+		const probe = await fetchWithTimeout(`${path}loader.js`, {}, 10000);
+		discardBody(probe);
+		return probe.ok ? path : null;
+	} catch (e) {
+		return null;
+	}
+};
+
+export const getEmulatorDataPath = () => {
+	const server = base();
+	if (!dataPathLookup || dataPathLookup.server !== server) {
+		dataPathLookup = {server, path: resolveDataPath(server)};
+	}
+	return dataPathLookup.path;
 };
 
 // Null when there's no save (404). Any other failure throws, so a failed read is never

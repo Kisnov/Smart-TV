@@ -1,7 +1,8 @@
 // EmulatorJS control glue. Ports the Moonbase plugin player.html script so the enact app
-// drives EmulatorJS directly (no iframe / postMessage). Loader + WASM cores come from the
-// trusted-cert CDN and work on old webOS. The ROM is either a direct server URL EmulatorJS
-// streams itself or a Blob URL the app already fetched, and the BIOS is always a Blob URL.
+// drives EmulatorJS directly (no iframe / postMessage). Loader + WASM cores come from the path
+// the server resolved when this TV can reach it, otherwise the trusted-cert CDN, which works on
+// old webOS. The ROM is either a direct server URL EmulatorJS streams itself or a Blob URL the
+// app already fetched, and the BIOS is always a Blob URL.
 // Threads are off (no cross-origin isolation on app:// / file://), so single-threaded cores only.
 
 import $L from '@enact/i18n/$L';
@@ -83,13 +84,14 @@ const emulatorStatusText = () => {
 // Starts EmulatorJS in the element matching `selector` and resolves once the core is ready.
 // stateBytes is a save state EmulatorJS loads itself once the game has started, since
 // gameManager doesn't exist yet when ready fires.
-export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, settingsJson, stateBytes}) =>
+export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, settingsJson, stateBytes, dataPath}) =>
 	new Promise((resolve, reject) => {
 		if (settingsJson) {
 			try { window.localStorage.setItem('ejs-settings', settingsJson); } catch (e) { /* ignore */ }
 		}
 
 		const startedAt = Date.now();
+		const dataRoot = dataPath || CDN;
 		// EmulatorJS reports a failed boot by never firing ready, so the reason only shows up as
 		// an uncaught error. Watch the window for as long as the boot runs to keep it.
 		const onWindowError = (ev) => logGamesError('window error during emulator boot', {
@@ -114,7 +116,8 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 			core,
 			gameName,
 			bios: Boolean(biosUrl),
-			blobRom: String(gameUrl || '').startsWith('blob:')
+			blobRom: String(gameUrl || '').startsWith('blob:'),
+			serverCores: dataRoot !== CDN
 		});
 		window.EJS_player = selector;
 		window.EJS_core = core;
@@ -122,7 +125,7 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 		if (biosUrl) window.EJS_biosUrl = biosUrl;
 		if (gameName) window.EJS_gameName = gameName;
 		if (stateBytes) window.EJS_loadStateURL = stateBytes;
-		window.EJS_pathtodata = CDN;
+		window.EJS_pathtodata = dataRoot;
 		window.EJS_language = 'en-US';
 		window.EJS_startOnLoaded = true;
 		window.EJS_threads = false;
@@ -161,7 +164,7 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 					gameName: gameName || '',
 					// Set even when there's no save, or the cached config loads the last game's.
 					loadState: stateBytes,
-					dataPath: CDN,
+					dataPath: dataRoot,
 					startOnLoad: true,
 					threads: false,
 					defaultOptions: window.EJS_defaultOptions
@@ -181,8 +184,8 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 		}
 
 		loaderScript = document.createElement('script');
-		loaderScript.src = CDN + 'loader.js';
-		// Without this the promise sits on the full timeout when the CDN is simply unreachable.
+		loaderScript.src = dataRoot + 'loader.js';
+		// Without this the promise sits on the full timeout when the loader is simply unreachable.
 		loaderScript.onerror = () => {
 			clearTimeout(timer);
 			stopWatching();

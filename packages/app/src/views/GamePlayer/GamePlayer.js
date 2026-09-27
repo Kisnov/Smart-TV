@@ -188,12 +188,13 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 		const arcadeFileName = game.core === 'mame' || game.core === 'arcade' ? game.fileName : null;
 		(async () => {
 			try {
-				const [rom, settingsJson, existing] = await Promise.all([
+				const [rom, settingsJson, existing, dataPath] = await Promise.all([
 					gamesApi.getRomUrl(libraryId, game.id, arcadeFileName),
 					gamesApi.getSettingsBlob(),
 					// Read on Restart too so Load state is still offered. A failed read counts as
 					// no save instead of stopping the game.
-					loadGameStateWithMigration(game.id, game.core).catch(() => null)
+					loadGameStateWithMigration(game.id, game.core).catch(() => null),
+					gamesApi.getEmulatorDataPath()
 				]);
 				if (cancelled) return;
 				const {url: romUrl, isBlob} = rom;
@@ -212,7 +213,8 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 					biosUrl,
 					gameName: isBlob && arcadeFileName ? arcadeFileName : game.title,
 					settingsJson,
-					stateBytes: startFresh ? null : existing
+					stateBytes: startFresh ? null : existing,
+					dataPath
 				});
 				if (cancelled) return;
 				setReady(true);

@@ -77,6 +77,42 @@ describe('startEmulator save state', () => {
 	});
 });
 
+describe('startEmulator data path', () => {
+	beforeEach(() => {
+		jest.resetModules();
+		({startEmulator, destroyEmulator} = require('./emulatorjs'));
+		FakeEmulator.configs = [];
+	});
+
+	afterEach(() => {
+		destroyEmulator();
+	});
+
+	test('loads EmulatorJS from the path the server gave', async () => {
+		launch({dataPath: 'https://server/Moonfin/EmulatorJS/data/'});
+
+		expect(document.querySelector('script').src).toBe('https://server/Moonfin/EmulatorJS/data/loader.js');
+		expect(window.EJS_pathtodata).toBe('https://server/Moonfin/EmulatorJS/data/');
+		window.EJS_emulator = new FakeEmulator('#game', {});
+		window.EJS_ready();
+	});
+
+	test('falls back to the CDN without one', async () => {
+		await launchThroughLoader();
+
+		expect(document.querySelector('script').src).toBe('https://cdn.emulatorjs.org/stable/data/loader.js');
+	});
+
+	test('hands the path to a cached emulator too', async () => {
+		await launchThroughLoader();
+		destroyEmulator();
+
+		await launch({dataPath: 'https://server/data/'});
+
+		expect(FakeEmulator.configs[1].dataPath).toBe('https://server/data/');
+	});
+});
+
 // A stand-in for the control screen EmulatorJS builds: player tabs, a gamepad picker, one row per
 // button with a gamepad and a keyboard box, the Reset, Clear and Close footer, and the popup it
 // shows while waiting for a button.
