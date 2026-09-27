@@ -80,6 +80,8 @@ beforeEach(() => {
 	ejs.getState.mockReturnValue(new Uint8Array([1]));
 });
 
+afterEach(() => jest.useRealTimers());
+
 test('Exit asks first, with Back on top', async () => {
 	await openMenu();
 
@@ -149,4 +151,28 @@ test('a game that never started leaves without asking', async () => {
 
 	await waitFor(() => expect(onBack).toHaveBeenCalled());
 	expect(gamesApi.putStateBytes).not.toHaveBeenCalled();
+});
+
+test('Exit leaves after three seconds when the save hangs', async () => {
+	jest.useFakeTimers();
+	gamesApi.putStateBytes.mockReturnValue(new Promise(() => {}));
+	await openMenu();
+	fireEvent.click(screen.getByText('Exit'));
+	fireEvent.click(screen.getByText('Exit'));
+
+	await act(async () => { jest.advanceTimersByTime(2900); });
+	expect(onBack).not.toHaveBeenCalled();
+
+	await act(async () => { jest.advanceTimersByTime(100); });
+	expect(onBack).toHaveBeenCalled();
+});
+
+test('Exit syncs the emulator settings after the save', async () => {
+	await openMenu();
+	fireEvent.click(screen.getByText('Exit'));
+	fireEvent.click(screen.getByText('Exit'));
+
+	await waitFor(() => expect(onBack).toHaveBeenCalled());
+	expect(gamesApi.putStateBytes.mock.invocationCallOrder[0])
+		.toBeLessThan(gamesApi.putSettingsBlob.mock.invocationCallOrder[0]);
 });

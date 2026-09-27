@@ -24,6 +24,10 @@ const OverlayContainer = SpotlightContainerDecorator({
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
+// The longest Exit waits on the save before leaving anyway. The upload keeps going after the
+// player closes.
+const EXIT_SAVE_TIMEOUT = 3000;
+
 const RowIcon = ({path}) => (
 	<svg className={css.rowIcon} viewBox={iconViewBox(path)} fill="currentColor">
 		<path d={path} />
@@ -163,10 +167,16 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 	const exit = useCallback(async ({stateSaved = false} = {}) => {
 		if (exiting.current) return;
 		exiting.current = true;
-		if (!stateSaved) {
-			try { await saveState(); } catch (e) { /* leaving either way */ }
-		}
-		try { gamesApi.putSettingsBlob(ejs.getSettingsJson()); } catch (e) { /* ignore */ }
+		const persist = async () => {
+			if (!stateSaved) await saveState();
+			await gamesApi.putSettingsBlob(ejs.getSettingsJson());
+		};
+		let timer;
+		const cap = new Promise((resolve) => { timer = setTimeout(resolve, EXIT_SAVE_TIMEOUT); });
+		try {
+			await Promise.race([persist(), cap]);
+		} catch (e) { /* leaving either way */ }
+		clearTimeout(timer);
 		if (onBack) onBack();
 	}, [saveState, onBack]);
 
