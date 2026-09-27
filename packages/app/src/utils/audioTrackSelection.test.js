@@ -30,6 +30,11 @@ describe('selectPreferredAudioStream', () => {
 		expect(selectPreferredAudioStream(list, {})).toBe(list[0]);
 	});
 
+	test('a default flag on every track leaves English in front', () => {
+		const list = [track(1, 'jpn', {isDefault: true, channels: 6}), track(2, 'eng', {isDefault: true})];
+		expect(selectPreferredAudioStream(list, {audioLanguage: 'cat', fallbackAudioLanguage: 'spa'})).toBe(list[1]);
+	});
+
 	test('with no preference at all the loudest track wins, which is the old complaint', () => {
 		const list = [track(1, 'fre', {channels: 6}), track(2, 'ger')];
 		expect(selectPreferredAudioStream(list, {})).toBe(list[0]);

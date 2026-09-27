@@ -114,7 +114,8 @@ export const selectPreferredAudioStream = (audioStreams, settings = {}) => {
 		if (matches.length) return preferRemembered(matches, prefs);
 	}
 
-	if (defaults.length) return rankAudioCandidates(defaults, prefs);
+	// A default flag on every track doesn't single one out.
+	if (defaults.length && defaults.length < candidates.length) return rankAudioCandidates(defaults, prefs);
 
 	const english = candidates.filter((stream) => languageMatches(stream.language, 'eng'));
 	if (english.length) return preferRemembered(english, prefs);
