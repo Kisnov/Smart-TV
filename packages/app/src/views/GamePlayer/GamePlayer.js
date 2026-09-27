@@ -8,6 +8,7 @@ import AdminMessageDialog from '../../components/AdminMessageDialog';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import {GAME_ICON_PATHS} from '../../components/icons/gameIcons';
 import {iconViewBox} from '../../components/icons/iconViewBox';
+import useGamepadButtons from '../../hooks/useGamepadButtons';
 import * as gamesApi from '../../services/gamesApi';
 import serverLogger from '../../services/serverLogger';
 import {initVideo, keepScreenOn, setupVisibilityHandler} from '../../services/video';
@@ -37,6 +38,31 @@ const CONTROL_KEYS = {
 	[KEYS.LEFT]: 'DPAD_LEFT',
 	[KEYS.RIGHT]: 'DPAD_RIGHT',
 	[KEYS.ENTER]: 'BUTTON_2'
+};
+
+// Standard Gamepad API buttons, the layout browsers report pads in.
+const PAD = {CONFIRM: 0, CANCEL: 1, SELECT: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15};
+const PAD_KEYS = {
+	[PAD.UP]: KEYS.UP,
+	[PAD.DOWN]: KEYS.DOWN,
+	[PAD.LEFT]: KEYS.LEFT,
+	[PAD.RIGHT]: KEYS.RIGHT,
+	[PAD.CONFIRM]: KEYS.ENTER
+};
+
+// How long Start and Select have to be held together to open the pause menu.
+const MENU_COMBO_HOLD = 5000;
+
+// Sends a remote key through the path the remote takes, so a gamepad moves and selects in the
+// menus exactly like it.
+const pressKey = (keyCode) => {
+	const target = document.activeElement || document.body;
+	['keydown', 'keyup'].forEach((type) => {
+		const ev = new window.KeyboardEvent(type, {bubbles: true, cancelable: true});
+		Object.defineProperty(ev, 'keyCode', {get: () => keyCode});
+		Object.defineProperty(ev, 'which', {get: () => keyCode});
+		target.dispatchEvent(ev);
+	});
 };
 
 const focusSoon = (spotlightId) => setTimeout(() => Spotlight.focus(spotlightId), 0);
@@ -78,6 +104,15 @@ const SettingRow = memo(({opt, index, onStep, onOpen, onWrapDown}) => {
 	);
 });
 
+const HoldIndicator = () => (
+	<div className={css.holdPill}>
+		<svg className={css.holdRing} viewBox="0 0 20 20">
+			<circle cx="10" cy="10" r="8" />
+		</svg>
+		{$L('Hold to open menu')}
+	</div>
+);
+
 const ListPanel = ({header, children}) => (
 	<div className={css.scrim}>
 		<OverlayContainer className={`${css.panel} ${css.listPanel}`}>
@@ -115,10 +150,13 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 	const [hasSave, setHasSave] = useState(false);
 	const [confirmingExit, setConfirmingExit] = useState(false);
 	const [controlsOpen, setControlsOpen] = useState(false);
+	const [comboActive, setComboActive] = useState(false);
 	const [toast, setToast] = useState(null);
 
 	const blobs = useRef([]);
 	const exiting = useRef(false);
+	const padHeld = useRef({start: false, select: false});
+	const comboTimer = useRef(null);
 	const stateRef = useRef({overlayOpen: false, settingsOpen: false});
 	stateRef.current = {overlayOpen, settingsOpen, pickerOpen: pickerIndex !== null, controlsOpen, confirmingExit, error, unsupported};
 
@@ -235,6 +273,9 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 	// While playing, Spotlight is paused so the arrow/OK keys reach EmulatorJS instead of moving
 	// focus; it resumes only while the overlay is open.
 	const openOverlay = useCallback(() => {
+		clearTimeout(comboTimer.current);
+		comboTimer.current = null;
+		setComboActive(false);
 		ejs.setPaused(true);
 		Spotlight.resume();
 		setOverlayOpen(true);
@@ -326,6 +367,43 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 			window.removeEventListener('keyup', onKey, true);
 		};
 	}, [controlsOpen, closeControls]);
+
+	const updateCombo = useCallback(() => {
+		const s = stateRef.current;
+		const active = padHeld.current.start && padHeld.current.select && !s.overlayOpen && !s.settingsOpen && !s.controlsOpen;
+		setComboActive(active);
+		if (!active) {
+			clearTimeout(comboTimer.current);
+			comboTimer.current = null;
+		} else if (!comboTimer.current) {
+			comboTimer.current = setTimeout(() => {
+				comboTimer.current = null;
+				openOverlay();
+			}, MENU_COMBO_HOLD);
+		}
+	}, [openOverlay]);
+
+	useEffect(() => () => clearTimeout(comboTimer.current), []);
+
+	// In the game and on the controller screen EmulatorJS reads the pad itself, so only the menus
+	// take it from here.
+	const onPadButton = useCallback((index, pressed) => {
+		if (index === PAD.START || index === PAD.SELECT) {
+			padHeld.current[index === PAD.START ? 'start' : 'select'] = pressed;
+			updateCombo();
+		}
+		const s = stateRef.current;
+		if (!pressed || s.controlsOpen || !(s.overlayOpen || s.settingsOpen)) return;
+		if (index === PAD.CANCEL) {
+			if (s.pickerOpen) closePicker();
+			else if (s.settingsOpen) closeSettings();
+			else closeOverlay();
+		} else if (PAD_KEYS[index]) {
+			pressKey(PAD_KEYS[index]);
+		}
+	}, [updateCombo, closePicker, closeSettings, closeOverlay]);
+
+	useGamepadButtons(onPadButton);
 
 	// Pause Spotlight once the game is running (resumed by the overlay).
 	useEffect(() => {
@@ -549,6 +627,8 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 					))}
 				</ListPanel>
 			) : null}
+
+			{comboActive ? <HoldIndicator /> : null}
 
 			{toast ? <div key={toast.key} className={css.toast}>{toast.message}</div> : null}
 		</div>

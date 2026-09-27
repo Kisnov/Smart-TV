@@ -237,3 +237,45 @@
 	z-index: 60;
 	pointer-events: none;
 }
+
+// Sized against the text the way Core sizes its 18px ring and 10px gap against 13px text.
+.holdPill {
+	position: absolute;
+	left: 50%;
+	bottom: 75px;
+	-webkit-transform: translateX(-50%);
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	padding: 19px 30px;
+	border-radius: 38px;
+	background: rgba(0, 0, 0, 0.6);
+	color: #fff;
+	font-size: 24px;
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+.holdRing {
+	flex: 0 0 auto;
+	width: 1.38em;
+	height: 1.38em;
+	margin-right: 0.77em;
+	-webkit-transform: rotate(-90deg);
+	transform: rotate(-90deg);
+
+	circle {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2;
+		stroke-dasharray: 50.27;
+		stroke-dashoffset: 50.27;
+		animation: holdFill 5s linear forwards;
+	}
+}
+
+@keyframes holdFill {
+	to {
+		stroke-dashoffset: 0;
+	}
+}

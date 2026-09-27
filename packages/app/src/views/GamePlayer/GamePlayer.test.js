@@ -31,6 +31,8 @@ jest.mock('@enact/spotlight/SpotlightContainerDecorator', () => () => {
 	const React = require('react');
 	return ({className, children}) => React.createElement('div', {className}, children);
 });
+let mockPadButton = null;
+jest.mock('../../hooks/useGamepadButtons', () => (onButton) => { mockPadButton = onButton; });
 jest.mock('../../components/AdminMessageDialog', () => () => null);
 jest.mock('../../components/LoadingSpinner', () => () => null);
 jest.mock('../../services/serverLogger', () => ({error: jest.fn(), LOG_CATEGORIES: {APP: 'app'}}));
@@ -72,9 +74,12 @@ const onBack = jest.fn();
 const backHandler = {current: null};
 
 // Spotlight pauses once the game is ready, so that is the signal a running game has come up.
-const openMenu = async ({started = true} = {}) => {
+const startGame = async ({started = true} = {}) => {
 	render(<GamePlayer library={{Id: 'lib'}} game={game} startFresh={false} onBack={onBack} backHandlerRef={backHandler} />);
 	await waitFor(() => expect(started ? Spotlight.pause : ejs.startEmulator).toHaveBeenCalled());
+};
+const openMenu = async (options) => {
+	await startGame(options);
 	act(() => { backHandler.current(); });
 };
 const rows = () => screen.getAllByText(/^(Resume|Back|Save state|Save & exit|Load state|Exit)$/).map((r) => r.textContent);
@@ -339,5 +344,98 @@ test('Close on the mapping screen goes straight back to the game', async () => {
 	fireEvent.keyDown(document.body, {keyCode: 13});
 
 	expect(ejs.setPaused).toHaveBeenLastCalledWith(false);
+	expect(screen.queryByText('Resume')).toBeNull();
+});
+
+const pressPad = (index, pressed = true) => act(() => { mockPadButton(index, pressed); });
+const keysSent = () => {
+	const sent = [];
+	const record = (ev) => sent.push(`${ev.type} ${ev.keyCode}`);
+	window.addEventListener('keydown', record);
+	window.addEventListener('keyup', record);
+	return {sent, stop: () => {
+		window.removeEventListener('keydown', record);
+		window.removeEventListener('keyup', record);
+	}};
+};
+
+test('holding Start and Select for five seconds opens the pause menu, with the pill meanwhile', async () => {
+	jest.useFakeTimers();
+	await startGame();
+
+	pressPad(9);
+	pressPad(8);
+	expect(screen.getByText('Hold to open menu')).toBeTruthy();
+
+	await act(async () => { jest.advanceTimersByTime(4900); });
+	expect(screen.queryByText('Resume')).toBeNull();
+
+	await act(async () => { jest.advanceTimersByTime(100); });
+	expect(screen.getByText('Resume')).toBeTruthy();
+	expect(screen.queryByText('Hold to open menu')).toBeNull();
+});
+
+test('letting go early cancels the hold', async () => {
+	jest.useFakeTimers();
+	await startGame();
+	pressPad(9);
+	pressPad(8);
+
+	await act(async () => { jest.advanceTimersByTime(2000); });
+	pressPad(8, false);
+	await act(async () => { jest.advanceTimersByTime(5000); });
+
+	expect(screen.queryByText('Hold to open menu')).toBeNull();
+	expect(screen.queryByText('Resume')).toBeNull();
+});
+
+test('the hold does nothing while a menu is open', async () => {
+	await openMenu();
+
+	pressPad(9);
+	pressPad(8);
+
+	expect(screen.queryByText('Hold to open menu')).toBeNull();
+});
+
+test('the pad moves and selects in the pause menu the way the remote does', async () => {
+	await openMenu();
+	const keys = keysSent();
+
+	pressPad(13);
+	pressPad(0);
+	keys.stop();
+
+	expect(keys.sent).toEqual(['keydown 40', 'keyup 40', 'keydown 13', 'keyup 13']);
+});
+
+test('the pad cancel button backs out of the picker, the settings, then the pause menu', async () => {
+	await openSettings();
+	fireEvent.click(rowOf('Shader'));
+
+	pressPad(1);
+	expect(rowOf('Shader')).toBeTruthy();
+
+	pressPad(1);
+	expect(screen.getByText('Resume')).toBeTruthy();
+
+	pressPad(1);
+	expect(screen.queryByText('Resume')).toBeNull();
+	expect(ejs.setPaused).toHaveBeenLastCalledWith(false);
+});
+
+test('the pad is left to EmulatorJS in the game and on the controller screen', async () => {
+	await startGame();
+	const keys = keysSent();
+
+	pressPad(13);
+	act(() => { backHandler.current(); });
+	fireEvent.click(screen.getByText('Controller settings'));
+	pressPad(13);
+	pressPad(1);
+	keys.stop();
+
+	expect(keys.sent).toEqual([]);
+	expect(ejs.controlInput).not.toHaveBeenCalled();
 	expect(screen.queryByText('Resume')).toBeNull();
 });
