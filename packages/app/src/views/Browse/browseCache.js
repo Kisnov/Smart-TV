@@ -141,6 +141,8 @@ export const cancelPendingCacheSave = () => {
 export const saveBrowseCache = (rowData, libraries, featuredItems, {serverUrl, userId}) => {
 	const signature = cacheSignature(rowData);
 	if (signature === lastSignature) return;
+	// Read now, since a draw that lands before the write runs would otherwise save its key with these items.
+	const featuredConfigKey = memoryCache.featuredConfigKey;
 
 	cancelPendingCacheSave();
 	saveTimer = setTimeout(async () => {
@@ -154,7 +156,7 @@ export const saveBrowseCache = (rowData, libraries, featuredItems, {serverUrl, u
 				serverUrl,
 				userId,
 				rowConfigKey: memoryCache.rowConfigKey,
-				featuredConfigKey: memoryCache.featuredConfigKey
+				featuredConfigKey
 			});
 			lastSignature = signature;
 		} catch (e) {

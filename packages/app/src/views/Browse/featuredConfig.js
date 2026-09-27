@@ -1,6 +1,7 @@
-// The settings that decide what the media bar holds. A setting missing here won't redraw the bar
-// when it changes.
-export const featuredConfigKey = (settings = {}) => JSON.stringify([
+// The settings that decide what the media bar holds, and whether it draws from every server. A
+// setting missing here won't redraw the bar when it changes.
+export const featuredConfigKey = (settings = {}, unifiedMode) => JSON.stringify([
+	unifiedMode === true,
 	settings.useMoonfinPlugin === true,
 	settings.mediaBarSourceType || 'library',
 	settings.featuredContentType ?? null,

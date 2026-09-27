@@ -52,7 +52,7 @@ const useBrowseData = ({
 
 	const fetchFreshFeaturedItems = useCallback(async (fallbackItems = null) => {
 		const s = settingsRef.current;
-		const configKey = featuredConfigKey(s);
+		const configKey = featuredConfigKey(s, unifiedMode);
 		// The bar already holds a set for these settings, and a new random draw would only reshuffle it.
 		if (memoryCache.featuredItems?.length > 0 && memoryCache.featuredConfigKey === configKey) {
 			return null;

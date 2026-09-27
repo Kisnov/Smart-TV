@@ -27,6 +27,10 @@ describe('featuredConfigKey', () => {
 			.toBe(featuredConfigKey({...base, mediaBarSourceType: 'library'}));
 	});
 
+	test('unified mode changes the key', () => {
+		expect(featuredConfigKey(base, true)).not.toBe(featuredConfigKey(base, false));
+	});
+
 	// Each of these changes what the bar holds.
 	test.each([
 		['useMoonfinPlugin', {useMoonfinPlugin: true}],
