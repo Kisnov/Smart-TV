@@ -240,12 +240,28 @@ describe('remote control', () => {
 	test('logout cancels pending Search navigation and text', async () => {
 		let stopped;
 		player.current.stop.mockImplementation(() => new Promise((resolve) => { stopped = resolve; }));
-		const opening = command('GoToSearch');
+		const opening = command('GoToSearch', {MoonfinInputId: 'phone'});
 		remoteControl.reset();
 		stopped();
 		await opening;
-		await command('SendString', {String: 'ignored'});
+		await command('SendString', {String: 'ignored', MoonfinInputId: 'phone', MoonfinRevision: '1'});
 		expect(app.current.goToSearch).not.toHaveBeenCalled();
+	});
+
+	test('plain text from another controller opens Search with it', async () => {
+		await command('SendString', {String: 'alien'});
+		expect(player.current.stop).toHaveBeenCalledTimes(1);
+		const search = app.current.goToSearch.mock.calls[0][0];
+		const changed = jest.fn();
+		search.attach(changed);
+		expect(changed).toHaveBeenCalledWith('alien');
+	});
+
+	test('a phone edit after its search ended does not reopen Search', async () => {
+		await command('GoToSearch', {MoonfinInputId: 'phone'});
+		app.current.goToSearch.mock.calls[0][0].close();
+		await command('SendString', {String: 'late', MoonfinInputId: 'phone', MoonfinRevision: '1'});
+		expect(app.current.goToSearch).toHaveBeenCalledTimes(1);
 	});
 
 	test('queues after what plays for PlayNext and at the end for PlayLast or Enqueue', async () => {

@@ -159,6 +159,19 @@ const handlePlaystate = async (data) => {
 	}
 };
 
+const openRemoteSearch = async (search) => {
+	if (!app()?.goToSearch) return;
+	remoteSearch?.close();
+	remoteSearch = search;
+	try {
+		await player()?.stop();
+		if (search.active) app()?.goToSearch(search);
+	} catch (error) {
+		search.close();
+		throw error;
+	}
+};
+
 const handleGeneralCommand = async (data) => {
 	if (typeof data?.Name !== 'string') return;
 	const args = data.Arguments || {};
@@ -231,22 +244,19 @@ const handleGeneralCommand = async (data) => {
 			await player()?.stop();
 			app()?.goHome();
 			break;
-		case 'gotosearch': {
-			if (!app()?.goToSearch) break;
-			remoteSearch?.close();
-			const search = createRemoteSearch(arg('MoonfinInputId'));
-			remoteSearch = search;
-			try {
-				await player()?.stop();
-				if (search.active) app()?.goToSearch(search);
-			} catch (error) {
-				search.close();
-				throw error;
-			}
+		case 'gotosearch':
+			await openRemoteSearch(createRemoteSearch(arg('MoonfinInputId')));
 			break;
-		}
 		case 'sendstring':
-			remoteSearch?.receive(args);
+			if (remoteSearch?.active) {
+				remoteSearch.receive(args);
+			} else if (arg('MoonfinInputId') == null) {
+				// Another controller's text has no Search to land in yet, so it opens one.
+				// Edits from a phone whose input session ended stay dropped.
+				const search = createRemoteSearch(null);
+				search.receive(args);
+				await openRemoteSearch(search);
+			}
 			break;
 		default:
 			break;
