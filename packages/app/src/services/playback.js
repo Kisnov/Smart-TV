@@ -1262,55 +1262,42 @@ export const reportStop = async (positionTicks) => {
 	// a normal stop supersedes an earlier background stop
 	backgroundStopFired = false;
 
-	if (!currentSession) return;
+	// Let go of the session before the request goes out, so a next item that opens its own while
+	// this stop is in flight keeps it, and nothing reports on this one in the meantime.
+	const session = currentSession;
+	if (!session) return;
+	currentSession = null;
 
 	stopProgressReporting();
 	stopHealthMonitoring();
 
-	try {
-		// Use session's server credentials for cross-server support
-		const api = currentSession.serverCredentials
-			? jellyfinApi.createApiForServer(
-				currentSession.serverCredentials.serverUrl,
-				currentSession.serverCredentials.accessToken,
-				currentSession.serverCredentials.userId
-			)
-			: jellyfinApi.api;
+	// Use session's server credentials for cross-server support
+	const api = session.serverCredentials
+		? jellyfinApi.createApiForServer(
+			session.serverCredentials.serverUrl,
+			session.serverCredentials.accessToken,
+			session.serverCredentials.userId
+		)
+		: jellyfinApi.api;
 
+	try {
 		await api.reportPlaybackStopped({
-			ItemId: currentSession.itemId,
-			PlaySessionId: currentSession.playSessionId,
-			MediaSourceId: currentSession.mediaSourceId,
+			ItemId: session.itemId,
+			PlaySessionId: session.playSessionId,
+			MediaSourceId: session.mediaSourceId,
 			PositionTicks: positionTicks
 		});
-
-		if (currentSession.liveStreamId) {
-			try {
-				await api.closeLiveStream(currentSession.liveStreamId);
-			} catch (closeErr) {
-				console.warn('[playback] Failed to close live stream:', closeErr.message);
-			}
-		}
 	} catch (e) {
 		console.warn('[playback] Failed to report stop:', e.message);
-
-		if (currentSession.liveStreamId) {
-			try {
-				const fallbackApi = currentSession.serverCredentials
-					? jellyfinApi.createApiForServer(
-						currentSession.serverCredentials.serverUrl,
-						currentSession.serverCredentials.accessToken,
-						currentSession.serverCredentials.userId
-					)
-					: jellyfinApi.api;
-				await fallbackApi.closeLiveStream(currentSession.liveStreamId);
-			} catch (closeErr) {
-				console.warn('[playback] Failed to close live stream after stop error:', closeErr.message);
-			}
-		}
 	}
 
-	currentSession = null;
+	if (session.liveStreamId) {
+		try {
+			await api.closeLiveStream(session.liveStreamId);
+		} catch (closeErr) {
+			console.warn('[playback] Failed to close live stream:', closeErr.message);
+		}
+	}
 };
 
 export const startProgressReporting = (getPositionTicks, intervalMs = 10000, getPlayState) => {
