@@ -886,6 +886,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 						try {
 							result = await playback.getPlaybackInfo(item.Id, {
 								...playbackInfoOptions,
+								// Burning in makes this a transcode, which only carries the audio track it asks for.
+								audioStreamIndex: startingAudio?.index,
 								subtitleStreamIndex: initialSubtitleChoice.index
 							});
 							bakedIn = true;
