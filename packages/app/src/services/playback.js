@@ -297,7 +297,7 @@ const buildPlaybackUrl = (itemId, mediaSource, playSessionId, playMethod, creden
 	throw new Error('No playback URL available');
 };
 
-const extractAudioStreams = (mediaSource) => {
+export const extractAudioStreams = (mediaSource) => {
 	if (!mediaSource.MediaStreams) return [];
 	return mediaSource.MediaStreams
 		.filter(s => s.Type === 'Audio')

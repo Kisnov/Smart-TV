@@ -8,6 +8,8 @@ import {useSettings} from '../../context/SettingsContext';
 import {useSeerr} from '../../context/SeerrContext';
 import {useSyncPlay} from '../../context/SyncPlayContext';
 import * as jellyfinApi from '../../services/jellyfinApi';
+import {extractAudioStreams} from '../../services/playback';
+import {initialAudioPosition} from '../Player/initialAudio';
 import ModernDetailContent from './ModernDetailContent';
 import DetailSkeleton from './DetailSkeleton';
 import {formatDuration, getImageUrl, getBackdropId, getLogoUrl} from '../../utils/helpers';
@@ -572,19 +574,13 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		}
 	}, [remoteSubtitleResults, item, effectiveApi, selectedVersionIndex, closeModal, tagWithServerInfo, setItem, setSelectedSubtitleIndex]);
 
-	const handleSelectVersion = useCallback((e) => {
+	const handleSelectVersion = useCallback(async (e) => {
 		const index = parseInt(e.currentTarget.dataset.index, 10);
 		if (isNaN(index) || !item?.MediaSources?.[index]) return;
 		setSelectedVersionIndex(index);
 		const ms = item.MediaSources[index];
-		const versionAudioStreams = ms.MediaStreams?.filter(s => s.Type === 'Audio') || [];
 		const versionSubtitleStreams = ms.MediaStreams?.filter(s => s.Type === 'Subtitle') || [];
-		if (ms.DefaultAudioStreamIndex != null) {
-			const idx = versionAudioStreams.findIndex(s => s.Index === ms.DefaultAudioStreamIndex);
-			setSelectedAudioIndex(idx >= 0 ? idx : 0);
-		} else {
-			setSelectedAudioIndex(0);
-		}
+		setSelectedAudioIndex(await initialAudioPosition(item, extractAudioStreams(ms), settings));
 		// A different version brings its own tracks, so whatever was picked for the old
 		// one no longer stands.
 		subtitleChosenRef.current = false;
@@ -596,7 +592,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 			setSelectedSubtitleIndex(-1);
 		}
 		closeModal();
-	}, [item, closeModal, setSelectedVersionIndex, setSelectedAudioIndex, setSelectedSubtitleIndex]);
+	}, [item, settings, closeModal, setSelectedVersionIndex, setSelectedAudioIndex, setSelectedSubtitleIndex]);
 
 	const handleSeasonSelect = useCallback((ev) => {
 		const seasonId = ev.currentTarget.dataset.seasonId;

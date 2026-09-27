@@ -1,4 +1,5 @@
 import {getSeriesAudioPref} from '../../services/subtitlePrefs';
+import {selectPreferredAudioStream} from '../../utils/audioTrackSelection';
 import {matchSeriesTrackIndex} from '../../utils/seriesTrackPrefs';
 
 /**
@@ -15,4 +16,13 @@ export const resolveSeriesAudio = async (item, audioStreams) => {
 	if (matched === null || matched < 0) return null;
 
 	return audioStreams.find((stream) => stream.index === matched) || null;
+};
+
+/**
+ * Where among these audio tracks the player starts when none is picked, so Details
+ * can show that track.
+ */
+export const initialAudioPosition = async (item, audioStreams, settings) => {
+	const start = await resolveSeriesAudio(item, audioStreams) || selectPreferredAudioStream(audioStreams, settings);
+	return Math.max(0, audioStreams.indexOf(start));
 };

@@ -2,8 +2,9 @@ import {useState, useEffect, useCallback, useMemo, useRef} from 'react';
 import $L from '@enact/i18n/$L';
 
 import * as playback from '../../services/playback';
+import {initialAudioPosition} from '../Player/initialAudio';
 import {fetchTmdbSeasonRatings, resolveSeriesTmdbId, isRatingSourceAllowed} from '../../services/mdblistApi';
-import {getItemSubtitlePref, getSeriesSubtitlePref, getSeriesAudioPref} from '../../services/subtitlePrefs';
+import {getItemSubtitlePref, getSeriesSubtitlePref} from '../../services/subtitlePrefs';
 import {fromServerStream, matchSeriesTrackIndex} from '../../utils/seriesTrackPrefs';
 import {findParentCollections} from './parentCollection';
 import {canScoreSeedLocally, getOnlineRecommendations, getRecommendations, mergeRecommendations} from '../../services/homeRecommendations';
@@ -187,23 +188,8 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 			setSelectedVersionIndex(0);
 			const ms = data.MediaSources?.[0];
 			if (ms) {
-				const initAudioStreams = ms.MediaStreams?.filter(s => s.Type === 'Audio') || [];
 				const initSubtitleStreams = ms.MediaStreams?.filter(s => s.Type === 'Subtitle') || [];
-				// A track remembered for the series shows as active, and only when there
-				// is none does the server's own default stand in.
-				const seriesAudioPref = data.SeriesId ? await getSeriesAudioPref(data.SeriesId) : undefined;
-				const matchedAudio = seriesAudioPref
-					? matchSeriesTrackIndex(initAudioStreams.map(fromServerStream), seriesAudioPref)
-					: null;
-				const rememberedAudioPos = matchedAudio !== null && matchedAudio >= 0
-					? initAudioStreams.findIndex(s => s.Index === matchedAudio)
-					: -1;
-				if (rememberedAudioPos >= 0) {
-					setSelectedAudioIndex(rememberedAudioPos);
-				} else if (ms.DefaultAudioStreamIndex != null) {
-					const idx = initAudioStreams.findIndex(s => s.Index === ms.DefaultAudioStreamIndex);
-					if (idx >= 0) setSelectedAudioIndex(idx);
-				}
+				setSelectedAudioIndex(await initialAudioPosition(data, playback.extractAudioStreams(ms), settingsRef.current));
 				// Show the remembered pick as active so it doesn't look like it needs
 				// reselecting. The per-item index restores the exact track, and an episode
 				// otherwise inherits its series' remembered language.
