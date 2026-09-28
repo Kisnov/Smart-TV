@@ -52,7 +52,7 @@
     "Audiobooks": "Äänikirjat",
     "Authentication": "Todennus",
     "Authentication, PIN code, and parental controls": "Todennus, PIN-koodi ja lapsilukko",
-    "Auto": "Automaattinen",
+    "Auto": "Auto",
     "Auto (match detected device support)": "Automaattinen (tunnistettujen laitteiden tuki)",
     "Auto Advance": "Automaattinen eteneminen",
     "Auto Advance Interval": "Automaattinen Ennakkoväli",
@@ -2102,5 +2102,7 @@
     "Transparent": "Läpinäkyvä",
     "Unable to create recording": "Tallennusta ei voitu luoda",
     "Unable to create series recording": "Sarjatallennusta ei voitu luoda",
-    "Watch channel live": "Katso kanavaa suorana"
+    "Watch channel live": "Katso kanavaa suorana",
+    "Hold the video until styled subtitles are ready so the first lines show": "Pidä video näkyvissä, kunnes tekstitykset ovat valmiit, jotta ensimmäiset rivit näkyvät",
+    "Wait for ASS/SSA subtitles": "Odota ASS/SSA tekstityksiä"
 }
