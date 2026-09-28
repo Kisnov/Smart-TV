@@ -22,6 +22,127 @@ let loaderScript = null;
 // launch can build an emulator straight away instead of downloading the bundle again.
 let loadedConfig = null;
 let EmulatorCtor = null;
+// Stops waiting on the boot in progress, so a teardown doesn't leave its timeout running.
+let abandonBoot = null;
+
+// The PSP core only runs with threads, which this app can't turn on.
+export const needsThreads = (core) => core === 'psp';
+
+// Gives target[key] a stand-in value and returns what puts the original back.
+const shadow = (target, key, value) => {
+	const own = Object.getOwnPropertyDescriptor(target, key);
+	Object.defineProperty(target, key, {value, configurable: true, writable: true});
+	return () => {
+		if (own) Object.defineProperty(target, key, own);
+		else delete target[key];
+	};
+};
+
+const addCleanup = (emu, cleanup) => {
+	emu.moonfinCleanups = emu.moonfinCleanups || [];
+	emu.moonfinCleanups.push(cleanup);
+};
+
+// Runs fn and records on emu how to take off every listener it put on window and document.
+const recordPageListeners = (emu, fn) => {
+	const restore = [window, document].map((target) => {
+		const add = target.addEventListener;
+		return shadow(target, 'addEventListener', function (type, listener, options) {
+			addCleanup(emu, () => target.removeEventListener(type, listener, options));
+			return add.call(this, type, listener, options);
+		});
+	});
+	try {
+		return fn();
+	} finally {
+		restore.forEach((undo) => undo());
+	}
+};
+
+// EmulatorJS and its core leave listeners, the core's script and timers behind, and each of them
+// holds the emulator and its WebAssembly memory. This wraps the class so every emulator it builds
+// can be cleared up by releaseEmulator.
+const makeReleasable = (Ctor) => {
+	const proto = Ctor && Ctor.prototype;
+	if (!proto || proto.moonfinReleasable) return;
+	const wrap = (name, around) => {
+		const run = proto[name];
+		if (typeof run !== 'function') return;
+		proto[name] = function (...args) {
+			return around(this, () => run.apply(this, args));
+		};
+	};
+	wrap('bindListeners', recordPageListeners);
+	// The core watches the battery and polls memory use for its own stats, and neither ever stops.
+	// A TV has no use for either, so the core starts without them.
+	wrap('startGame', (emu, run) => {
+		const restore = [shadow(performance, 'memory', undefined), shadow(navigator, 'getBattery', undefined)];
+		try {
+			return recordPageListeners(emu, run);
+		} finally {
+			restore.forEach((undo) => undo());
+		}
+	});
+	// The core's script stays in the page with a load listener that holds the emulator.
+	wrap('createElement', (emu, run) => {
+		const element = run();
+		if (element && element.tagName === 'SCRIPT') addCleanup(emu, () => element.remove());
+		return element;
+	});
+	proto.moonfinReleasable = true;
+};
+
+// The bundle publishes its class on window before loader.js builds the first emulator from it,
+// so catching that assignment wraps the class before any emulator exists.
+const watchForEmulatorClass = () => {
+	if (window.EmulatorJS) {
+		makeReleasable(window.EmulatorJS);
+		return;
+	}
+	let published;
+	Object.defineProperty(window, 'EmulatorJS', {
+		configurable: true,
+		enumerable: true,
+		get: () => published,
+		set: (value) => {
+			published = value;
+			makeReleasable(value);
+		}
+	});
+};
+
+// EmulatorJS expects the page to be thrown away when a game ends, but this app keeps running,
+// so anything it leaves behind keeps the emulator, its WebAssembly memory and its audio alive.
+const releaseEmulator = (emu) => {
+	try { if (emu.gamepad) emu.gamepad.terminate(); } catch (e) { /* ignore */ }
+	clearInterval(emu.saveSaveInterval);
+	(emu.moonfinCleanups || []).splice(0).forEach((cleanup) => {
+		try { cleanup(); } catch (e) { /* ignore */ }
+	});
+	// Cores with analog sticks get on-screen joysticks, which join a page-wide nipplejs list with
+	// handlers that hold the emulator.
+	try {
+		window.nipplejs.factory
+			.filter((joystick) => emu.elements.parent.contains(joystick.options.zone))
+			.forEach((joystick) => joystick.destroy());
+	} catch (e) { /* ignore */ }
+	if (emu.started) {
+		try { emu.gameManager.toggleMainLoop(0); } catch (e) { /* ignore */ }
+		// EmulatorJS's own exit flushes in-game saves and shuts the core down a second later.
+		try { emu.callEvent('exit'); } catch (e) { /* ignore */ }
+	} else if (!emu.failedToStart && !emu.moonfinReleasesOnStart) {
+		// A boot torn down early keeps loading in the background, so it's released again once it starts.
+		emu.moonfinReleasesOnStart = true;
+		try { emu.on('start', () => releaseEmulator(emu)); } catch (e) { /* ignore */ }
+	}
+	// The core's audio feeds itself on an interval only the core could stop, and it never does.
+	// A core that failed partway through starting can have one too.
+	try {
+		const audio = emu.Module.AL.currentCtx;
+		clearInterval(audio.interval);
+		audio.audioCtx.close().catch(() => {});
+	} catch (e) { /* ignore */ }
+};
 
 // EmulatorJS cores are WebAssembly, which needs Chromium 57+. Older WebViews (webOS 4 and
 // below at Chrome 53, Tizen 4 and below at Chrome 56) lack it entirely, so games can't run
@@ -81,9 +202,8 @@ const emulatorStatusText = () => {
 	return (emu && emu.textElem && emu.textElem.innerText) || null;
 };
 
-// Starts EmulatorJS in the element matching `selector` and resolves once the core is ready.
-// stateBytes is a save state EmulatorJS loads itself once the game has started, since
-// gameManager doesn't exist yet when ready fires.
+// Starts EmulatorJS in the element matching `selector` and resolves once the game is running.
+// stateBytes is a save state EmulatorJS loads itself once the game has started.
 export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, settingsJson, stateBytes, dataPath}) =>
 	new Promise((resolve, reject) => {
 		if (settingsJson) {
@@ -92,8 +212,8 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 
 		const startedAt = Date.now();
 		const dataRoot = dataPath || CDN;
-		// EmulatorJS reports a failed boot by never firing ready, so the reason only shows up as
-		// an uncaught error. Watch the window for as long as the boot runs to keep it.
+		// A boot that dies before EmulatorJS can say so, like a bundle this WebView can't parse,
+		// only shows up as an uncaught error. Watch the window for as long as the boot runs to keep it.
 		const onWindowError = (ev) => logGamesError('window error during emulator boot', {
 			core,
 			message: ev.message || String(ev.error || ''),
@@ -133,23 +253,60 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 		window.EJS_defaultOptions = Object.assign({}, window.EJS_defaultOptions, {'virtual-gamepad': 'disabled'});
 
 		let reused = false;
-		const timer = setTimeout(() => {
+		let settled = false;
+		let timer = null;
+		const finish = (error) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
 			stopWatching();
+			abandonBoot = null;
+			if (error) reject(error);
+			else resolve();
+		};
+		abandonBoot = () => finish(new Error('emulator-destroyed'));
+		timer = setTimeout(() => {
 			// Whatever was cached built an emulator that never started, so drop it and let the
 			// next launch go back through the loader rather than repeat the same dead boot.
 			loadedConfig = null;
 			EmulatorCtor = null;
 			logGamesError('emulator never became ready', {reused, emulatorStatus: emulatorStatusText()});
-			reject(new Error('emulator-load-timeout'));
+			finish(new Error('emulator-load-timeout'));
 		}, READY_TIMEOUT);
-		window.EJS_ready = () => {
+
+		// Ready only means the start button is built, and the core, the game and the save still
+		// have to load after it. The start event is the game running, and every way that can fail
+		// goes through startGameError, which a core that needs threads has already hit by now.
+		const onReady = (emulator) => {
+			if (!emulator) return;
+			if (settled) {
+				releaseEmulator(emulator);
+				return;
+			}
 			clearTimeout(timer);
-			stopWatching();
-			loadedConfig = (window.EJS_emulator && window.EJS_emulator.config) || loadedConfig;
-			EmulatorCtor = (window.EJS_emulator && window.EJS_emulator.constructor) || EmulatorCtor;
+			loadedConfig = emulator.config || loadedConfig;
+			EmulatorCtor = emulator.constructor || EmulatorCtor;
 			logGames('emulator ready', {core, ms: Date.now() - startedAt, reused});
-			resolve();
+			const started = () => {
+				if (settled) return;
+				logGames('emulator started', {core, ms: Date.now() - startedAt, reused});
+				finish();
+			};
+			const failed = (reason) => {
+				if (settled) return;
+				logGamesError('emulator failed to start', {core, reason});
+				finish(new Error('emulator-start-failed'));
+			};
+			const showError = emulator.startGameError;
+			emulator.startGameError = function (message) {
+				showError.call(this, message);
+				failed(message);
+			};
+			emulator.on('start', started);
+			if (emulator.failedToStart) failed(emulatorStatusText());
+			else if (emulator.started) started();
 		};
+		window.EJS_ready = () => onReady(window.EJS_emulator);
 
 		// Once the bundle is parsed a later launch can build the emulator from the cached class
 		// instead of downloading the loader again. loader.js hooks the ready callback up itself
@@ -172,7 +329,7 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 				const emulator = new EmulatorCtor(selector, config);
 				window.EJS_emulator = emulator;
 				window.EJS_adBlocked = (url, del) => emulator.adBlocked(url, del);
-				emulator.on('ready', window.EJS_ready);
+				emulator.on('ready', () => onReady(emulator));
 				reused = true;
 				return;
 			} catch (e) {
@@ -186,11 +343,8 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 		loaderScript = document.createElement('script');
 		loaderScript.src = dataRoot + 'loader.js';
 		// Without this the promise sits on the full timeout when the loader is simply unreachable.
-		loaderScript.onerror = () => {
-			clearTimeout(timer);
-			stopWatching();
-			reject(new Error('emulator-loader-unreachable'));
-		};
+		loaderScript.onerror = () => finish(new Error('emulator-loader-unreachable'));
+		watchForEmulatorClass();
 		document.body.appendChild(loaderScript);
 	});
 
@@ -473,9 +627,10 @@ export const controlInput = (label) => {
 	}
 };
 
-// Tears the emulator down: stops the loop, clears the container, drops EJS globals + loader.
+// Tears the emulator down: releases it, clears the container, drops EJS globals + loader.
 export const destroyEmulator = () => {
-	try { setPaused(true); } catch (e) { /* ignore */ }
+	if (abandonBoot) abandonBoot();
+	if (window.EJS_emulator) releaseEmulator(window.EJS_emulator);
 	try {
 		const el = document.querySelector(window.EJS_player || '#game');
 		if (el) el.innerHTML = '';

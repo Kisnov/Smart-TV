@@ -10,7 +10,7 @@ import TrackOptionRow, {TrackDivider} from '../../components/TrackOptionRow';
 import {GAME_ICON_PATHS} from '../../components/icons/gameIcons';
 import {iconViewBox} from '../../components/icons/iconViewBox';
 import * as gamesApi from '../../services/gamesApi';
-import {isSupported, unsupportedMessage} from '../../utils/emulatorjs';
+import {isSupported, needsThreads, unsupportedMessage} from '../../utils/emulatorjs';
 import {gameDisplayTitle, gameFallbackColor} from '../../utils/gameArt';
 import {loadGameStateWithMigration} from '../../utils/gameSaves';
 import {ModalContainer} from '../../utils/spotlightContainers';
@@ -51,7 +51,8 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 	const [saveReadiness, setSaveReadiness] = useState('checking');
 	const saveCheck = useRef(0);
 	const [related, setRelated] = useState([]);
-	const [showUnsupported, setShowUnsupported] = useState(false);
+	// Why this game can't run here, shown in place of starting it.
+	const [unsupported, setUnsupported] = useState(null);
 	const [corePickerOpen, setCorePickerOpen] = useState(false);
 	const [toast, setToast] = useState(null);
 	const currentGameId = useRef(gameId);
@@ -116,13 +117,13 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 		// BACK closes the core picker first. While the unsupported dialog is open it handles BACK
 		// itself, otherwise the app pops the panel.
 		const handler = () => {
-			if (!corePickerOpen) return showUnsupported;
+			if (!corePickerOpen) return unsupported !== null;
 			closeCorePicker();
 			return true;
 		};
 		backHandlerRef.current = handler;
 		return () => { if (backHandlerRef.current === handler) backHandlerRef.current = null; };
-	}, [backHandlerRef, showUnsupported, corePickerOpen, closeCorePicker]);
+	}, [backHandlerRef, unsupported, corePickerOpen, closeCorePicker]);
 
 	useEffect(() => {
 		if (game) setTimeout(() => Spotlight.focus('game-play-btn'), 0);
@@ -131,7 +132,11 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 	const play = useCallback((fresh) => {
 		if (saveReadiness !== 'absent' && saveReadiness !== 'available') return;
 		if (!isSupported()) {
-			setShowUnsupported(true);
+			setUnsupported(unsupportedMessage());
+			return;
+		}
+		if (needsThreads(game.core)) {
+			setUnsupported($L("PSP games can't run on this TV. The PSP emulator needs multithreading, which isn't available here."));
 			return;
 		}
 		if (onPlay) onPlay(library, game, {fresh});
@@ -142,7 +147,7 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 	}, [saveReadiness, checkSave, game, play]);
 	const handleRestart = useCallback(() => play(true), [play]);
 	const dismissUnsupported = useCallback(() => {
-		setShowUnsupported(false);
+		setUnsupported(null);
 		setTimeout(() => Spotlight.focus('game-play-btn'), 0);
 	}, []);
 	const stopPropagation = useCallback((e) => e.stopPropagation(), []);
@@ -250,9 +255,9 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 			) : null}
 			{toast ? <div key={toast.key} className={css.toast}>{toast.message}</div> : null}
 			<AdminMessageDialog
-				open={showUnsupported}
+				open={unsupported !== null}
 				title={$L('Games')}
-				message={showUnsupported ? unsupportedMessage() : null}
+				message={unsupported}
 				onDismiss={dismissUnsupported}
 			/>
 		</div>

@@ -449,3 +449,12 @@ test('loads EmulatorJS from the path the server resolved', async () => {
 
 	expect(ejs.startEmulator).toHaveBeenCalledWith(expect.objectContaining({dataPath: 'https://server/Moonfin/EmulatorJS/data/'}));
 });
+
+test('a game that fails to start takes EmulatorJS down and says so', async () => {
+	ejs.startEmulator.mockRejectedValue(new Error('emulator-start-failed'));
+
+	render(<GamePlayer library={{Id: 'lib'}} game={game} startFresh={false} onBack={onBack} backHandlerRef={backHandler} />);
+
+	expect(await screen.findByText('Could not start this game on this device.')).toBeTruthy();
+	expect(ejs.destroyEmulator).toHaveBeenCalled();
+});

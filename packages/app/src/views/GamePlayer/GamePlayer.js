@@ -221,6 +221,8 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 			} catch (e) {
 				// Backing out mid-load lands here too, and that is not worth reporting.
 				if (cancelled) return;
+				// EmulatorJS leaves its own error text up, which would sit under this message.
+				ejs.destroyEmulator();
 				serverLogger.error(serverLogger.LOG_CATEGORIES.APP, '[Games] could not start game', {
 					core: game.core,
 					system: game.system,

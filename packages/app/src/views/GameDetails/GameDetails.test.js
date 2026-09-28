@@ -18,7 +18,10 @@ jest.mock('@enact/sandstone/Button', () => {
 	const React = require('react');
 	return ({disabled, onClick, children}) => React.createElement('button', {disabled, onClick}, children);
 });
-jest.mock('../../components/AdminMessageDialog', () => () => null);
+jest.mock('../../components/AdminMessageDialog', () => {
+	const React = require('react');
+	return ({open, message}) => (open ? React.createElement('div', null, message) : null);
+});
 jest.mock('../../components/GameCard', () => () => null);
 jest.mock('../../components/LoadingSpinner', () => () => null);
 jest.mock('../../components/TrackOptionRow', () => {
@@ -36,7 +39,7 @@ jest.mock('../../utils/spotlightContainers', () => {
 });
 jest.mock('../../services/gamesApi', () => ({getGame: jest.fn(), getGames: jest.fn(), gameThumbUrl: () => null, setGameCoreOverride: jest.fn()}));
 jest.mock('../../utils/gameSaves', () => ({loadGameStateWithMigration: jest.fn()}));
-jest.mock('../../utils/emulatorjs', () => ({isSupported: () => true, unsupportedMessage: () => ''}));
+jest.mock('../../utils/emulatorjs', () => ({isSupported: () => true, needsThreads: (core) => core === 'psp', unsupportedMessage: () => ''}));
 
 const library = {Id: 'lib'};
 const game = {id: 'g1', core: 'nes', title: 'Game', system: 'NES'};
@@ -173,4 +176,16 @@ test('back closes the core picker before anything else', async () => {
 
 	expect(handled).toBe(true);
 	expect(screen.queryByText('Cancel')).toBeNull();
+});
+
+test('refuses a PSP game with the reason instead of starting it', async () => {
+	const psp = {...game, core: 'psp', system: 'PSP'};
+	gamesApi.getGame.mockResolvedValue(psp);
+	loadGameStateWithMigration.mockResolvedValue(null);
+	render(<GameDetails library={library} gameId="g1" initialGame={psp} onPlay={onPlay} />);
+
+	fireEvent.click(await screen.findByText('Play'));
+
+	expect(screen.getByText(/PSP games can't run on this TV/)).toBeTruthy();
+	expect(onPlay).not.toHaveBeenCalled();
 });
