@@ -2102,5 +2102,7 @@
     "Music Video Playlists": "Llistes de reproducció de vídeos musicals",
     "Requested by": "Sol·licitat per",
     "Semi-transparent White": "Blanc semitransparent",
-    "Since you watched": "Ja que vas veure"
+    "Since you watched": "Ja que vas veure",
+    "Hold the video until styled subtitles are ready so the first lines show": "Reté el vídeo fins que els subtítols amb estil estiguin a punt perquè es mostrin les primeres línies",
+    "Wait for ASS/SSA subtitles": "Espera els subtítols ASS/SSA"
 }
