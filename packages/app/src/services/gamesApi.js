@@ -22,10 +22,13 @@ const authHeaders = () => {
 };
 const enc = encodeURIComponent;
 
-const jsonRequest = async (path, {method = 'GET', timeout = 20000} = {}) => {
+const jsonRequest = async (path, {method = 'GET', body, timeout = 20000} = {}) => {
+	const headers = {...authHeaders(), Accept: 'application/json'};
+	if (body !== undefined) headers['Content-Type'] = 'application/json';
 	const res = await platformFetch(`${base()}/Moonfin/Games/${path}`, {
 		method,
-		headers: {...authHeaders(), Accept: 'application/json'}
+		headers,
+		body: body === undefined ? undefined : JSON.stringify(body)
 	}, timeout);
 	if (!res.ok) {
 		const err = new Error(`Games API error: ${res.status}`);
@@ -43,6 +46,9 @@ export const getGames = (libraryId, system) =>
 	jsonRequest(`${enc(libraryId)}/Games${system ? `?system=${enc(system)}` : ''}`);
 export const getGame = (libraryId, gameId) =>
 	jsonRequest(`${enc(libraryId)}/Games/${enc(gameId)}`);
+// Pins the current user's core for an arcade game and returns the game as it now plays.
+export const setGameCoreOverride = (libraryId, gameId, core) =>
+	jsonRequest(`${enc(libraryId)}/Games/${enc(gameId)}/Core`, {method: 'PUT', body: {core}});
 
 // Image tags can't send auth headers, so the token rides in the query.
 // kind defaults to boxart but also accepts snap or title.
@@ -103,10 +109,11 @@ export const getBiosBlobUrl = (libraryId, biosId) =>
 
 // The ROM endpoint takes the token in the query, which is how EmulatorJS's own XHR
 // authenticates. Null when there is no token to put there.
-const romDirectUrl = (libraryId, gameId) => {
+const romDirectUrl = (libraryId, gameId, fileName) => {
 	const token = getApiKey();
 	if (!token) return null;
-	return `${base()}/Moonfin/Games/${enc(libraryId)}/Rom/${enc(gameId)}?${getTokenParam()}=${enc(token)}`;
+	const name = fileName ? `/${enc(fileName)}` : '';
+	return `${base()}/Moonfin/Games/${enc(libraryId)}/Rom/${enc(gameId)}${name}?${getTokenParam()}=${enc(token)}`;
 };
 
 // Asks for the first byte only. The endpoint streams with range processing on, so a 206 comes
@@ -131,8 +138,8 @@ const probeRom = async (url) => {
 // streams the file itself and no second copy passes through the app. The Blob URL covers the
 // platforms where a plain fetch to the server does not get through, such as old webOS behind
 // Let's Encrypt, and isBlob tells the caller whether it has a URL to revoke afterwards.
-export const getRomUrl = async (libraryId, gameId) => {
-	const direct = romDirectUrl(libraryId, gameId);
+export const getRomUrl = async (libraryId, gameId, fileName) => {
+	const direct = romDirectUrl(libraryId, gameId, fileName);
 	const probe = direct ? await probeRom(direct) : {ok: false, totalBytes: null};
 	if (probe.totalBytes && probe.totalBytes > MAX_ROM_BYTES) throw romTooLarge(probe.totalBytes);
 	if (probe.ok) return {url: direct, isBlob: false};
@@ -141,29 +148,65 @@ export const getRomUrl = async (libraryId, gameId) => {
 	return {url: await getRomBlobUrl(libraryId, gameId), isBlob: true};
 };
 
-// Save state (binary) keyed per game. Returns null when none exists (404).
-export const getStateBytes = async (gameId) => {
+// Where the server has EmulatorJS load its runtime and cores from: an admin's URL, its own copy,
+// or the CDN. The anonymous player page carries the path it resolved, so it's read from there. A
+// TV that can't reach that path directly, like old webOS behind Let's Encrypt, gets null and
+// stays on the CDN. Resolved once per server.
+let dataPathLookup = null;
+
+const resolveDataPath = async (server) => {
 	try {
-		const res = await fetchWithTimeout(
-			`${base()}/Moonfin/Games/Saves/${enc(gameId)}?kind=state`,
-			{headers: authHeaders()},
-			30000
-		);
-		if (res.status === 404) return null;
+		const page = `${server}/Moonfin/EmulatorJS/player.html`;
+		const res = await platformFetch(page, {}, 10000);
 		if (!res.ok) return null;
-		const buf = await res.arrayBuffer();
-		return buf && buf.byteLength ? new Uint8Array(buf) : null;
+		const match = (await res.text()).match(/EJS_pathtodata\s*=\s*'([^']+)'/);
+		if (!match) return null;
+		const path = new URL(match[1], page).href;
+		const probe = await fetchWithTimeout(`${path}loader.js`, {}, 10000);
+		discardBody(probe);
+		return probe.ok ? path : null;
 	} catch (e) {
 		return null;
 	}
 };
 
-export const putStateBytes = async (gameId, bytes) => {
-	await fetchWithTimeout(`${base()}/Moonfin/Games/Saves/${enc(gameId)}?kind=state`, {
+export const getEmulatorDataPath = () => {
+	const server = base();
+	if (!dataPathLookup || dataPathLookup.server !== server) {
+		dataPathLookup = {server, path: resolveDataPath(server)};
+	}
+	return dataPathLookup.path;
+};
+
+// Null when there's no save (404). Any other failure throws, so a failed read is never
+// mistaken for a missing save.
+export const getStateBytes = async (saveId) => {
+	const res = await fetchWithTimeout(
+		`${base()}/Moonfin/Games/Saves/${enc(saveId)}?kind=state`,
+		{headers: authHeaders()},
+		30000
+	);
+	if (res.status === 404) return null;
+	if (!res.ok) {
+		const err = new Error(`Save fetch error: ${res.status}`);
+		err.status = res.status;
+		throw err;
+	}
+	const buf = await res.arrayBuffer();
+	return buf && buf.byteLength ? new Uint8Array(buf) : null;
+};
+
+export const putStateBytes = async (saveId, bytes) => {
+	const res = await fetchWithTimeout(`${base()}/Moonfin/Games/Saves/${enc(saveId)}?kind=state`, {
 		method: 'PUT',
 		headers: {...authHeaders(), 'Content-Type': 'application/octet-stream'},
 		body: bytes
 	}, 30000);
+	if (!res.ok) {
+		const err = new Error(`Save upload error: ${res.status}`);
+		err.status = res.status;
+		throw err;
+	}
 };
 
 // Settings blob (the EmulatorJS `ejs-settings` JSON, text) synced per user via the proxy.

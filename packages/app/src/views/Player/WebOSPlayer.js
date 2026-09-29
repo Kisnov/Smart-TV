@@ -11,8 +11,9 @@ import useAudioTransport from './audio/useAudioTransport';
 import useLyrics from './audio/useLyrics';
 import {handleAudioFocusKey, exitAudioPanel, nextAudioFocusRow, AUDIO_FOCUS_IDS} from './audio/audioFocus';
 import {detectWebOSVersion, getH264FallbackProfile} from '@moonfin/platform-webos/deviceProfile';
-import {initPgsRenderer, disposePgsRenderer} from '../../utils/pgsRenderer';
+import {initPgsRenderer, initPgsInBandRenderer, disposePgsRenderer} from '../../utils/pgsRenderer';
 import {supportsAssRenderer, initAssCanvasRenderer, disposeAssRenderer, setAssTime, clearAssCanvas} from '../../utils/assRenderer';
+import {waitForAssReady} from '../../utils/assRendererReady';
 import {
 	initLunaAPI,
 	registerAppStateObserver,
@@ -55,7 +56,7 @@ import {createSkipGovernor, chooseCorrection, STALL_DEBOUNCE_MS} from '../../uti
 import {syncLog} from '../../utils/syncLog';
 import {
 	NextEpisodeContainer, CONTROLS_HIDE_DELAY,
-	withTimeout, SEGMENT_FETCH_TIMEOUT
+	withTimeout, SEGMENT_FETCH_TIMEOUT, ASS_READY_WAIT
 } from './PlayerConstants';
 import {
 	toSubtitleLanguage,
@@ -95,6 +96,31 @@ const getWebOSFullscreenRect = () => {
 // request puts the whole group through a round of buffering.
 const GROUP_SEEK_DEBOUNCE_MS = 600;
 
+// Both of these go to PlayerControls as props, so they sit out here and keep one
+// identity instead of being rebuilt on every render.
+const renderInfoPlaybackRows = ({css: c, mediaSource, playMethod}) => {
+	if (playMethod !== 'Transcode') return null;
+	const match = (mediaSource?.TranscodingUrl || '').match(/TranscodeReasons=([^&]+)/);
+	const reason = match
+		? decodeURIComponent(match[1]).split(',').map(r => r.replace(/([A-Z])/g, ' $1').trim()).join(', ')
+		: $L('Unknown');
+	return (
+		<div className={`${c.infoRow} ${c.infoWarning}`}>
+			<span className={c.infoLabel}>{$L('Transcode Reason')}</span>
+			<span className={c.infoValue}>{reason}</span>
+		</div>
+	);
+};
+
+const renderInfoVideoExtra = ({css: c, videoStream}) => (
+	videoStream?.BitDepth ? (
+		<div className={c.infoRow}>
+			<span className={c.infoLabel}>{$L('Bit Depth')}</span>
+			<span className={c.infoValue}>{videoStream.BitDepth}-bit</span>
+		</div>
+	) : null
+);
+
 const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialSubtitleIndex, initialStartPositionTicks, initialQuality, forceTranscode, onEnded, onBack, onGuide, onPlayNext, onSelectPerson, audioPlaylist, videoQueue, liveTvChannels, onPausedChange}) => {
 	const {settings, updateSetting} = useSettings();
 	const {isInGroup, lastCommand} = useSyncPlay();
@@ -132,6 +158,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Mirrors isPaused for the hide timer, which fires outside the render cycle.
 	const isPausedRef = useRef(false);
 	isPausedRef.current = isPaused;
+	// The key handler is rebuilt every render, so the listener reaches it through this
+	// rather than being torn down and re-added every time playback state moves.
+	const keyDownRef = useRef(null);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [duration, setDuration] = useState(0);
 	const [audioStreams, setAudioStreams] = useState([]);
@@ -142,6 +171,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const [subtitleTrackEvents, setSubtitleTrackEvents] = useState(null)
 	const [currentSubtitleText, setCurrentSubtitleText] = useState(null);
 	const [subtitleOffset, setSubtitleOffset] = useState(0);
+	const subtitleOffsetRef = useRef(0);
+	subtitleOffsetRef.current = subtitleOffset;
 	const [controlsVisible, setControlsVisible] = useState(false);
 	const [activeModal, setActiveModal] = useState(null);
 	// Seeded from the advanced playback menu, which picks a cap before playback starts.
@@ -272,9 +303,16 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const lastSeekTimeRef = useRef(0);
 	const mediaUrlRef = useRef(null);
 	const pgsRendererRef = useRef(null);
+	// Invalidates async PGS starts when the user changes track/item before one finishes.
+	const pgsInitGenRef = useRef(0);
+	// Re-runs the PGS setup of the current subtitle, for a seek that left the in band
+	// reader behind the playhead.
+	const pgsInitRef = useRef(null);
 	const assRendererRef = useRef(null);
 	const assCanvasRef = useRef(null);
-	const pendingInitialAssSubtitleRef = useRef(null);
+	// Bumped by every renderer start and teardown, so a start that finishes after a
+	// newer one, or after the player moved on, throws its renderer away.
+	const assInitGenRef = useRef(0);
 	// index of a subtitle the server is currently burning into the stream
 	const burnInSubtitleRef = useRef(null);
 
@@ -471,10 +509,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		return () => window.removeEventListener('resize', handleResize);
 	}, [applyWebOSZoomWindow]);
 
-	const initAssRendererForStream = useCallback(async (stream) => {
+	const initAssRendererForStream = useCallback(async (stream, {waitMs = 0} = {}) => {
 		if (!stream?.isAss || !assCanvasRef.current) {
 			return false;
 		}
+		const generation = ++assInitGenRef.current;
+		const isCurrent = () => generation === assInitGenRef.current;
 
 		try {
 			const assUrl = playback.getAssSubtitleUrl(stream);
@@ -495,18 +535,25 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}).catch(() => setSubtitleTrackEvents(null));
 			});
 
+			if (renderer && !isCurrent()) {
+				disposeAssRenderer(renderer);
+				return false;
+			}
 			if (renderer) {
 				assRendererRef.current = renderer;
 				setSubtitleTrackEvents(null);
 				applyVideoAndAssGeometry();
+				if (waitMs) await waitForAssReady(renderer, waitMs, isCurrent);
 				return true;
 			}
 		} catch (err) {
 			console.error('[Player] ASS init failed, falling back to text', err);
 		}
+		if (!isCurrent()) return false;
 
 		try {
 			const data = await playback.fetchSubtitleData(stream);
+			if (!isCurrent()) return false;
 			if (data && data.TrackEvents) {
 				setSubtitleTrackEvents(data.TrackEvents);
 			} else {
@@ -518,6 +565,57 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		return false;
 	}, [applyVideoAndAssGeometry]);
+
+	// Both the first use of a subtitle and a change away from another one land here, the
+	// same way the ASS renderer does, so a PGS track can be picked at any point.
+	const initPgsRendererForStream = useCallback(async (stream) => {
+		if (!stream?.isImageBased || !videoRef.current) return false;
+		const generation = ++pgsInitGenRef.current;
+		const isCurrent = () => generation === pgsInitGenRef.current;
+
+		disposePgsRenderer(pgsRendererRef.current);
+		pgsRendererRef.current = null;
+		pgsInitRef.current = null;
+		try {
+			let renderer = stream.inBand ?
+				await initPgsInBandRenderer(videoRef.current, stream, {startTime: videoRef.current.currentTime, timeOffset: -subtitleOffsetRef.current}) :
+				await initPgsRenderer(videoRef.current, stream);
+			if (!isCurrent()) {
+				if (renderer) disposePgsRenderer(renderer);
+				return false;
+			}
+			// Keep Jellyfin's sidecar URL as a lazy fallback. Merely carrying the URL
+			// does not start extraction; it is fetched only if the range-demux path
+			// cannot read this Matroska (missing Cues, unsupported layout, no Range).
+			if (!renderer && stream.inBand && stream.deliveryUrl) {
+				console.warn('[Player] In-band PGS unavailable, falling back to sidecar');
+				renderer = await initPgsRenderer(videoRef.current, stream);
+				if (!isCurrent()) {
+					if (renderer) disposePgsRenderer(renderer);
+					return false;
+				}
+			}
+			if (!renderer) {
+				console.error('[Player] PGS renderer returned null');
+				setSubtitleTrackEvents(null);
+				return false;
+			}
+			// Moonfin positive offset means delay the subtitle; libpgs positive offset
+			// means render it early, so the signs are intentionally opposite.
+			renderer.timeOffset = -subtitleOffsetRef.current;
+			pgsRendererRef.current = renderer;
+			// libpgs cannot rewind its subtitle list, so a seek back behind the data it has
+			// already parsed is answered with a fresh renderer.
+			pgsInitRef.current = renderer.needsRestart ? () => initPgsRendererForStream(stream) : null;
+			setSubtitleTrackEvents(null);
+			return true;
+		} catch (err) {
+			if (!isCurrent()) return false;
+			console.error('[Player] PGS renderer failed:', err);
+			setSubtitleTrackEvents(null);
+			return false;
+		}
+	}, []);
 
 	useEffect(() => {
 		const init = async () => {
@@ -703,6 +801,15 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			setVideoDisplayAspectRatio(null);
 			setDecodedAspectRatio(null);
 			burnInSubtitleRef.current = null;
+			// The player isn't remounted between items, and a next item with subtitles off
+			// or burned in never reaches loadSubtitleData to clear these.
+			pgsInitGenRef.current++;
+			disposePgsRenderer(pgsRendererRef.current);
+			pgsRendererRef.current = null;
+			pgsInitRef.current = null;
+			disposeAssRenderer(assRendererRef.current);
+			assRendererRef.current = null;
+			clearAssCanvas(assCanvasRef.current);
 
 			resetPopups(); // eslint-disable-line no-use-before-define
 			setNextEpisode(null);
@@ -869,21 +976,26 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 				// Load subtitle data or renderer for the selected stream.
 				const loadSubtitleData = async (sub) => {
+					pgsInitGenRef.current++;
 					disposePgsRenderer(pgsRendererRef.current);
 					pgsRendererRef.current = null;
+					pgsInitRef.current = null;
+					assInitGenRef.current++;
 					disposeAssRenderer(assRendererRef.current);
 					assRendererRef.current = null;
 					clearAssCanvas(assCanvasRef.current);
-					pendingInitialAssSubtitleRef.current = null;
 
 					const supportsAss = sub && sub.isAss && supportsAssRenderer();
 					if (supportsAss) {
-						const hasReadyVideoSource = !!(videoRef.current && (videoRef.current.currentSrc || videoRef.current.src));
-						if (!hasReadyVideoSource) {
-							pendingInitialAssSubtitleRef.current = sub;
-							setSubtitleTrackEvents(null);
+						// The canvas is always mounted, so the renderer boots alongside the rest of
+						// the start. Its worker fetches and parses the whole track and its fonts,
+						// which takes seconds on a slow TV, so the start only waits on it when the
+						// viewer would rather not miss the first lines.
+						setSubtitleTrackEvents(null);
+						if (settings.waitForAssSubtitles) {
+							await initAssRendererForStream(sub, {waitMs: ASS_READY_WAIT});
 						} else {
-							await initAssRendererForStream(sub);
+							initAssRendererForStream(sub);
 						}
 					} else if (sub && sub.isTextBased) {
 						try {
@@ -898,24 +1010,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 							setSubtitleTrackEvents(null);
 						}
 					} else if (sub && sub.isImageBased && settings.enablePgsRendering) {
-						if (videoRef.current) {
-							try {
-								const renderer = await initPgsRenderer(videoRef.current, sub);
-								if (renderer) {
-									pgsRendererRef.current = renderer;
-									setSubtitleTrackEvents(null);
-								} else {
-									console.error('[Player] PGS renderer returned null');
-									setSubtitleTrackEvents(null);
-								}
-							} catch (err) {
-								console.error('[Player] PGS renderer failed:', err);
-								setSubtitleTrackEvents(null);
-							}
-						} else {
-							console.error('[Player] PGS: videoRef is null');
-							setSubtitleTrackEvents(null);
-						}
+						await initPgsRendererForStream(sub);
 					} else {
 						setSubtitleTrackEvents(null);
 					}
@@ -935,6 +1030,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					// nothing to fetch and render on top of it.
 					if (!initialSubtitleChoice.isBurnIn) await loadSubtitleData(initialSubtitleChoice);
 				}
+				// Waiting on the subtitles can outlast this item, and whatever replaced it owns
+				// the player now.
+				if (cancelled) return;
 
 				let displayTitle = item.Name;
 				let displaySubtitle = '';
@@ -987,7 +1085,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					setError(err.message || $L('Failed to load media'));
 				}
 			} finally {
-				setIsLoading(false);
+				if (!cancelled) setIsLoading(false);
 			}
 		};
 
@@ -995,6 +1093,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		return () => {
 			cancelled = true;
+			assInitGenRef.current++; // eslint-disable-line react-hooks/exhaustive-deps
 			console.log('[Player] Cleanup running - unmounting or re-rendering');
 
 			if (isCleaningUpRef.current) {
@@ -1005,7 +1104,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
 				if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
 				clearTimeout(scrubSettleTimerRef.current);
+				pgsInitGenRef.current++; // eslint-disable-line react-hooks/exhaustive-deps
 				disposePgsRenderer(pgsRendererRef.current);
+				pgsInitRef.current = null;
 				disposeAssRenderer(assRendererRef.current);
 				clearAssCanvas(assCanvas);
 				return;
@@ -1158,6 +1259,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			seekDebounceTimerRef.current = setTimeout(() => {
 				lastSeekTimeRef.current = Date.now();
 				if (healthMonitorRef.current) healthMonitorRef.current.reset();
+				// The last timeupdate is from before the seek, and a scrub's bar falls back to it.
+				setCurrentTime(newTime);
 				try {
 					videoRef.current.currentTime = newTime;
 				} catch (e) {
@@ -1167,6 +1270,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		} else if (videoRef.current) {
 			lastSeekTimeRef.current = Date.now();
 			if (healthMonitorRef.current) healthMonitorRef.current.reset();
+			setCurrentTime(newTime);
 			try {
 				videoRef.current.currentTime = newTime;
 			} catch (e) {
@@ -1182,6 +1286,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		const clampedTicks = Math.max(0, Math.min(ticks, maxTicks));
 		positionRef.current = clampedTicks;
 		lastSeekTargetRef.current = null;
+		// Same as seekByOffset, or committing a held scrub shows where it started.
+		setCurrentTime(clampedTicks / 10000000);
 		if (playMethod === 'Transcode') {
 			lastSeekTimeRef.current = Date.now();
 			if (healthMonitorRef.current) healthMonitorRef.current.reset();
@@ -1227,6 +1333,18 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (!pending || !videoRef.current || videoRef.current.seeking) return;
 		if (seekLanded(pending.from, pending.target, syncPlaySample().positionTicks)) settleGroupSeek();
 	}, [settleGroupSeek, syncPlaySample]);
+
+	const handleSeeked = useCallback(() => {
+		// libpgs keeps an ascending list of subtitle timestamps, so a seek back behind
+		// the data already handed to it needs a fresh renderer rather than a seek.
+		const renderer = pgsRendererRef.current;
+		if (renderer?.needsRestart && renderer.needsRestart(videoRef.current?.currentTime || 0)) {
+			disposePgsRenderer(renderer);
+			pgsRendererRef.current = null;
+			pgsInitRef.current?.();
+		}
+		settleGroupSeekIfLanded();
+	}, [settleGroupSeekIfLanded]);
 
 	// A seek on the group's behalf. The server holds the group until this set
 	// reports Ready, so the report waits for the seek to land. A Seek command
@@ -1597,15 +1715,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				});
 			}
 		}
-
-		const pendingInitialAssSub = pendingInitialAssSubtitleRef.current;
-		if (pendingInitialAssSub && supportsAssRenderer()) {
-			pendingInitialAssSubtitleRef.current = null;
-			initAssRendererForStream(pendingInitialAssSub).catch((err) => {
-				console.error('[Player] Deferred ASS init failed', err);
-			});
-		}
-	}, [initAssRendererForStream]);
+	}, []);
 
 	const handlePlay = useCallback(() => {
 		setIsPaused(false);
@@ -1912,11 +2022,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			onTimeUpdate: handleTimeUpdate,
 			onWaiting: handleWaiting,
 			onPlaying: handlePlaying,
-			onSeeked: settleGroupSeekIfLanded,
+			onSeeked: handleSeeked,
 			onEnded: handleEnded,
 			onError: handleError,
 		};
-	}, [handleLoadedMetadata, handlePlay, handlePause, handleTimeUpdate, handleWaiting, handlePlaying, settleGroupSeekIfLanded, handleEnded, handleError]);
+	}, [handleLoadedMetadata, handlePlay, handlePause, handleTimeUpdate, handleWaiting, handlePlaying, handleSeeked, handleEnded, handleError]);
 
 	const teardownPlayback = useCallback(async () => {
 		cancelNextEpisodeCountdown();
@@ -2147,12 +2257,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const applySubtitleSelection = useCallback(async (index, streamList = subtitleStreams, shouldClose = true) => {
 		playback.updateCurrentSession({subtitleStreamIndex: index});
 
+		pgsInitGenRef.current++;
 		disposePgsRenderer(pgsRendererRef.current);
 		pgsRendererRef.current = null;
+		pgsInitRef.current = null;
+		assInitGenRef.current++;
 		disposeAssRenderer(assRendererRef.current);
 		assRendererRef.current = null;
 		clearAssCanvas(assCanvasRef.current);
-		pendingInitialAssSubtitleRef.current = null;
 
 		if (index === -1) {
 			setSelectedSubtitleIndex(-1);
@@ -2204,22 +2316,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					setSubtitleTrackEvents(null);
 				}
 			} else if (stream && stream.isImageBased && settings.enablePgsRendering) {
-				if (videoRef.current) {
-					try {
-						const renderer = await initPgsRenderer(videoRef.current, stream, {
-							opacity: settings.subtitleOpacity,
-							scale: 1.0
-						});
-						if (renderer) {
-							pgsRendererRef.current = renderer;
-							setSubtitleTrackEvents(null);
-						} else {
-							setSubtitleTrackEvents(null);
-						}
-					} catch (err) {
-						setSubtitleTrackEvents(null);
-					}
-				}
+				await initPgsRendererForStream(stream);
 			} else {
 				setSubtitleTrackEvents(null);
 			}
@@ -2231,7 +2328,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (shouldClose) {
 			closeModal();
 		}
-	}, [item, subtitleStreams, closeModal, settings.enablePgsRendering, settings.subtitleOpacity, initAssRendererForStream, reloadWithSubtitleIndex]);
+	}, [item, subtitleStreams, closeModal, settings.enablePgsRendering, initAssRendererForStream, initPgsRendererForStream, reloadWithSubtitleIndex]);
 
 	const handleOpenRemoteSubtitleSearch = useCallback(async () => {
 		if (!item?.Id) return;
@@ -2396,7 +2493,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		},
 		playPause: handlePlayPause,
 		stop: handleBack,
-		release: teardownPlayback,
+		// Swaps in place the way Next Up does. The full teardown behind Back makes the next
+		// load sit out the webOS decoder release wait, about three seconds.
+		release: async () => {
+			cancelNextEpisodeCountdown();
+			await playback.reportStop(videoRef.current ? Math.floor(videoRef.current.currentTime * 10000000) : positionRef.current);
+		},
 		seek: (ticks) => {
 			dropScrub();
 			if (!groupSeekTo(ticks)) seekToTicks(ticks);
@@ -2565,7 +2667,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	}, [handleButtonAction]);
 
 	const handleSubtitleOffsetChange = useCallback((newOffset) => {
+		subtitleOffsetRef.current = newOffset;
 		setSubtitleOffset(newOffset);
+		if (pgsRendererRef.current) pgsRendererRef.current.timeOffset = -newOffset;
 	}, []);
 
 	const stopPropagation = useCallback((e) => {
@@ -2869,9 +2973,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 			// Up/Down arrow navigation between rows when controls are visible
 			if (controlsVisible && !activeModal) {
+				// Any key restarts the hide timer, or they hide while someone moves along the
+				// buttons and the next Left or Right seeks.
+				showControls();
+
 				if (key === 'ArrowUp' || e.keyCode === 38) {
 					e.preventDefault();
-					showControls();
 					setFocusRow(prev => {
 						if (prev === 'bottom') return !isLiveTV ? 'progress' : 'bottom';
 						if (prev === 'progress') {
@@ -2884,7 +2991,6 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				}
 				if (key === 'ArrowDown' || e.keyCode === 40) {
 					e.preventDefault();
-					showControls();
 					setFocusRow(prev => {
 						if (prev === 'top') return isLiveTV ? (bottomButtons.length > 0 ? 'bottom' : 'top') : 'progress';
 						if (prev === 'progress') {
@@ -2898,9 +3004,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		};
 
-		window.addEventListener('keydown', handleKeyDown, true);
-		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, isPaused, handlePlayPause, handleForward, handleRewind, settings.seekStep, scrubBy, resumeHeldScrub, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, carouselOpenRef, openCarousel]);
+		keyDownRef.current = handleKeyDown;
+	});
+
+	useEffect(() => {
+		const onKeyDown = (e) => keyDownRef.current?.(e);
+		window.addEventListener('keydown', onKeyDown, true);
+		return () => window.removeEventListener('keydown', onKeyDown, true);
+	}, []);
 
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;
 	const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
@@ -3099,37 +3210,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				handleSubtitleOffsetChange={handleSubtitleOffsetChange}
 				closeModal={closeModal}
 				stopPropagation={stopPropagation}
-				// eslint-disable-next-line react/jsx-no-bind
-				renderInfoPlaybackRows={({css: c, mediaSource, playMethod: pm}) => {
-					const getTranscodeReason = () => {
-						if (pm !== 'Transcode') return null;
-						const url = mediaSource?.TranscodingUrl || '';
-						if (url.includes('TranscodeReasons=')) {
-							const match = url.match(/TranscodeReasons=([^&]+)/);
-							if (match) {
-								return decodeURIComponent(match[1]).split(',')
-									.map(r => r.replace(/([A-Z])/g, ' $1').trim())
-									.join(', ');
-							}
-						}
-						return $L('Unknown');
-					};
-					return pm === 'Transcode' ? (
-						<div className={`${c.infoRow} ${c.infoWarning}`}>
-							<span className={c.infoLabel}>{$L('Transcode Reason')}</span>
-							<span className={c.infoValue}>{getTranscodeReason()}</span>
-						</div>
-					) : null;
-				}}
-				// eslint-disable-next-line react/jsx-no-bind
-				renderInfoVideoExtra={({css: c, videoStream}) => (
-					videoStream?.BitDepth ? (
-						<div className={c.infoRow}>
-							<span className={c.infoLabel}>{$L('Bit Depth')}</span>
-							<span className={c.infoValue}>{videoStream.BitDepth}-bit</span>
-						</div>
-					) : null
-				)}
+				renderInfoPlaybackRows={renderInfoPlaybackRows}
+				renderInfoVideoExtra={renderInfoVideoExtra}
 			/>}
 		</div>
 	);

@@ -1,5 +1,6 @@
 import * as systemVolume from './systemVolume';
 import {KEYS} from '../utils/keys';
+import {createRemoteSearch} from './remoteSearch';
 
 // Answers another client driving this one through the server: play state, volume, a message, the
 // d-pad, home, and things sent to play. The server only offers the commands named here.
@@ -14,6 +15,8 @@ export const SUPPORTED_COMMANDS = [
 	'SetRepeatMode',
 	'SetShuffleQueue',
 	'GoHome',
+	'GoToSearch',
+	'SendString',
 	'VolumeUp',
 	'VolumeDown',
 	'MoveUp',
@@ -33,6 +36,8 @@ const REPEAT_MODES = {repeatall: 'all', repeatone: 'one'};
 let appRef = null;
 let playerRef = null;
 let unbindSocket = null;
+let remoteSearch = null;
+let navigationGeneration = 0;
 
 export const setAppControls = (ref) => {
 	appRef = ref;
@@ -59,11 +64,13 @@ export const releasePlayer = async () => {
 
 const clampVolume = (value) => Math.min(100, Math.max(0, value));
 
-// Some senders give a fraction of one and others a level out of a hundred.
+// Session commands send a percentage, so 1 means 1%. Only a value between 0 and 1 is read as a
+// fraction.
 const normalizeVolume = (raw) => {
-	const parsed = parseFloat(raw);
-	const value = isFinite(parsed) ? parsed : 100;
-	return clampVolume(value <= 1 ? value * 100 : value);
+	if (typeof raw !== 'string' || !raw.trim()) return null;
+	const value = Number(raw);
+	if (!Number.isFinite(value)) return null;
+	return clampVolume(value > 0 && value < 1 ? value * 100 : value);
 };
 
 const toInt = (raw) => {
@@ -116,6 +123,11 @@ const pressKey = (keyCode) => {
 	});
 };
 
+// A press that wakes the screensaver stops there, so it can't act on a page the viewer can't see.
+const navigate = (keyCode) => {
+	if (!app()?.wakeScreensaver?.()) pressKey(keyCode);
+};
+
 const handlePlaystate = async (data) => {
 	const target = player();
 	if (!target || typeof data?.Command !== 'string') return;
@@ -155,6 +167,20 @@ const handlePlaystate = async (data) => {
 	}
 };
 
+const openRemoteSearch = async (search) => {
+	navigationGeneration++;
+	if (!app()?.goToSearch) return;
+	remoteSearch?.close();
+	remoteSearch = search;
+	try {
+		await player()?.stop();
+		if (search.active) app()?.goToSearch(search);
+	} catch (error) {
+		search.close();
+		throw error;
+	}
+};
+
 const handleGeneralCommand = async (data) => {
 	if (typeof data?.Name !== 'string') return;
 	const args = data.Arguments || {};
@@ -165,9 +191,11 @@ const handleGeneralCommand = async (data) => {
 			if (text && text.trim()) app()?.showMessage(text.trim(), arg('Header'));
 			break;
 		}
-		case 'setvolume':
-			if (arg('Volume') != null) await applyVolume(normalizeVolume(arg('Volume')));
+		case 'setvolume': {
+			const volume = normalizeVolume(arg('Volume'));
+			if (volume != null) await applyVolume(volume);
 			break;
+		}
 		case 'mute':
 			await setMuted(true);
 			break;
@@ -186,22 +214,24 @@ const handleGeneralCommand = async (data) => {
 			await stepVolume(-VOLUME_STEP);
 			break;
 		case 'moveup':
-			pressKey(KEYS.UP);
+			navigate(KEYS.UP);
 			break;
 		case 'movedown':
-			pressKey(KEYS.DOWN);
+			navigate(KEYS.DOWN);
 			break;
 		case 'moveleft':
-			pressKey(KEYS.LEFT);
+			navigate(KEYS.LEFT);
 			break;
 		case 'moveright':
-			pressKey(KEYS.RIGHT);
+			navigate(KEYS.RIGHT);
 			break;
 		case 'select':
-			pressKey(KEYS.ENTER);
+			navigate(KEYS.ENTER);
 			break;
 		case 'back':
-			pressKey(KEYS.BACK);
+			navigationGeneration++;
+			if (remoteSearch?.opening) remoteSearch.close();
+			navigate(KEYS.BACK);
 			break;
 		case 'setaudiostreamindex': {
 			const index = toInt(arg('Index'));
@@ -221,9 +251,27 @@ const handleGeneralCommand = async (data) => {
 		case 'setshufflequeue':
 			if (arg('ShuffleMode') != null) player()?.setShuffle(arg('ShuffleMode').toLowerCase() === 'shuffle');
 			break;
-		case 'gohome':
+		case 'gohome': {
+			const generation = ++navigationGeneration;
+			remoteSearch?.close();
 			await player()?.stop();
-			app()?.goHome();
+			if (generation === navigationGeneration) app()?.goHome();
+			break;
+		}
+		case 'gotosearch':
+			await openRemoteSearch(createRemoteSearch(arg('MoonfinInputId')));
+			break;
+		case 'sendstring':
+			if (remoteSearch?.active) {
+				app()?.notifyInteraction?.();
+				remoteSearch.receive(args);
+			} else if (arg('MoonfinInputId') == null) {
+				// Another controller's text has no Search to land in yet, so it opens one.
+				// Edits from a phone whose input session ended stay dropped.
+				const search = createRemoteSearch(null);
+				search.receive(args);
+				await openRemoteSearch(search);
+			}
 			break;
 		default:
 			break;
@@ -240,6 +288,8 @@ const handlePlay = (data) => {
 		app().queueItems(itemIds, command === 'playnext');
 		return;
 	}
+	navigationGeneration++;
+	remoteSearch?.close();
 	app().playItems(itemIds, {
 		startIndex: toInt(data.StartIndex) || 0,
 		startPositionTicks: toInt(data.StartPositionTicks),
@@ -270,6 +320,9 @@ export const bindTo = (listen) => {
 };
 
 export const reset = () => {
+	navigationGeneration++;
+	remoteSearch?.close();
+	remoteSearch = null;
 	if (unbindSocket) unbindSocket();
 	unbindSocket = null;
 };

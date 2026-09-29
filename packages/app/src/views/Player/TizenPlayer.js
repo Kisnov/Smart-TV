@@ -89,6 +89,15 @@ const getRootFontSizePx = () => {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : 24;
 };
 
+// Goes to PlayerControls as a prop, so it sits out here and keeps one identity
+// instead of being rebuilt on every render.
+const renderInfoPlaybackRows = ({css: c}) => (
+	<div className={c.infoRow}>
+		<span className={c.infoLabel}>{$L('Player')}</span>
+		<span className={c.infoValue}>{$L('AVPlay (Native)')}</span>
+	</div>
+);
+
 /**
  * AVPlay-based Player component for Samsung Tizen.
  *
@@ -231,6 +240,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Deferred seek: only execute actual avplaySeek after user stops pressing arrows
 	const seekDebounceRef = useRef(null);
 	const pendingSeekMsRef = useRef(null);
+	// The committed scrub whose seek is still landing, so only the newest one ends the scrub.
+	const landingScrubRef = useRef(null);
 	// A scrub that paused playback to hold the preview still, and whether it was playing before.
 	const scrubHoldRef = useRef({active: false, wasPlaying: false});
 	const subtitleTimeoutRef = useRef(null);
@@ -246,6 +257,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// a fatal error can arrive while parked in pause and must resurface on resume
 	const pausedErrorRef = useRef(null);
 	const deferredResumeSeekRef = useRef(null);
+	// The key handler is rebuilt every render, so the listener reaches it through this
+	// rather than being torn down and re-added every time playback state moves.
+	const keyDownRef = useRef(null);
 	// tracks queued before prepare and applied once AVPlay reaches a state that accepts them
 	const pendingTracksRef = useRef(null);
 	const lastTrackAttemptRef = useRef(0);
@@ -1564,6 +1578,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			}
 			useNativeSubtitleRef.current = false;
 			pendingSeekMsRef.current = null;
+			landingScrubRef.current = null;
 			scrubHoldRef.current = {active: false, wasPlaying: false};
 			pendingTracksRef.current = null;
 			activeNativeSubRef.current = null;
@@ -1884,7 +1899,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		}, RESUME_CHECK_MS);
 	}, []);
 
-	// The one real seek a scrub makes, once it's committed.
+	// The one real seek a scrub makes, once it's committed, and the end of the scrub.
 	const executeDeferredSeek = useCallback(() => {
 		if (seekDebounceRef.current) {
 			clearTimeout(seekDebounceRef.current);
@@ -1894,9 +1909,26 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			const seekMs = pendingSeekMsRef.current;
 			pendingSeekMsRef.current = null;
 			noteSeek();
-			if (groupSeekTo(Math.floor(seekMs * 10000))) return;
-			avplaySeek(seekMs).catch(err => console.warn('[Player] Deferred seek failed:', err));
+			if (!groupSeekTo(Math.floor(seekMs * 10000))) {
+				// Until the seek lands the last poll still has the old spot, so the bar stays on the scrubbed one.
+				const commit = {};
+				landingScrubRef.current = commit;
+				avplaySeek(seekMs)
+					.then(() => true, err => {
+						console.warn('[Player] Deferred seek failed:', err);
+						return false;
+					})
+					.then(landed => {
+						if (landingScrubRef.current !== commit) return;
+						landingScrubRef.current = null;
+						if (landed) setCurrentTime(seekMs / 1000);
+						if (pendingSeekMsRef.current == null) setIsSeeking(false);
+					});
+				return;
+			}
 		}
+		// Leaving the bar right after a commit blurs it, and the scrub has to wait for that seek to land.
+		if (!landingScrubRef.current) setIsSeeking(false);
 	}, [groupSeekTo, noteSeek]);
 
 	const scheduleDeferredSeek = useCallback((targetMs) => {
@@ -1908,7 +1940,6 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		seekDebounceRef.current = setTimeout(() => {
 			seekDebounceRef.current = null;
 			executeDeferredSeek();
-			setIsSeeking(false);
 		}, 500);
 	}, [executeDeferredSeek]);
 
@@ -1919,7 +1950,6 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		scrubHoldRef.current = {active: false, wasPlaying: false};
 		noteViewerActivity();
 		executeDeferredSeek();
-		setIsSeeking(false);
 		avplayPlay();
 		setIsPaused(false);
 		healthMonitorRef.current?.setPaused(false);
@@ -1936,6 +1966,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			seekDebounceRef.current = null;
 		}
 		pendingSeekMsRef.current = null;
+		landingScrubRef.current = null;
 		setIsSeeking(false);
 		const held = scrubHoldRef.current;
 		scrubHoldRef.current = {active: false, wasPlaying: false};
@@ -2344,30 +2375,22 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			// OK lands a jump that's still waiting, and toggles playback once there's none.
 			const hadPendingSeek = pendingSeekMsRef.current != null;
 			executeDeferredSeek();
-			setIsSeeking(false);
 			if (!hadPendingSeek) handlePlayPause();
 		} else if (e.key === 'ArrowUp' || e.keyCode === 38) {
 			e.preventDefault();
 			executeDeferredSeek();
 			const next = isAudioMode ? nextAudioFocusRow('progress', 'up') : 'bottom';
 			setFocusRow(next);
-			setIsSeeking(false);
 			window.requestAnimationFrame(() => Spotlight.focus(isAudioMode ? AUDIO_FOCUS_IDS[next] : 'play-pause-btn'));
 		} else if (e.key === 'ArrowDown' || e.keyCode === 40) {
 			e.preventDefault();
 			executeDeferredSeek();
 			setFocusRow('bottom');
-			setIsSeeking(false);
 			if (isAudioMode) {
 				window.requestAnimationFrame(() => Spotlight.focus('play-pause-btn'));
 			}
 		}
 	}, [settings.seekStep, showControls, scrubBy, executeDeferredSeek, resumeHeldScrub, handlePlayPause, isAudioMode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-	const handleProgressBlur = useCallback(() => {
-		executeDeferredSeek();
-		setIsSeeking(false);
-	}, [executeDeferredSeek]);
 
 	const handleToggleFavorite = useCallback(async () => {
 		if (!item?.Id) return;
@@ -2917,14 +2940,21 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		};
 
-		window.addEventListener('keydown', handleKeyDown, true);
-		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleForward, handleRewind, settings.seekStep, handlePopupKeyDown, bottomButtons.length, isAudioMode, focusRow, scrubBy, resumeHeldScrub, skipSegment, showSkipCredits, showNextEpisode, isLiveTV, carouselOpenRef, openCarousel]);
+		keyDownRef.current = handleKeyDown;
+	});
+
+	useEffect(() => {
+		const onKeyDown = (e) => keyDownRef.current?.(e);
+		window.addEventListener('keydown', onKeyDown, true);
+		return () => window.removeEventListener('keydown', onKeyDown, true);
+	}, []);
 
 	// Calculate progress - use seekPosition when actively seeking for smooth scrubbing
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;
 	const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
-	const bufferedPercent = progressPercent;
+	// AVPlay reports no buffered ranges, so there is nothing real to draw and the bar
+	// would only trace the fill sitting under it.
+	const bufferedPercent = null;
 
 	// Focus appropriate element when focusRow changes
 	useEffect(() => {
@@ -3109,7 +3139,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				handleControlButtonClick={handleControlButtonClick}
 				handleProgressClick={handleProgressClick}
 				handleProgressKeyDown={handleProgressKeyDown}
-				handleProgressBlur={handleProgressBlur}
+				handleProgressBlur={executeDeferredSeek}
 				handleSelectAudio={handleSelectAudio}
 				handleSelectSubtitle={handleSelectSubtitle}
 				handleSubtitleKeyDown={handleSubtitleItemKeyDown}
@@ -3133,13 +3163,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				handleSubtitleOffsetChange={handleSubtitleOffsetChange}
 				closeModal={closeModal}
 				stopPropagation={stopPropagation}
-				// eslint-disable-next-line react/jsx-no-bind
-				renderInfoPlaybackRows={({css: c}) => (
-					<div className={c.infoRow}>
-						<span className={c.infoLabel}>{$L('Player')}</span>
-						<span className={c.infoValue}>{$L('AVPlay (Native)')}</span>
-					</div>
-				)}
+				renderInfoPlaybackRows={renderInfoPlaybackRows}
 			/>
 		</div>
 	);

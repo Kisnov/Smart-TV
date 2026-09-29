@@ -1132,5 +1132,8 @@
     "Show preview thumbnails when seeking": "Az előnézeti bélyegképek megjelenítése kereséskor",
     "Queue is empty": "A sor üres",
     "Perfect match": "Tökéletes párosítás",
-    "{count} downloads": "{count} letöltés"
+    "{count} downloads": "{count} letöltés",
+    "Clear Filters": "Szűrők törlése",
+    "Cinema Mode for episodes": "Mozi mód epizódokhoz",
+    "Cinema: ": "Mozi "
 }

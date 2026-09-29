@@ -8,6 +8,8 @@ jest.mock('../services/seerrApi', () => ({
 	__esModule: true,
 	default: {
 		getWatchlist: jest.fn(),
+		getMovie: jest.fn(),
+		getTv: jest.fn(),
 		getImageUrl: (path, size) => `https://image.tmdb.org/t/p/${size}${path}`
 	}
 }));
@@ -15,12 +17,6 @@ jest.mock('../services/seerrApi', () => ({
 import seerrApi from '../services/seerrApi';
 import {normalizeWatchlistBody} from '../services/seerrApi.watchlistShape';
 import {SEERR_SECTION_TO_CONFIG, fetchSeerrHomeRow, getSeerrHomeRowConfigs} from './seerrHomeRows';
-
-// Jellyseerr's /discover/watchlist is the one discover endpoint that doesn't return
-// TMDB shaped results. It uses tmdbId where the others use id, and media where they use
-// mediaInfo. normalizeMediaItem reads item.id, so skipping the remap turns every card
-// into "seerr-movie-undefined", which means duplicate React keys and a detail screen
-// that can't resolve the title.
 
 describe('watchlist response mapping', () => {
 	it('promotes tmdbId to id and media to mediaInfo', () => {
@@ -36,8 +32,8 @@ describe('watchlist response mapping', () => {
 		expect(results[0].mediaInfo).toEqual({status: 5});
 	});
 
-	it('leaves an already TMDB shaped id alone and tolerates an empty body', () => {
-		expect(normalizeWatchlistBody({results: [{id: 42, tmdbId: 99}]}).results[0].id).toBe(42);
+	it('takes tmdbId over the row id and tolerates an empty body', () => {
+		expect(normalizeWatchlistBody({results: [{id: 2, tmdbId: 68421}]}).results[0].id).toBe(68421);
 		expect(normalizeWatchlistBody(undefined).results).toEqual([]);
 		expect(normalizeWatchlistBody({}).results).toEqual([]);
 	});
@@ -69,6 +65,42 @@ describe('seerr watchlist home row', () => {
 		expect(items.map((i) => i._seerrRaw.mediaId)).toEqual([603, 1396]);
 		expect(items.map((i) => i.Name)).toEqual(['The Matrix', 'Breaking Bad']);
 		expect(items.map((i) => i.Type)).toEqual(['Movie', 'Series']);
+	});
+
+	it('fills each Jellyfin watchlist entry in from the title details', async () => {
+		seerrApi.getWatchlist.mockResolvedValue(normalizeWatchlistBody({
+			results: [
+				{id: 2, tmdbId: 68421, mediaType: 'tv', title: '', media: {status: 5}},
+				{id: 3, tmdbId: 7191, mediaType: 'movie', title: ''}
+			]
+		}));
+		seerrApi.getTv.mockResolvedValue({name: 'Altered Carbon', posterPath: '/ac.jpg', firstAirDate: '2018-02-02'});
+		seerrApi.getMovie.mockResolvedValue({title: 'Cloverfield', posterPath: '/cf.jpg', releaseDate: '2008-01-15', mediaInfo: {status: 4}});
+
+		const items = await fetchSeerrHomeRow('yourWatchlist');
+
+		expect(seerrApi.getTv).toHaveBeenCalledWith(68421);
+		expect(seerrApi.getMovie).toHaveBeenCalledWith(7191);
+		expect(items.map((i) => i.Id)).toEqual(['seerr-tv-68421', 'seerr-movie-7191']);
+		expect(items.map((i) => i.Name)).toEqual(['Altered Carbon', 'Cloverfield']);
+		expect(items.map((i) => i._externalPosterUrl)).toEqual([
+			'https://image.tmdb.org/t/p/w342/ac.jpg',
+			'https://image.tmdb.org/t/p/w342/cf.jpg'
+		]);
+		expect(items.map((i) => i.ProductionYear)).toEqual([2018, 2008]);
+		expect(items.map((i) => i.mediaInfo)).toEqual([{status: 5}, {status: 4}]);
+	});
+
+	it('keeps an entry whose details fail, pointing at the right title', async () => {
+		seerrApi.getWatchlist.mockResolvedValue(normalizeWatchlistBody({
+			results: [{id: 3, tmdbId: 7191, mediaType: 'movie', title: ''}]
+		}));
+		seerrApi.getMovie.mockRejectedValue(new Error('502'));
+
+		const items = await fetchSeerrHomeRow('yourWatchlist');
+
+		expect(items.map((i) => i.Id)).toEqual(['seerr-movie-7191']);
+		expect(items[0]._externalPosterUrl).toBeNull();
 	});
 
 	it('never lets a failed request break the home screen', async () => {

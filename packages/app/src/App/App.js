@@ -56,7 +56,7 @@ import SettingsPanel from '../components/SettingsPanel';
 import ShuffleOverlay from '../components/ShuffleOverlay';
 import SpottableInput from '../components/SpottableInput/SpottableInput';
 import TVKeyboard from '../components/TVKeyboard/TVKeyboard';
-import {isTvKeyboardVisible} from '../components/TVKeyboard/keyboardBus';
+import {isTvKeyboardVisible, closeTvKeyboard} from '../components/TVKeyboard/keyboardBus';
 import useInactivityTimer from '../hooks/useInactivityTimer';
 import {useThemeMusic} from '../hooks/useThemeMusic';
 import {buildThemeCssVars, toRgbTriplet} from '../theme/themeSpec';
@@ -260,7 +260,7 @@ const AppContent = (props) => {
 		!photoViewerItem &&
 		!comicViewerItem
 	);
-	const {isInactive: showScreensaver, dismiss: dismissScreensaver} = useInactivityTimer(screensaverTimeout, screensaverEnabled);
+	const {isInactive: showScreensaver, dismiss: dismissScreensaver, wake: wakeScreensaver} = useInactivityTimer(screensaverTimeout, screensaverEnabled);
 
 	useEffect(() => {
 		window.dispatchEvent(new CustomEvent('moonfin:screensaver', {detail: {active: showScreensaver}}));
@@ -1174,9 +1174,25 @@ const AppContent = (props) => {
 	}, [api, playingItem]);
 
 	const remoteAppRef = useRef(null);
+	const [remoteSearch, setRemoteSearch] = useState(null);
+	const clearForRemote = () => {
+		dismissScreensaver();
+		closeTvKeyboard();
+		document.activeElement?.blur?.();
+		setShowSettingsPanel(false);
+	};
 	remoteAppRef.current = {
+		notifyInteraction: dismissScreensaver,
+		wakeScreensaver,
+		goToSearch: (search) => {
+			clearForRemote();
+			setRemoteSearch(search);
+			// The player has already returned to its previous panel. Do not
+			// put the now-closed player into Search's back history.
+			navigateTo(PANELS.SEARCH, panelIndex !== PANELS.PLAYER && panelIndex !== PANELS.SEARCH);
+		},
 		goHome: () => {
-			setShowSettingsPanel(false);
+			clearForRemote();
 			handleHome();
 		},
 		showMessage: showRemoteMessage,
@@ -1435,6 +1451,7 @@ const AppContent = (props) => {
 		panelIndex !== PANELS.GAME_PLAYER &&
 		panelIndex !== PANELS.GAMES &&
 		panelIndex !== PANELS.GAME_SYSTEM &&
+		panelIndex !== PANELS.GAME_DETAILS &&
 		panelIndex !== PANELS.LIBRARY &&
 		panelIndex !== PANELS.LIVETV &&
 		panelIndex !== PANELS.RECORDINGS &&
@@ -1539,7 +1556,7 @@ const AppContent = (props) => {
 						</Panel>
 						<Panel>
 							{panelIndex === PANELS.SEARCH && (
-								<Search onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectPerson={handleSelectPerson} onSelectGame={handleSelectGame} onPlayChannel={handlePlayChannel} />
+								<Search remoteSearch={remoteSearch} onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectPerson={handleSelectPerson} onSelectGame={handleSelectGame} onPlayChannel={handlePlayChannel} />
 							)}
 						</Panel>
 						<Panel>

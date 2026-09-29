@@ -1,7 +1,7 @@
 import $L from '@enact/i18n/$L';
 import seerrApi from '../services/seerrApi';
 import {seerrGenreBackdrop} from './seerrGenreArt';
-import hydrateRequestMediaItems from './seerrHydration';
+import hydrateRequestMediaItems, {hydrateWatchlistItems} from './seerrHydration';
 import {libraryIdOf} from './seerrTarget';
 
 const HOME_ROW_LIMIT = 20;
@@ -234,10 +234,10 @@ export const fetchSeerrHomeRow = async (rowId, {userId} = {}) => {
 				return ((await seerrApi.trending(1)).results || []).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
 			case 'recentlyAdded':
 				return ((await seerrApi.getRecentlyAdded(HOME_ROW_LIMIT)).results || []).map(normalizeMediaItem);
-			case 'yourWatchlist':
-				// getWatchlist already remaps tmdbId/media onto the shape
-				// normalizeMediaItem expects.
-				return ((await seerrApi.getWatchlist(1)).results || []).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
+			case 'yourWatchlist': {
+				const results = ((await seerrApi.getWatchlist(1)).results || []).slice(0, HOME_ROW_LIMIT);
+				return (await hydrateWatchlistItems(results)).map(normalizeMediaItem);
+			}
 			case 'popularMovies':
 				return ((await seerrApi.trendingMovies(1)).results || []).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
 			case 'popularTv':

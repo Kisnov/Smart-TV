@@ -2,16 +2,18 @@ import {useState, useEffect, useCallback, useRef} from 'react';
 
 const useInactivityTimer = (timeoutSeconds = 90, enabled = true) => {
 	const [isInactive, setIsInactive] = useState(false);
+	const inactiveRef = useRef(false);
+	inactiveRef.current = isInactive;
 	const timerRef = useRef(null);
 	const enabledRef = useRef(enabled);
 	const timeoutRef = useRef(timeoutSeconds);
-	const inactiveRef = useRef(false);
 
 	enabledRef.current = enabled;
 	timeoutRef.current = timeoutSeconds;
-	inactiveRef.current = isInactive;
 
 	const dismiss = useCallback(() => {
+		if (timerRef.current) clearTimeout(timerRef.current);
+		inactiveRef.current = false;
 		setIsInactive(false);
 		if (enabledRef.current) {
 			timerRef.current = setTimeout(() => {
@@ -20,17 +22,22 @@ const useInactivityTimer = (timeoutSeconds = 90, enabled = true) => {
 		}
 	}, []);
 
+	const wake = useCallback(() => {
+		if (!inactiveRef.current) return false;
+		dismiss();
+		return true;
+	}, [dismiss]);
+
 	// Added once, ahead of the window listeners the screens add later, so the key that wakes the screensaver goes no further.
 	useEffect(() => {
 		const handleWakeKey = (e) => {
-			if (!inactiveRef.current) return;
+			if (!wake()) return;
 			e.preventDefault();
 			e.stopImmediatePropagation();
-			dismiss();
 		};
 		window.addEventListener('keydown', handleWakeKey, true);
 		return () => window.removeEventListener('keydown', handleWakeKey, true);
-	}, [dismiss]);
+	}, [wake]);
 
 	useEffect(() => {
 		if (!enabled) {
@@ -43,6 +50,7 @@ const useInactivityTimer = (timeoutSeconds = 90, enabled = true) => {
 		}
 
 		const handleActivity = () => {
+			inactiveRef.current = false;
 			if (timerRef.current) {
 				clearTimeout(timerRef.current);
 			}
@@ -68,7 +76,7 @@ const useInactivityTimer = (timeoutSeconds = 90, enabled = true) => {
 		};
 	}, [enabled]);
 
-	return {isInactive, dismiss};
+	return {isInactive, dismiss, wake};
 };
 
 export default useInactivityTimer;

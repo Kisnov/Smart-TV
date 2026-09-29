@@ -680,7 +680,8 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.SLIDER, key: 'subtitleBackground', label: () => $L('Background Opacity'), min: 0, max: 100, step: 5, format: percent, icon: 'opacity'},
 					{kind: KIND.SECTION, id: 'subtitleRendering', label: () => $L('Subtitle Rendering')},
 					{kind: KIND.TOGGLE, key: 'enablePgsRendering', label: () => $L('Direct play PGS subtitles'), desc: () => $L('Use client-side rendering for bitmap subtitles (PGS, DVB, DVD)'), icon: 'picture'},
-					{kind: KIND.TOGGLE, key: 'assDirectPlay', label: () => $L('Direct play ASS/SSA subtitles'), desc: () => $L('Render styled subtitles on this device instead of having the server burn them in'), icon: 'text_snippet'}
+					{kind: KIND.TOGGLE, key: 'assDirectPlay', label: () => $L('Direct play ASS/SSA subtitles'), desc: () => $L('Render styled subtitles on this device instead of having the server burn them in'), icon: 'text_snippet'},
+					{kind: KIND.TOGGLE, key: 'waitForAssSubtitles', label: () => $L('Wait for ASS/SSA subtitles'), desc: () => $L('Hold the video until styled subtitles are ready so the first lines show'), icon: 'timer', when: (ctx) => ctx.isWebOS && ctx.settings.assDirectPlay !== false}
 				]
 			},
 			{

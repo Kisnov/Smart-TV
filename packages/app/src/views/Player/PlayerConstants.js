@@ -33,6 +33,10 @@ export const CONTROLS_HIDE_DELAY = 5000;
 // a slow answer costs nothing and losing the prompt for the episode costs the viewer.
 export const SEGMENT_FETCH_TIMEOUT = 20000;
 
+// How long a start holds for ASS subtitles when the viewer turned that on. Past this the video
+// starts anyway and the subtitles show up once the renderer catches up.
+export const ASS_READY_WAIT = 15000;
+
 const MaterialIcon = ({path}) => (
 	<svg viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" focusable="false">
 		<path d={path} />

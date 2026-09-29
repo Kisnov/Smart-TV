@@ -1,10 +1,10 @@
 import * as jellyfinApi from './jellyfinApi';
 import {getDeviceProfile, getDeviceCapabilities} from './deviceProfile';
-import {getPlayMethod, getMimeType, isAudioStreamPlayable} from './video';
+import {getPlayMethod, getMimeType, isAudioStreamPlayable, canRenderEmbeddedPgsInBand} from './video';
 import {getFromStorage} from './storage';
 import {selectCompatibleAlternateAudio} from '../utils/alternateAudio';
 import {serverLogger} from './serverLogger';
-import {TEXT_SUBTITLE_CODECS, isAssSubtitleCodec, isPgsSubtitleCodec, isBurnInSubtitleCodec} from '../utils/subtitleCodecs';
+import {TEXT_SUBTITLE_CODECS, isAssSubtitleCodec, isPgsSubtitleCodec, isBurnInSubtitleCodec, isInBandSubtitleTrack} from '../utils/subtitleCodecs';
 import {applyProfileTuning} from '../utils/deviceProfileTuning';
 import {findNextInSeason, findNextSeason, firstPlayableEpisode} from '../utils/nextEpisode';
 import {videoRangeTypeOf} from '../utils/videoRange';
@@ -318,11 +318,12 @@ const extractAudioStreams = (mediaSource) => {
 		}));
 };
 
-const extractSubtitleStreams = (mediaSource, itemId = null, creds = null, assBurnsIn = false) => {
+const extractSubtitleStreams = (mediaSource, itemId = null, creds = null, assBurnsIn = false, streamUrl = null, playMethod = null) => {
 	if (!mediaSource.MediaStreams) return [];
 	const serverUrl = creds?.serverUrl || jellyfinApi.getServerUrl();
 	const apiKey = creds?.accessToken || jellyfinApi.getApiKey();
 	const tokenParam = jellyfinApi.getTokenParam(creds?.serverType);
+	let embeddedOrdinal = 0;
 
 	return mediaSource.MediaStreams
 		.filter(s => s.Type === 'Subtitle')
@@ -330,6 +331,18 @@ const extractSubtitleStreams = (mediaSource, itemId = null, creds = null, assBur
 			const codec = s.Codec?.toLowerCase();
 			const isTextBased = TEXT_SUBTITLE_CODECS.includes(codec);
 			const isImageBased = isPgsSubtitleCodec(codec);
+			// Position among the container's own subtitle tracks, which is what maps this
+			// stream onto a Matroska track number. External sidecars sit outside the file.
+			const inBandOrdinal = s.IsExternal ? -1 : embeddedOrdinal++;
+			// Taking PGS out of the file the player is already streaming beats asking the
+			// server for a sidecar: the sidecar request makes Jellyfin read the whole
+			// source with ffmpeg first, which on a large remux is minutes of delay and a
+			// second full pass over the media.
+			const inBand = streamUrl && isInBandSubtitleTrack(codec, {
+				isExternal: s.IsExternal,
+				container: mediaSource.Container,
+				canStreamInBand: playMethod === PlayMethod.DirectPlay && canRenderEmbeddedPgsInBand()
+			}) ? {streamUrl, ordinal: inBandOrdinal} : null;
 			let deliveryUrl = null;
 			if (s.DeliveryUrl) {
 				// External URLs are used as-is, internal URLs need server prefix
@@ -362,6 +375,7 @@ const extractSubtitleStreams = (mediaSource, itemId = null, creds = null, assBur
 				// container is the only one text has.
 				isEmbeddedNative: !isBurnIn && !s.IsExternal && s.DeliveryMethod !== 'External' &&
 					(isImageBased || (isTextBased && mediaSource.SupportsTranscoding === false)),
+				inBand,
 				deliveryUrl: deliveryUrl,
 				deliveryMethod: s.DeliveryMethod
 			};
@@ -486,7 +500,7 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 			: (mediaSource.SupportsDirectPlay ? PlayMethod.DirectPlay : PlayMethod.DirectStream);
 		const url = buildPlaybackUrl(itemId, mediaSource, playbackInfo.PlaySessionId, playMethod, creds, false, options);
 		const audioStreams = extractAudioStreams(mediaSource);
-		const subtitleStreams = extractSubtitleStreams(mediaSource, itemId, creds, storedSettings.assDirectPlay === false);
+		const subtitleStreams = extractSubtitleStreams(mediaSource, itemId, creds, storedSettings.assDirectPlay === false, null, playMethod);
 
 		currentSession = {
 			itemId,
@@ -708,7 +722,7 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 	const url = buildPlaybackUrl(itemId, mediaSource, playbackInfo.PlaySessionId, playMethod, creds, isAudio, options);
 
 	const audioStreams = extractAudioStreams(mediaSource);
-	const subtitleStreams = extractSubtitleStreams(mediaSource, itemId, creds, storedSettings.assDirectPlay === false);
+	const subtitleStreams = extractSubtitleStreams(mediaSource, itemId, creds, storedSettings.assDirectPlay === false, url, playMethod);
 	const chapters = extractChapters(mediaSource);
 
 	const audioOnlyRemux = playMethod === PlayMethod.Transcode && isAudioOnlyRemuxTranscode(mediaSource);
@@ -1248,55 +1262,42 @@ export const reportStop = async (positionTicks) => {
 	// a normal stop supersedes an earlier background stop
 	backgroundStopFired = false;
 
-	if (!currentSession) return;
+	// Let go of the session before the request goes out, so a next item that opens its own while
+	// this stop is in flight keeps it, and nothing reports on this one in the meantime.
+	const session = currentSession;
+	if (!session) return;
+	currentSession = null;
 
 	stopProgressReporting();
 	stopHealthMonitoring();
 
-	try {
-		// Use session's server credentials for cross-server support
-		const api = currentSession.serverCredentials
-			? jellyfinApi.createApiForServer(
-				currentSession.serverCredentials.serverUrl,
-				currentSession.serverCredentials.accessToken,
-				currentSession.serverCredentials.userId
-			)
-			: jellyfinApi.api;
+	// Use session's server credentials for cross-server support
+	const api = session.serverCredentials
+		? jellyfinApi.createApiForServer(
+			session.serverCredentials.serverUrl,
+			session.serverCredentials.accessToken,
+			session.serverCredentials.userId
+		)
+		: jellyfinApi.api;
 
+	try {
 		await api.reportPlaybackStopped({
-			ItemId: currentSession.itemId,
-			PlaySessionId: currentSession.playSessionId,
-			MediaSourceId: currentSession.mediaSourceId,
+			ItemId: session.itemId,
+			PlaySessionId: session.playSessionId,
+			MediaSourceId: session.mediaSourceId,
 			PositionTicks: positionTicks
 		});
-
-		if (currentSession.liveStreamId) {
-			try {
-				await api.closeLiveStream(currentSession.liveStreamId);
-			} catch (closeErr) {
-				console.warn('[playback] Failed to close live stream:', closeErr.message);
-			}
-		}
 	} catch (e) {
 		console.warn('[playback] Failed to report stop:', e.message);
-
-		if (currentSession.liveStreamId) {
-			try {
-				const fallbackApi = currentSession.serverCredentials
-					? jellyfinApi.createApiForServer(
-						currentSession.serverCredentials.serverUrl,
-						currentSession.serverCredentials.accessToken,
-						currentSession.serverCredentials.userId
-					)
-					: jellyfinApi.api;
-				await fallbackApi.closeLiveStream(currentSession.liveStreamId);
-			} catch (closeErr) {
-				console.warn('[playback] Failed to close live stream after stop error:', closeErr.message);
-			}
-		}
 	}
 
-	currentSession = null;
+	if (session.liveStreamId) {
+		try {
+			await api.closeLiveStream(session.liveStreamId);
+		} catch (closeErr) {
+			console.warn('[playback] Failed to close live stream:', closeErr.message);
+		}
+	}
 };
 
 export const startProgressReporting = (getPositionTicks, intervalMs = 10000, getPlayState) => {

@@ -23,6 +23,7 @@ import {isGameLibrary, resolveGameLibraryId} from '../../utils/gameLibrary';
 import {groupSearchResults, aspectClassForType, isCircleType, filterByName, fetchAllGames, filterGames} from '../../utils/searchGroups';
 import {foldForSearch} from '../../utils/accentFolding';
 import SpottableInput from '../../components/SpottableInput/SpottableInput';
+import {closeTvKeyboard} from '../../components/TVKeyboard/keyboardBus';
 import useStorage from '../../hooks/useStorage';
 import useItemMenuHold from '../../hooks/useItemMenuHold';
 import {
@@ -92,7 +93,7 @@ const jellyfinSubtitle = (item) => {
 	}
 };
 
-const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, onPlayChannel}) => {
+const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, onPlayChannel, remoteSearch}) => {
 	const {api, serverUrl, hasMultipleServers} = useAuth();
 	const {settings} = useSettings();
 	const unifiedMode = settings.unifiedLibraryMode && hasMultipleServers;
@@ -118,6 +119,8 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 
 	const debounceRef = useRef(null);
 	const requestIdRef = useRef(0);
+	const remoteSearchRef = useRef(remoteSearch);
+	remoteSearchRef.current = remoteSearch;
 	const lastResultNamesRef = useRef([]);
 	const scrollerRefs = useRef({});
 	const gameLibrariesRef = useRef([]);
@@ -166,8 +169,10 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 	}, [saveRecentSearches]);
 
 	const doSearch = useCallback(async (searchQuery) => {
+		const requestId = ++requestIdRef.current;
 		const q = (searchQuery || '').trim();
 		if (q.length < MIN_SEARCH_LENGTH) {
+			setIsLoading(false);
 			setGroups([]);
 			setSeerrResults([]);
 			setGameResults([]);
@@ -176,7 +181,6 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 			return;
 		}
 
-		const requestId = ++requestIdRef.current;
 		const isStudioQuery = q.toLowerCase().startsWith('studio:');
 		setIsLoading(true);
 
@@ -204,7 +208,9 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 			// input keeps focus until they press down.
 			setActiveTab('all');
 			if (!isPaused()) {
-				setTimeout(focusAllTab, 50);
+				setTimeout(() => {
+					if (!remoteSearchRef.current?.active) focusAllTab();
+				}, 50);
 			}
 
 			// Seerr and Games load after the library results so the rows appear first.
@@ -239,13 +245,37 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 		}
 	}, [api, seerrEnabled, seerrApi, unifiedMode, focusAllTab, rememberSearch, settings]);
 
-	const handleInputChange = useCallback((e) => {
-		let value = e.target.value;
-		try { value = decodeURIComponent(escape(value)); } catch (_err) { void _err; }
+	const applyQuery = useCallback((value) => {
+		// Even a clear or a query waiting for debounce supersedes older results.
+		requestIdRef.current++;
 		setQuery(value);
 		if (debounceRef.current) clearTimeout(debounceRef.current);
 		debounceRef.current = setTimeout(() => doSearch(value), SEARCH_DEBOUNCE_MS);
 	}, [doSearch]);
+	const handleInputChange = useCallback((e) => {
+		remoteSearch?.close();
+		let value = e.target.value;
+		try { value = decodeURIComponent(escape(value)); } catch (_err) { void _err; }
+		applyQuery(value);
+	}, [remoteSearch, applyQuery]);
+	const inputWrapperRef = useRef(null);
+	const applyQueryRef = useRef(applyQuery);
+	applyQueryRef.current = applyQuery;
+	useEffect(() => {
+		if (!remoteSearch?.active) return undefined;
+		remoteSearch.attach((text) => {
+			// Discard the receiver keyboard's old buffer before the phone edits.
+			closeTvKeyboard();
+			const input = inputWrapperRef.current?.querySelector('input');
+			if (document.activeElement === input) {
+				input.blur();
+				Spotlight.focus('search-input');
+			}
+			applyQueryRef.current(text);
+		});
+		Spotlight.focus('search-input');
+		return () => remoteSearch.close();
+	}, [remoteSearch]);
 
 	// Titles for the keyboard's suggestion chips. These come out of the results the
 	// screen already loaded, so offering them costs no extra trip to the server.
@@ -256,6 +286,10 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 	}, []);
 
 	const handleClearSearch = useCallback(() => {
+		remoteSearch?.close();
+		if (debounceRef.current) clearTimeout(debounceRef.current);
+		requestIdRef.current++;
+		setIsLoading(false);
 		setQuery('');
 		setGroups([]);
 		setSeerrResults([]);
@@ -263,17 +297,18 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 		setActiveRowIndex(0);
 		setVisibleCardCounts({});
 		Spotlight.focus('search-input');
-	}, []);
+	}, [remoteSearch]);
 
 	// Picking a past query runs it straight away. The debounce only exists to
 	// throttle typing, and there is nothing left to wait for here.
 	const handleSelectRecent = useCallback((e) => {
+		remoteSearch?.close();
 		const term = e.currentTarget.dataset.term;
 		if (!term) return;
 		if (debounceRef.current) clearTimeout(debounceRef.current);
 		setQuery(term);
 		doSearch(term);
-	}, [doSearch]);
+	}, [doSearch, remoteSearch]);
 
 	const handleClearRecent = useCallback(() => {
 		recentSearchesRef.current = [];
@@ -609,6 +644,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 			<div className={css.searchInputSection}>
 				<div
 					className={`${css.searchInputWrapper} ${searchInputFocused ? css.searchInputFocused : ''}`}
+					ref={inputWrapperRef}
 					onFocusCapture={handleSearchInputFocus}
 					onBlurCapture={handleSearchInputBlur}
 				>
