@@ -1390,6 +1390,23 @@
 	max-width: 1800px;
 }
 
+// The info band repaints on every focus move, and the weaker sets paint blurred
+// shadows on the CPU.
+:global(.perf-low),
+:global(.perf-mid) {
+	.detailTitle,
+	.infoText,
+	.infoDot,
+	.infoBadge,
+	.detailSummary {
+		text-shadow: none;
+	}
+
+	.detailLogo {
+		filter: none;
+	}
+}
+
 /* Content Rows */
 .contentRows {
 	-webkit-flex: 1;
