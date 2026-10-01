@@ -18,8 +18,6 @@ let cachedCapabilities = null;
 
 const DEFAULT_PASSTHROUGH_SETTINGS = {
 	passthroughEnabled: true,
-	ac3Passthrough: true,
-	eac3Passthrough: true,
 	dtsPassthrough: true,
 	dtshdPassthrough: true,
 	truehdPassthrough: true
@@ -30,14 +28,14 @@ const resolvePassthroughSettings = (options = {}) => ({
 	...(options?.passthroughSettings || {})
 });
 
+// The set decodes AC3 and E-AC3 itself and its own sound output setting decides
+// whether a receiver gets the bitstream, so the passthrough settings leave them alone.
 const applyPassthroughSettings = (caps, options = {}) => {
 	const prefs = resolvePassthroughSettings(options);
 	const passthroughAllowed = prefs.passthroughEnabled;
 
 	return {
 		...caps,
-		ac3: !!caps.ac3 && !!prefs.ac3Passthrough,
-		eac3: !!caps.eac3 && !!prefs.eac3Passthrough,
 		truehd: !!caps.truehd && passthroughAllowed && !!prefs.truehdPassthrough,
 		dts: !!caps.dts && passthroughAllowed && !!prefs.dtsPassthrough,
 		dtshd: !!caps.dtshd && passthroughAllowed && !!prefs.dtshdPassthrough
