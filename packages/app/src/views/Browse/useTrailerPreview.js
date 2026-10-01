@@ -2,6 +2,7 @@ import {useState, useEffect, useCallback, useRef} from 'react';
 import {buildQueryString} from '../../utils/urlCompat';
 import {stopPlaybackForTrailer} from '../../utils/trailerPlayback';
 import {createApiForServer, getApiKey, getServerUrl as getDefaultServerUrl} from '../../services/jellyfinApi';
+import serverLogger from '../../services/serverLogger';
 import css from './Browse.module.less';
 
 const TRAILER_REVEAL_MS = 3000;
@@ -38,6 +39,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 	const trailerCaptionBlobRef = useRef(null);
 	const trailerCaptionBoxRef = useRef(null);
 	const releaseStreamRef = useRef(null);
+	const stopWatchRef = useRef(null);
 
 	const releaseStream = useCallback(() => {
 		if (releaseStreamRef.current) {
@@ -67,7 +69,15 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		}
 	}, []);
 
+	const stopWatch = useCallback(() => {
+		if (stopWatchRef.current) {
+			stopWatchRef.current();
+			stopWatchRef.current = null;
+		}
+	}, []);
+
 	const stopTrailer = useCallback(() => {
+		stopWatch();
 		if (trailerRevealTimerRef.current) {
 			clearTimeout(trailerRevealTimerRef.current);
 			trailerRevealTimerRef.current = null;
@@ -97,7 +107,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		trailerStateRef.current = 'idle';
 		trailerVideoIdRef.current = null;
 		sponsorSegmentsRef.current = [];
-	}, [removeCaptionTrack, releaseStream]);
+	}, [stopWatch, removeCaptionTrack, releaseStream]);
 
 	const getRemoteTrailersForItem = useCallback(async (item) => {
 		if (!item?.Id) return [];
@@ -151,7 +161,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		trailerVideoIdRef.current = requestId;
 		await stopPlaybackForTrailer(trailerVideoRef.current);
 
-		const [{attachTrailerStream, fetchSponsorSegments, fetchVideoStream, getTrailerStartTime, isManifestUrl, needsHlsJs}, {getSharedVideoElement}] = await Promise.all([
+		const [{attachTrailerStream, fetchSponsorSegments, fetchVideoStream, getTrailerStartTime, isManifestUrl, nativeManifestSkipped, needsHlsJs, noteNativeManifest, playsManifestNatively, watchManifestPlayback}, {getSharedVideoElement}] = await Promise.all([
 			import('../../services/youtubeTrailer'),
 			import('@moonfin/platform-webos/video')
 		]);
@@ -199,6 +209,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 				]);
 				const stream = results[1];
 				return {
+					client: stream ? stream.client : '',
 					streamUrl: stream ? stream.url : null,
 					captionsUrl: stream ? stream.captionsUrl : null,
 					audioLanguage: stream ? stream.audioLanguage : '',
@@ -223,19 +234,29 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 			setTrailerHolding(false);
 		};
 
-		const tryAttempt = async (index) => {
+		// resumeAt carries a manifest that stopped partway over to the muxed file at the same spot.
+		const tryAttempt = async (index, resumeAt = 0) => {
 			if (isStale()) return;
 			if (index >= attempts.length) {
 				markUnavailable();
 				return;
 			}
+			stopWatch();
 
-			const {streamUrl, captionsUrl, audioLanguage, segments, startTime} = await resolveStream(attempts[index]);
+			if (attempts[index].id && !attempts[index].muxedOnly && nativeManifestSkipped()) {
+				attempts[index].muxedOnly = true;
+			}
+			const {client, streamUrl, captionsUrl, audioLanguage, segments, startTime} = await resolveStream(attempts[index]);
 			if (isStale()) return;
 			if (!streamUrl) {
 				tryAttempt(index + 1);
 				return;
 			}
+			const isManifest = isManifestUrl(streamUrl);
+			const nativeManifest = playsManifestNatively(streamUrl);
+			let kind = 'local trailer';
+			if (attempts[index].id) kind = isManifest ? `YouTube manifest on ${nativeManifest ? "the TV's player" : 'hls.js'}` : 'YouTube 360p file';
+			serverLogger.playback(`Trailer preview: ${kind}${client ? ` from ${client}` : ''}`);
 			sponsorSegmentsRef.current = segments;
 			// A manifest the TV cant play gives way to YouTube's small muxed file.
 			if (attempts[index].id && !attempts[index].muxedOnly && isManifestUrl(streamUrl)) {
@@ -313,25 +334,37 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 				onEndedRef.current?.();
 			};
 
-			// The element and hls.js can both report the same failure, which must only move on once
+			// The element, hls.js and the watch can all report the same failure, which must only move on
+			// once. A manifest that stops partway still has the muxed file to go to. Anything else that
+			// was already playing is given up on.
 			let failed = false;
-			const handleError = () => {
+			const fail = (reason) => {
 				if (failed || trailerVideoIdRef.current !== requestId) return;
 				failed = true;
+				stopWatch();
 				clearSkipInterval();
-				if (trailerStateRef.current === 'resolving') {
-					video.classList.remove(css.trailerVisible);
-					tryAttempt(index + 1);
-				} else {
+				const wasPlaying = trailerStateRef.current === 'playing';
+				const movesOn = index + 1 < attempts.length && (!wasPlaying || isManifest);
+				serverLogger.warn(serverLogger.LOG_CATEGORIES.PLAYBACK, `Trailer preview ${reason} on the ${kind}${movesOn ? ', trying the next stream' : ''}`);
+				if (nativeManifest) noteNativeManifest(false);
+				if (!movesOn) {
 					markUnavailable();
+					return;
 				}
+				const at = wasPlaying ? video.currentTime : 0;
+				if (!wasPlaying) video.classList.remove(css.trailerVisible);
+				// A stalled stream that comes back while the next one resolves mustnt take over again.
+				video.onplaying = null;
+				video.onended = null;
+				trailerStateRef.current = 'resolving';
+				tryAttempt(index + 1, at);
 			};
-			video.onerror = handleError;
+			video.onerror = () => fail('failed to play');
 
 			releaseStream();
 			const Hls = needsHlsJs(streamUrl) ? (await import('hls.js')).default : null;
 			if (isStale()) return;
-			releaseStreamRef.current = attachTrailerStream(video, streamUrl, {Hls, audioLanguage, startTime, onError: handleError});
+			releaseStreamRef.current = attachTrailerStream(video, streamUrl, {Hls, audioLanguage, startTime: resumeAt > 0 ? resumeAt : startTime, onError: () => fail('failed to play')});
 			const playPromise = video.play();
 			if (playPromise) {
 				playPromise.catch(() => {
@@ -345,10 +378,16 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 					video.play()?.catch(() => {});
 				});
 			}
+			if (isManifest) {
+				stopWatchRef.current = watchManifestPlayback(video, {
+					onStall: fail,
+					onConfirmed: nativeManifest ? () => noteNativeManifest(true) : null
+				});
+			}
 		};
 
 		tryAttempt(0);
-	}, [stopTrailer, preferMuted, showCaptions, captionLanguage, removeCaptionTrack, releaseStream]);
+	}, [stopTrailer, stopWatch, preferMuted, showCaptions, captionLanguage, removeCaptionTrack, releaseStream]);
 
 	useEffect(() => {
 		if (!enabled || !isVisible || !currentItem || screensaverActive) {
