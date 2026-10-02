@@ -6,10 +6,27 @@ import serverLogger from '../../services/serverLogger';
 import css from './Browse.module.less';
 
 const TRAILER_REVEAL_MS = 3000;
+const TRAILER_ZOOM = 1.15;
 // the preview plays into a plain HTML5 video element which cant decode a server
 // transcode on Tizen, so direct play the original trailer file instead
 const LOCAL_TRAILER_STREAM_PARAMS = {
 	Static: 'true'
+};
+
+// The shared video element fills its box, and TVs draw video on a plane that ignores
+// object-fit and transforms anyway. So the element keeps the trailer's own shape and
+// overhangs the container, which crops it instead of squashing it into a frame that
+// isnt 16:9.
+const coverContainer = (video) => {
+	const box = video.parentNode;
+	if (!box || !video.videoWidth || !video.videoHeight) return;
+	const scale = Math.max(box.clientWidth / video.videoWidth, box.clientHeight / video.videoHeight) * TRAILER_ZOOM;
+	const width = Math.round(video.videoWidth * scale);
+	const height = Math.round(video.videoHeight * scale);
+	video.style.width = `${width}px`;
+	video.style.height = `${height}px`;
+	video.style.left = `${Math.round((box.clientWidth - width) / 2)}px`;
+	video.style.top = `${Math.round((box.clientHeight - height) / 2)}px`;
 };
 
 // Shared trailer preview engine for the home banners. Resolves a local or
@@ -101,6 +118,8 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 			video.onplaying = null;
 			video.onended = null;
 			video.onerror = null;
+			video.onloadedmetadata = null;
+			video.onresize = null;
 		}
 		removeCaptionTrack(video);
 		releaseStream();
@@ -186,6 +205,8 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		if (!container.contains(video)) {
 			container.appendChild(video);
 		}
+		video.onloadedmetadata = () => coverContainer(video);
+		video.onresize = video.onloadedmetadata;
 
 		const clearSkipInterval = () => {
 			if (trailerSkipIntervalRef.current) {
