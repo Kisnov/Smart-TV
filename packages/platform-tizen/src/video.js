@@ -938,6 +938,16 @@ export const avplayGetTracks = () => {
 	}
 };
 
+export const avplayGetCurrentTracks = () => {
+	if (!isAVPlayAvailable) return [];
+	try {
+		return webapis.avplay.getCurrentStreamInfo();
+	} catch (e) {
+		console.warn('[tizenVideo] Failed to get current stream info:', e);
+		return [];
+	}
+};
+
 export const avplaySelectTrack = (type, index) => {
 	if (!isAVPlayAvailable) return;
 	try {
@@ -1142,6 +1152,7 @@ export default {
 	avplaySetSilentSubtitle,
 	avplaySetStreamingProperty,
 	avplayGetTracks,
+	avplayGetCurrentTracks,
 	avplaySetDisplayMethod,
 	cleanupAVPlay
 };
