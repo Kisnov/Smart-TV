@@ -220,6 +220,7 @@ export const defaultSettings = {
 	homeRowImageTypes: {},
 	homeRowsStyle: 'v2',
 	modernCardsOnMyMediaRow: true,
+	modernCardTransitionSpeed: 'off',
 	detailScreenStyle: 'v2',
 	detailButtonsMaxVisible: 0,
 	personalRatingStyle: 'thumbs',

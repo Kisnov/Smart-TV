@@ -231,6 +231,14 @@ export const getHomeRowsStyleOptions = () => [
 	{ value: 'v1', label: $L('Classic') }
 ];
 
+export const getModernCardTransitionSpeedOptions = () => [
+	{ value: 'extraSlow', label: $L('Extra Slow') },
+	{ value: 'slow', label: $L('Slow') },
+	{ value: 'medium', label: $L('Medium') },
+	{ value: 'fast', label: $L('Fast') },
+	{ value: 'off', label: $L('Off') }
+];
+
 export const getDetailScreenStyleOptions = () => [
 	{ value: 'v2', label: $L('Modern') },
 	{ value: 'v3', label: $L('Spotlight') },
