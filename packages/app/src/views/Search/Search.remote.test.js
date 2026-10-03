@@ -36,7 +36,7 @@ jest.mock('../../components/ProxiedImage', () => () => null);
 jest.mock('../../components/GameCard', () => () => null);
 jest.mock('../../components/SpottableInput/SpottableInput', () => {
 	const React = require('react');
-	return ({value, onChange, onKeyDown}) => React.createElement('input', {value, onChange, onKeyDown});
+	return React.forwardRef(({value, onChange, onKeyDown}, ref) => React.createElement('input', {ref, value, onChange, onKeyDown}));
 });
 
 beforeEach(() => {

@@ -56,6 +56,12 @@ const RECENT_SEARCHES_KEY = 'search_recentQueries';
 const RECENT_SEARCHES_MAX = 10;
 const ROW_SCROLL_MARGIN = 50;
 
+const VoiceIcon = () => (
+	<svg viewBox="0 0 24 24" fill="currentColor" className={css.voiceIcon}>
+		<path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z" />
+	</svg>
+);
+
 const SearchIcon = () => (
 	<svg viewBox="0 0 24 24" fill="currentColor" className={css.searchIcon}>
 		<path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
@@ -106,6 +112,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 	const [gameResults, setGameResults] = useState([]);
 	const [activeTab, setActiveTab] = useState('all');
 	const [searchInputFocused, setSearchInputFocused] = useState(false);
+	const searchInputRef = useRef(null);
 	const [activeRowIndex, setActiveRowIndex] = useState(0);
 	const [visibleCardCounts, setVisibleCardCounts] = useState({});
 	const [recentSearches, saveRecentSearches] = useStorage(RECENT_SEARCHES_KEY, []);
@@ -376,6 +383,16 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 		if (e.keyCode !== KEYS.DOWN) return;
 		if (focusBelowInput()) e.preventDefault();
 	}, [focusBelowInput]);
+
+	// Each TV keyboard carries the remote's microphone, and what it hears lands
+	// in the field like typed text. The field is handed over on the key down,
+	// since the Fire TV keyboard only comes up for a focus made there.
+	const handleVoiceSearch = useCallback(() => searchInputRef.current?.activateSystemInput(), []);
+	const handleVoiceKeyDown = useCallback((e) => {
+		if (e.keyCode !== KEYS.ENTER) return;
+		e.preventDefault();
+		handleVoiceSearch();
+	}, [handleVoiceSearch]);
 
 	const handleSearchInputFocus = useCallback(() => setSearchInputFocused(true), []);
 	const handleSearchInputBlur = useCallback((e) => {
@@ -650,6 +667,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 				>
 					<SearchIcon />
 					<SpottableInput
+						ref={searchInputRef}
 						type="text"
 						purpose="search"
 						recents={recentSearches}
@@ -664,6 +682,9 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 						autoComplete="off"
 					/>
 					{query && <button className={css.clearBtn} onClick={handleClearSearch}>×</button>}
+					<SpottableButton className={css.voiceBtn} data-spotlight-id="search-voice" onClick={handleVoiceSearch} onKeyDown={handleVoiceKeyDown} aria-label={$L('Voice search')}>
+						<VoiceIcon />
+					</SpottableButton>
 				</div>
 			</div>
 
