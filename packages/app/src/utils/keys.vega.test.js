@@ -1,12 +1,18 @@
 jest.mock('../platform', () => ({getPlatform: () => 'vega'}));
 
-import {KEYS, isBackKey} from './keys';
+import {KEYS, isBackKey, isMenuKey} from './keys';
 
 describe('keys on Vega', () => {
 	test('back is the escape code the WebView hands the page', () => {
 		expect(KEYS.BACK).toBe(27);
 		expect(isBackKey({keyCode: 27})).toBe(true);
 		expect(isBackKey({keyCode: 461})).toBe(false);
+	});
+
+	test('the remote menu key is the context menu code', () => {
+		expect(KEYS.MENU).toBe(93);
+		expect(isMenuKey({keyCode: 93})).toBe(true);
+		expect(isMenuKey({keyCode: 13})).toBe(false);
 	});
 
 	test('the transport keys use their media key codes', () => {

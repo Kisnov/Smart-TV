@@ -41,14 +41,24 @@ export const registerAppStateObserver = (onForeground, onBackground) => {
 // The page cant count on the WebView noticing a dropped network on its own, so
 // the shell's word on it becomes the online and offline events the no
 // connection screen listens for. The first message only says where things
-// stand at boot.
+// stand at boot. The remote's menu key arrives the same way, only as it is let
+// go, and is raised on whatever has focus as the context menu key.
 export const setupVegaLifecycle = () => {
 	let connected = null;
-	return onShellMessage('NETWORK', (payload) => {
+	const removeNetwork = onShellMessage('NETWORK', (payload) => {
 		const now = payload?.connected !== false;
 		if (connected !== null && now !== connected) window.dispatchEvent(new Event(now ? 'online' : 'offline'));
 		connected = now;
 	});
+	const removeKeys = onShellMessage('KEY', (payload) => {
+		if (payload?.key !== 'Menu' || payload.action !== 'up') return;
+		const target = document.activeElement || document.body;
+		target.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'ContextMenu', keyCode: 93, which: 93, bubbles: true, cancelable: true}));
+	});
+	return () => {
+		removeNetwork();
+		removeKeys();
+	};
 };
 
 export const getSupportedAudioCodecs = (capabilities) => {

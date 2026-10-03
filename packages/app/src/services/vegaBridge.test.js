@@ -62,4 +62,19 @@ describe('the Vega lifecycle', () => {
 		window.removeEventListener('offline', offline);
 		window.removeEventListener('online', online);
 	});
+
+	test('raises the remote menu key on the focused element as the context menu key', () => {
+		const button = document.createElement('button');
+		document.body.appendChild(button);
+		button.focus();
+		const seen = jest.fn();
+		button.addEventListener('keydown', (e) => seen(e.keyCode, e.bubbles));
+		const remove = setupVegaLifecycle();
+		window.dispatchEvent(new CustomEvent('moonfin:vega', {detail: {v: 1, type: 'KEY', payload: {key: 'Menu', action: 'up'}}}));
+		window.dispatchEvent(new CustomEvent('moonfin:vega', {detail: {v: 1, type: 'KEY', payload: {key: 'Menu', action: 'down'}}}));
+		expect(seen).toHaveBeenCalledTimes(1);
+		expect(seen).toHaveBeenCalledWith(93, true);
+		remove();
+		button.remove();
+	});
 });
