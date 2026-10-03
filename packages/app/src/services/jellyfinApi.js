@@ -4,16 +4,19 @@ import {normalizeServerUrl} from '../utils/serverUrl';
 import {classifyError} from '../utils/connectionErrors';
 import {mediaServerQueue} from '../utils/requestQueue';
 import {platformFetch} from './secureFetch';
-import {isTizen} from '../platform';
+import {getPlatform} from '../platform';
 import {makeUserRoutes, trimQuerySeparator, legacyAuthHeader, buildUserImageUrl} from '../utils/serverRoutes';
 import * as userDataSync from './userDataSync';
 import {withEmbyNextUpSweep} from './embyNextUp';
 import {SUPPORTED_COMMANDS} from './remoteControl';
 const APP_VERSION = packageJson.version;
 
-const APP_NAME = isTizen() ? 'Moonfin for Tizen' : 'Moonfin for webOS';
-const DEVICE_NAME = isTizen() ? 'Samsung Smart TV' : 'LG Smart TV';
-const platformTag = isTizen() ? 'tizen' : 'webos';
+const PLATFORM_IDENTITY = {
+	tizen: {appName: 'Moonfin for Tizen', deviceName: 'Samsung Smart TV', tag: 'tizen'},
+	vega: {appName: 'Moonfin for Fire TV', deviceName: 'Fire TV', tag: 'vega'},
+	webos: {appName: 'Moonfin for webOS', deviceName: 'LG Smart TV', tag: 'webos'}
+};
+const {appName: APP_NAME, deviceName: DEVICE_NAME, tag: platformTag} = PLATFORM_IDENTITY[getPlatform()] || PLATFORM_IDENTITY.webos;
 
 let deviceId = null;
 let currentServer = null;

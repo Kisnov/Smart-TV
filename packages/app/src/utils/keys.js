@@ -41,12 +41,27 @@ const TIZEN_KEYS = {
 
 const WEBOS_KEYS = {
 	BACK: 461,
+	PLAY: 415,
+	PAUSE: 19,
+	STOP: 413,
+	REWIND: 412,
+	FAST_FORWARD: 417,
 };
+
+// The Vega WebView hands the page the back key as Escape and the transport keys
+// by their media key codes.
+const VEGA_KEYS = {
+	BACK: 27,
+	PLAY_PAUSE: 179,
+	REWIND: 227,
+	FAST_FORWARD: 228,
+};
+
+const PLATFORM_KEYS = {tizen: TIZEN_KEYS, webos: WEBOS_KEYS, vega: VEGA_KEYS};
 
 export const KEYS = {
 	...STANDARD_KEYS,
-	...(getPlatform() === 'tizen' ? TIZEN_KEYS : WEBOS_KEYS),
-	BACK: getPlatform() === 'tizen' ? 10009 : 461,
+	...(PLATFORM_KEYS[getPlatform()] || WEBOS_KEYS),
 };
 
 export const isBackKey = (e) => {

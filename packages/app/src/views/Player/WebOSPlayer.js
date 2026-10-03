@@ -10,12 +10,12 @@ import AudioMode from './audio/AudioMode';
 import useAudioTransport from './audio/useAudioTransport';
 import useLyrics from './audio/useLyrics';
 import {handleAudioFocusKey, exitAudioPanel, nextAudioFocusRow, AUDIO_FOCUS_IDS} from './audio/audioFocus';
-import {detectWebOSVersion, getH264FallbackProfile} from '@moonfin/platform-webos/deviceProfile';
+import {detectPlatformVersion, getH264FallbackProfile} from '../../services/deviceProfile';
 import {initPgsRenderer, initPgsInBandRenderer, disposePgsRenderer} from '../../utils/pgsRenderer';
 import {supportsAssRenderer, initAssCanvasRenderer, disposeAssRenderer, setAssTime, clearAssCanvas} from '../../utils/assRenderer';
 import {waitForAssReady} from '../../utils/assRendererReady';
 import {
-	initLunaAPI,
+	initPlayerPlatform,
 	registerAppStateObserver,
 	keepScreenOn,
 	cleanupVideoElement,
@@ -23,8 +23,9 @@ import {
 	setDisplayWindow,
 	getSharedVideoElement,
 	setupVisibilityHandler,
-	setupWebOSLifecycle
-} from '@moonfin/platform-webos/video';
+	setupPlatformLifecycle
+} from '../../services/video';
+import {KEYS, isBackKey} from '../../utils/keys';
 import {useSettings} from '../../context/SettingsContext';
 import {useSyncPlay} from '../../context/SyncPlayContext';
 import * as syncPlayService from '../../services/syncPlay';
@@ -290,6 +291,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const sourceTransitionRef = useRef(false);
 	const transcodeRetryCountRef = useRef(0);
 	const forceHlsJsRef = useRef(false);
+	const platformVersionRef = useRef(null);
+	useEffect(() => {
+		detectPlatformVersion().then((version) => { platformVersionRef.current = version; });
+	}, []);
 	const isLiveTV = item.Type === 'TvChannel';
 	const liveProgram = useLiveProgram(item, isLiveTV);
 	const prevItemIdRef = useRef(null);
@@ -619,7 +624,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 	useEffect(() => {
 		const init = async () => {
-			await initLunaAPI();
+			await initPlayerPlatform();
 			await keepScreenOn(!isPaused);
 
 			unregisterAppStateRef.current = registerAppStateObserver(
@@ -703,13 +708,13 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		};
 
 		const removeVisibilityHandler = setupVisibilityHandler(handleAppHidden, handleAppVisible);
-		const removeWebOSHandler = setupWebOSLifecycle(handleRelaunch);
+		const removeLifecycleHandler = setupPlatformLifecycle(handleRelaunch);
 		window.addEventListener('pagehide', handleAppExit);
 		window.addEventListener('beforeunload', handleAppExit);
 
 		return () => {
 			removeVisibilityHandler();
-			removeWebOSHandler();
+			removeLifecycleHandler();
 			window.removeEventListener('pagehide', handleAppExit);
 			window.removeEventListener('beforeunload', handleAppExit);
 		};
@@ -1411,19 +1416,18 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			}
 
 			const isHls = mimeType === 'application/x-mpegURL' || mediaUrl.includes('.m3u8');
-			const webosVersion = detectWebOSVersion();
 			// forceHlsJsRef overrides native when HEVC decoding already failed
 			const nativeHlsOk = !forceHlsJsRef.current
 				&& !!(video.canPlayType('application/x-mpegURL').replace(/no/, ''));
 			const useHlsJs = isHls && !nativeHlsOk && Hls.isSupported();
-			console.log('[Player] Source type:', { isHls, mimeType, autoplay: video.autoplay, webosVersion, nativeHlsOk, useHlsJs, forceHlsJs: forceHlsJsRef.current });
+			console.log('[Player] Source type:', { isHls, mimeType, autoplay: video.autoplay, platformVersion: platformVersionRef.current, nativeHlsOk, useHlsJs, forceHlsJs: forceHlsJsRef.current });
 
 			while (video.firstChild) video.removeChild(video.firstChild);
 			video.removeAttribute('src');
 			video.load();
 
 			if (useHlsJs) {
-				console.log('[Player] Using hls.js for HLS playback (webOS ' + webosVersion + ')');
+				console.log('[Player] Using hls.js for HLS playback (platform version ' + platformVersionRef.current + ')');
 				const hls = new Hls({
 					enableWorker: false,
 					lowLatencyMode: false,
@@ -2869,9 +2873,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 			if (handlePopupKeyDown(e)) return;
 
-			// Media playback keys (webOS remote)
-			// Play: 415, Pause: 19, Fast-forward: 417, Rewind: 412, Stop: 413
-			if (e.keyCode === 415) {
+			if (e.keyCode === KEYS.PLAY) {
 				e.preventDefault();
 				e.stopPropagation();
 				showControls();
@@ -2879,28 +2881,36 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				if (isPaused) handlePlayPause();
 				return;
 			}
-			if (e.keyCode === 19) {
+			if (e.keyCode === KEYS.PAUSE) {
 				e.preventDefault();
 				e.stopPropagation();
 				showControls();
 				if (!isPaused) handlePlayPause();
 				return;
 			}
-			if (e.keyCode === 417) {
+			if (e.keyCode === KEYS.PLAY_PAUSE) {
+				e.preventDefault();
+				e.stopPropagation();
+				showControls();
+				if (resumeHeldScrub()) return;
+				handlePlayPause();
+				return;
+			}
+			if (e.keyCode === KEYS.FAST_FORWARD) {
 				e.preventDefault();
 				e.stopPropagation();
 				if (!isLiveTV) handleForward();
 				showControls();
 				return;
 			}
-			if (e.keyCode === 412) {
+			if (e.keyCode === KEYS.REWIND) {
 				e.preventDefault();
 				e.stopPropagation();
 				if (!isLiveTV) handleRewind();
 				showControls();
 				return;
 			}
-			if (e.keyCode === 413) {
+			if (e.keyCode === KEYS.STOP) {
 				e.preventDefault();
 				e.stopPropagation();
 				handleBack();
@@ -2915,7 +2925,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				return;
 			}
 
-			if (key === 'GoBack' || key === 'Backspace' || e.keyCode === 461 || e.keyCode === 8 || e.keyCode === 27) {
+			if (isBackKey(e)) {
 				e.preventDefault();
 				e.stopPropagation();
 				if (activeModal) {
