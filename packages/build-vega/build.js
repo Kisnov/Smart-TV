@@ -49,16 +49,11 @@ const copyDirRecursive = (src, dest) => {
 };
 
 // Sandstone's CSS asks for its fonts at /node_modules/@enact/sandstone/fonts, an
-// absolute path nothing serves, so the weights the app uses travel with it.
+// absolute path nothing serves, so every face its stylesheet names travels with it.
 const SANDSTONE_FONTS = path.join(ROOT_DIR, 'node_modules', '@enact', 'sandstone', 'fonts');
-const BUNDLED_FONTS = ['Sandstone_Icons.ttf', 'MuseoSans/LICENSE.txt', 'MuseoSans/MuseoSans-Light.ttf', 'MuseoSans/MuseoSans-Medium.ttf', 'MuseoSans/MuseoSans-Bold.ttf', 'MuseoSans/MuseoSans-Black.ttf'];
 
 const bundleSandstoneFonts = (dir) => {
-	const dest = path.join(dir, 'fonts');
-	fs.mkdirSync(path.join(dest, 'MuseoSans'), {recursive: true});
-	for (const file of BUNDLED_FONTS) {
-		fs.copyFileSync(path.join(SANDSTONE_FONTS, file), path.join(dest, file));
-	}
+	copyDirRecursive(SANDSTONE_FONTS, path.join(dir, 'fonts'));
 	for (const file of fs.readdirSync(dir).filter((entry) => entry.endsWith('.css'))) {
 		const cssPath = path.join(dir, file);
 		const css = fs.readFileSync(cssPath, 'utf8');
