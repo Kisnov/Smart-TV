@@ -38,6 +38,19 @@ export const registerAppStateObserver = (onForeground, onBackground) => {
 	};
 };
 
+// The page cant count on the WebView noticing a dropped network on its own, so
+// the shell's word on it becomes the online and offline events the no
+// connection screen listens for. The first message only says where things
+// stand at boot.
+export const setupVegaLifecycle = () => {
+	let connected = null;
+	return onShellMessage('NETWORK', (payload) => {
+		const now = payload?.connected !== false;
+		if (connected !== null && now !== connected) window.dispatchEvent(new Event(now ? 'online' : 'offline'));
+		connected = now;
+	});
+};
+
 export const getSupportedAudioCodecs = (capabilities) => {
 	const codecs = ['aac', 'mp3', 'mp2', 'flac', 'opus', 'vorbis', 'pcm_s16le', 'pcm_s24le'];
 	if (capabilities.ac3) codecs.push('ac3');

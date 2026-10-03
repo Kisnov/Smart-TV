@@ -1,4 +1,5 @@
 import {allowInsecureHost, bootData, exitApp, onShellMessage, postToShell} from '../../../platform-vega/src/bridge';
+import {setupVegaLifecycle} from '../../../platform-vega/src/video';
 
 describe('the Vega bridge', () => {
 	afterEach(() => {
@@ -34,5 +35,31 @@ describe('the Vega bridge', () => {
 		remove();
 		window.dispatchEvent(new CustomEvent('moonfin:vega', {detail: {v: 1, type: 'APP_STATE', payload: {state: 'active'}}}));
 		expect(handler).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('the Vega lifecycle', () => {
+	const shellSays = (connected) => window.dispatchEvent(new CustomEvent('moonfin:vega', {detail: {v: 1, type: 'NETWORK', payload: {connected, ip: null}}}));
+
+	test('turns a change in the shell network report into the browser events, after the first word', () => {
+		const offline = jest.fn();
+		const online = jest.fn();
+		window.addEventListener('offline', offline);
+		window.addEventListener('online', online);
+		const remove = setupVegaLifecycle();
+		shellSays(true);
+		shellSays(true);
+		expect(offline).not.toHaveBeenCalled();
+		shellSays(false);
+		expect(offline).toHaveBeenCalledTimes(1);
+		shellSays(false);
+		expect(offline).toHaveBeenCalledTimes(1);
+		shellSays(true);
+		expect(online).toHaveBeenCalledTimes(1);
+		remove();
+		shellSays(false);
+		expect(offline).toHaveBeenCalledTimes(1);
+		window.removeEventListener('offline', offline);
+		window.removeEventListener('online', online);
 	});
 });

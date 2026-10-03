@@ -5,6 +5,7 @@ title = "Moonfin"
 # version follows packages/app/package.json, build.js keeps it in step
 version = "2.9.0"
 id = "org.moonfin.androidtv"
+icon = "@image/icon.png"
 
 [os.version]
 min = "1.2"

@@ -20,6 +20,7 @@ const ROOT_DIR = path.resolve(__dirname, '..', '..');
 const SHELL_DIR = path.join(__dirname, 'shell');
 const ASSETS_DIR = path.join(SHELL_DIR, 'assets');
 const INJECT_DIR = path.join(__dirname, 'inject');
+const BRAND_DIR = path.join(__dirname, 'brand');
 
 // Files the subtitle workers need. They are packaged as scripts the worker shim
 // can load from file://, see inject/worker-shim.js.
@@ -29,6 +30,69 @@ const WORKER_ASSETS = [
 	path.join(ROOT_DIR, 'node_modules', 'libass-wasm', 'dist', 'js', 'subtitles-octopus-worker.wasm'),
 	{src: path.join(ROOT_DIR, 'node_modules', '@enact', 'sandstone', 'fonts', 'MuseoSans', 'MuseoSans-Light.ttf'), name: 'ass-fallback-font.ttf'}
 ];
+
+// A zip with the entries stored as they are, which is all the splash service
+// reads, so no archiver has to be installed for the build.
+const crc32 = (buffer) => {
+	let crc = 0xffffffff;
+	for (const byte of buffer) {
+		crc ^= byte;
+		for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+	}
+	return (crc ^ 0xffffffff) >>> 0;
+};
+
+const storeZip = (entries) => {
+	const locals = [];
+	const centrals = [];
+	let offset = 0;
+	for (const {name, data} of entries) {
+		const nameBytes = Buffer.from(name, 'utf8');
+		const crc = crc32(data);
+		const local = Buffer.alloc(30);
+		local.writeUInt32LE(0x04034b50, 0);
+		local.writeUInt16LE(20, 4);
+		local.writeUInt32LE(crc, 14);
+		local.writeUInt32LE(data.length, 18);
+		local.writeUInt32LE(data.length, 22);
+		local.writeUInt16LE(nameBytes.length, 26);
+		locals.push(local, nameBytes, data);
+		const central = Buffer.alloc(46);
+		central.writeUInt32LE(0x02014b50, 0);
+		central.writeUInt16LE(20, 4);
+		central.writeUInt16LE(20, 6);
+		central.writeUInt32LE(crc, 16);
+		central.writeUInt32LE(data.length, 20);
+		central.writeUInt32LE(data.length, 24);
+		central.writeUInt16LE(nameBytes.length, 28);
+		central.writeUInt32LE(offset, 42);
+		centrals.push(central, nameBytes);
+		offset += local.length + nameBytes.length + data.length;
+	}
+	const centralSize = centrals.reduce((sum, part) => sum + part.length, 0);
+	const end = Buffer.alloc(22);
+	end.writeUInt32LE(0x06054b50, 0);
+	end.writeUInt16LE(entries.length, 8);
+	end.writeUInt16LE(entries.length, 10);
+	end.writeUInt32LE(centralSize, 12);
+	end.writeUInt32LE(offset, 16);
+	return Buffer.concat([...locals, ...centrals, end]);
+};
+
+// The icon named in the manifest is read from assets/image, and the splash
+// service plays assets/raw/SplashScreenImages.zip, a frame list in the boot
+// animation layout, until the shell hides it.
+const writeBrandAssets = (dir) => {
+	fs.mkdirSync(path.join(dir, 'image'), {recursive: true});
+	fs.copyFileSync(path.join(BRAND_DIR, 'icon.png'), path.join(dir, 'image', 'icon.png'));
+	fs.mkdirSync(path.join(dir, 'raw'), {recursive: true});
+	const zip = storeZip([
+		{name: 'desc.txt', data: Buffer.from('1920 1080 30\nc 0 0 _loop\n', 'utf8')},
+		{name: '_loop/', data: Buffer.alloc(0)},
+		{name: '_loop/loop00000.png', data: fs.readFileSync(path.join(BRAND_DIR, 'splash.png'))}
+	]);
+	fs.writeFileSync(path.join(dir, 'raw', 'SplashScreenImages.zip'), zip);
+};
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -159,6 +223,9 @@ const buildApp = (appPkg) => {
 
 	console.log('\n Bundling Sandstone fonts...');
 	bundleSandstoneFonts(ASSETS_DIR);
+
+	console.log('\n Writing the icon and splash...');
+	writeBrandAssets(ASSETS_DIR);
 };
 
 const syncManifestVersion = (version) => {
