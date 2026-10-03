@@ -9,6 +9,7 @@ import {applyProfileTuning} from '../utils/deviceProfileTuning';
 import {findNextInSeason, findNextSeason, firstPlayableEpisode} from '../utils/nextEpisode';
 import {videoRangeTypeOf} from '../utils/videoRange';
 import {getVolumeState, lastVolumeState} from './systemVolume';
+import {isVega} from '../platform';
 
 export const PlayMethod = {
 	DirectPlay: 'DirectPlay',
@@ -1108,6 +1109,52 @@ const volumeReport = () => {
 	return state ? {VolumeLevel: Math.round(state.volume), IsMuted: state.muted} : {IsMuted: false};
 };
 
+// The request that ends the current session on its server, ready to send
+// without any help from the API client.
+const stopRequest = (positionTicks) => {
+	if (!currentSession) return null;
+
+	const creds = currentSession.serverCredentials;
+	let serverUrl = creds?.serverUrl || jellyfinApi.getServerUrl();
+	const token = creds?.accessToken || jellyfinApi.getApiKey();
+	if (!serverUrl || !token) return null;
+
+	serverUrl = serverUrl.trim().replace(/\/+$/, '');
+	if (!/^https?:\/\//i.test(serverUrl)) serverUrl = 'http://' + serverUrl;
+
+	return {
+		endpoint: `${serverUrl}/Sessions/Playing/Stopped?${jellyfinApi.getTokenParam(creds?.serverType)}=${encodeURIComponent(token)}`,
+		json: JSON.stringify({
+			ItemId: currentSession.itemId,
+			PlaySessionId: currentSession.playSessionId,
+			MediaSourceId: currentSession.mediaSourceId,
+			PositionTicks: positionTicks || 0,
+			PlayMethod: currentSession.reportedPlayMethod || currentSession.playMethod,
+			AudioStreamIndex: currentSession.audioStreamIndex,
+			SubtitleStreamIndex: currentSession.subtitleStreamIndex
+		})
+	};
+};
+
+// Page scripts freeze once the app is in the background on Fire TV, so the shell
+// that hosts the page gets what it needs to end the session itself.
+let vegaBridge = null;
+if (isVega()) {
+	import('@moonfin/platform-vega/bridge').then((mod) => {
+		vegaBridge = mod;
+	});
+}
+
+const shareStopWithShell = (positionTicks) => {
+	if (!vegaBridge) return;
+	const request = stopRequest(positionTicks);
+	vegaBridge.postToShell('PLAYBACK_SESSION', request && {
+		stopUrl: request.endpoint,
+		headers: {'Content-Type': 'application/json'},
+		body: request.json
+	});
+};
+
 export const reportStart = async (positionTicks = 0) => {
 	if (!currentSession) return;
 
@@ -1167,23 +1214,15 @@ export const reportProgress = async (positionTicks, options = {}) => {
 			info.EventName = options.eventName;
 		}
 
+		shareStopWithShell(positionTicks);
 		await api.reportPlaybackProgress(info);
 	} catch (e) { void e; }
 };
 
-const sendSessionBeacon = (path, payload) => {
-	if (!currentSession) return false;
-
-	const creds = currentSession.serverCredentials;
-	let serverUrl = creds?.serverUrl || jellyfinApi.getServerUrl();
-	const token = creds?.accessToken || jellyfinApi.getApiKey();
-	if (!serverUrl || !token) return false;
-
-	serverUrl = serverUrl.trim().replace(/\/+$/, '');
-	if (!/^https?:\/\//i.test(serverUrl)) serverUrl = 'http://' + serverUrl;
-
-	const endpoint = `${serverUrl}${path}?${jellyfinApi.getTokenParam(creds?.serverType)}=${encodeURIComponent(token)}`;
-	const json = JSON.stringify(payload);
+export const reportStopBeacon = (positionTicks) => {
+	const request = stopRequest(positionTicks);
+	if (!request) return false;
+	const {endpoint, json} = request;
 
 	if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
 		try {
@@ -1205,19 +1244,6 @@ const sendSessionBeacon = (path, payload) => {
 		void e;
 		return false;
 	}
-};
-
-export const reportStopBeacon = (positionTicks) => {
-	if (!currentSession) return false;
-	return sendSessionBeacon('/Sessions/Playing/Stopped', {
-		ItemId: currentSession.itemId,
-		PlaySessionId: currentSession.playSessionId,
-		MediaSourceId: currentSession.mediaSourceId,
-		PositionTicks: positionTicks || 0,
-		PlayMethod: currentSession.reportedPlayMethod || currentSession.playMethod,
-		AudioStreamIndex: currentSession.audioStreamIndex,
-		SubtitleStreamIndex: currentSession.subtitleStreamIndex
-	});
 };
 
 export const stopProgressReporting = () => {
@@ -1243,6 +1269,7 @@ let backgroundStopFired = false;
 
 export const reportBackgroundStop = (positionTicks) => {
 	if (!currentSession) return;
+	shareStopWithShell(positionTicks);
 	reportStopBeacon(positionTicks);
 	// stop the local reporting loops so they cant revive the session we just
 	// told the server to end
@@ -1268,6 +1295,7 @@ export const reportStop = async (positionTicks) => {
 	const session = currentSession;
 	if (!session) return;
 	currentSession = null;
+	shareStopWithShell(null);
 
 	stopProgressReporting();
 	stopHealthMonitoring();

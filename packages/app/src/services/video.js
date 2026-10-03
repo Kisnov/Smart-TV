@@ -32,6 +32,7 @@ export const cleanupVideoElement = (...args) => impl.cleanupVideoElement(...args
 export const setupVisibilityHandler = (...args) => impl.setupVisibilityHandler(...args);
 export const waitForDecoderRelease = (...args) => impl.waitForDecoderRelease(...args);
 export const getSharedVideoElement = (...args) => impl.getSharedVideoElement(...args);
+export const leavesPlayerInBackground = () => !!impl.leavesPlayerInBackground;
 
 // Only webOS has a service bridge to bring up before the player can use it.
 export const initPlayerPlatform = () => (impl.initLunaAPI ? impl.initLunaAPI() : Promise.resolve(false));

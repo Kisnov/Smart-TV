@@ -70,3 +70,35 @@ describe('the Vega device profile', () => {
 		expect(getPlayMethod(source({SupportsDirectPlay: false, Container: 'mp4'}), capabilities)).toBe('DirectStream');
 	});
 });
+
+describe('the Vega play method bitrate caps', () => {
+	const hevc = (bitRate, modelName) => getPlayMethod(
+		{Container: 'mkv', SupportsDirectPlay: true, SupportsDirectStream: true, MediaStreams: [{Type: 'Video', Codec: 'hevc', BitRate: bitRate}, {Type: 'Audio', Codec: 'aac', Index: 1}]},
+		{modelName, hevc: true, hdr10: false, hlg: false}
+	);
+	const h264 = (bitRate, modelName) => getPlayMethod(
+		{Container: 'mp4', SupportsDirectPlay: true, SupportsDirectStream: true, MediaStreams: [{Type: 'Video', Codec: 'h264', BitRate: bitRate}, {Type: 'Audio', Codec: 'aac', Index: 1}]},
+		{modelName}
+	);
+	const vp9 = (bitRate, modelName) => getPlayMethod(
+		{Container: 'webm', SupportsDirectPlay: true, SupportsDirectStream: true, MediaStreams: [{Type: 'Video', Codec: 'vp9', BitRate: bitRate}, {Type: 'Audio', Codec: 'opus', Index: 1}]},
+		{modelName, vp9: true}
+	);
+
+	test('follows what each stick decodes', () => {
+		expect(h264(25_000_000, 'AFTCA002')).toBe('DirectPlay');
+		expect(h264(25_000_000, 'AFTCR001')).toBe('Transcode');
+		expect(hevc(34_000_000, 'AFTCR001')).toBe('DirectPlay');
+		expect(hevc(36_000_000, 'AFTCA002')).toBe('Transcode');
+		expect(vp9(25_000_000, 'AFTCR001')).toBe('DirectPlay');
+		expect(vp9(25_000_000, 'AFTCL001')).toBe('Transcode');
+	});
+
+	test('a bitrate the user chose wins', () => {
+		expect(getPlayMethod(
+			{Container: 'mp4', SupportsDirectPlay: true, MediaStreams: [{Type: 'Video', Codec: 'h264', BitRate: 25_000_000}]},
+			{modelName: 'AFTCR001'},
+			{maxBitrate: 30_000_000}
+		)).toBe('DirectPlay');
+	});
+});

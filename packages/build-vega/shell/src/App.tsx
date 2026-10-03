@@ -108,7 +108,7 @@ export const App = () => {
 				injectedJavaScriptBeforeContentLoaded={bootScript(boot)}
 				hasTVPreferredFocus
 				allowSystemKeyEvents
-				allowsDefaultMediaControl={false}
+				allowsDefaultMediaControl
 				domStorageEnabled
 				javaScriptEnabled
 				mediaPlaybackRequiresUserAction={false}

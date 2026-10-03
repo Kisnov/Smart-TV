@@ -23,7 +23,8 @@ import {
 	setDisplayWindow,
 	getSharedVideoElement,
 	setupVisibilityHandler,
-	setupPlatformLifecycle
+	setupPlatformLifecycle,
+	leavesPlayerInBackground
 } from '../../services/video';
 import {KEYS, isBackKey} from '../../utils/keys';
 import {useSettings} from '../../context/SettingsContext';
@@ -39,6 +40,7 @@ import {resolveSeriesAudio} from './initialAudio';
 import {resolveInitialSubtitle} from './initialSubtitle';
 import PlayerControls, {usePlayerButtons} from './PlayerControls';
 import useLiveProgram from './useLiveProgram';
+import useMediaSession from './useMediaSession';
 import {hasTrickplayPreview} from '../../components/TrickplayPreview';
 import useChannelCarousel from './useChannelCarousel';
 import ChannelCarousel from './ChannelCarousel';
@@ -636,6 +638,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				},
 				() => {
 					console.log('[Player] App backgrounded');
+					videoRef.current?.pause();
 				}
 			);
 		};
@@ -670,6 +673,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			// It also records the resume position. Coming back re-reports start
 			// on the same session.
 			playback.reportBackgroundStop(positionRef.current);
+			if (leavesPlayerInBackground()) handleBackRef.current?.();
 		};
 
 		const handleAppVisible = () => {
@@ -2181,6 +2185,20 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		noteSeek();
 		seekByOffset(skipForwardSeconds(settings));
 	}, [settings, seekByOffset, noteViewerActivity, dropScrub, noteSeek]);
+
+	const playFromSystem = useCallback(() => { if (isPaused) handlePlayPause(); }, [isPaused, handlePlayPause]);
+	const pauseFromSystem = useCallback(() => { if (!isPaused) handlePlayPause(); }, [isPaused, handlePlayPause]);
+	useMediaSession({
+		title: item.Name,
+		artist: item.SeriesName || (item.ProductionYear ? String(item.ProductionYear) : ''),
+		artwork: isLiveTV ? null : getImageUrl(item._serverUrl || getServerUrl(), item.Id, 'Primary', {maxWidth: 512, quality: 80}),
+		paused: isPaused,
+		onPlay: playFromSystem,
+		onPause: pauseFromSystem,
+		onSeekForward: isLiveTV ? null : handleForward,
+		onSeekBackward: isLiveTV ? null : handleRewind,
+		onStop: handleBack
+	});
 
 	const openModal = useCallback((modal) => {
 	  lastFocusedElementRef.current = document.activeElement;

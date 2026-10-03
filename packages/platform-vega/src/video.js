@@ -5,6 +5,7 @@
 // files it can take as they are, and that there is no hardware window, screen
 // saver guard or audio output to drive from here.
 import {videoRangeTypeOf} from '@moonfin/app/src/utils/videoRange';
+import {onShellMessage} from './bridge';
 
 export {
 	getMimeType,
@@ -12,9 +13,24 @@ export {
 	getSharedVideoElement,
 	cleanupVideoElement,
 	waitForDecoderRelease,
-	registerAppStateObserver,
 	setupVisibilityHandler
 } from '@moonfin/platform-webos/video';
+
+// A backgrounded app may keep no more than 150 MB and loses the decoder, so the
+// player lets go of playback and the user comes back to the details page.
+export const leavesPlayerInBackground = true;
+
+// The display coming and going is the shell's news, since the page only hears
+// about its own visibility.
+export const registerAppStateObserver = (onForeground, onBackground) => {
+	const onVisibility = () => (document.hidden ? onBackground?.() : onForeground?.());
+	document.addEventListener('visibilitychange', onVisibility);
+	const removeDisplay = onShellMessage('DISPLAY_CHANGED', ({connected}) => (connected ? onForeground?.() : onBackground?.()));
+	return () => {
+		document.removeEventListener('visibilitychange', onVisibility);
+		removeDisplay();
+	};
+};
 
 export const getSupportedAudioCodecs = (capabilities) => {
 	const codecs = ['aac', 'mp3', 'mp2', 'flac', 'opus', 'vorbis', 'pcm_s16le', 'pcm_s24le'];
@@ -31,6 +47,20 @@ export const isAudioStreamPlayable = (stream, capabilities) => {
 };
 
 const VIDEO_CONTAINERS = ['mp4', 'm4v', 'mov', 'ts', 'mpegts', 'mts', 'm2ts', 'mkv', 'matroska', 'webm'];
+
+// The decoder limits Amazon lists per stick. The 4K Select takes more H.264
+// than the newer sticks and the HD stick takes less VP9.
+const BITRATE_CAPS = {
+	AFTCA002: {h264: 30_000_000, hevc: 35_000_000, vp9: 30_000_000},
+	AFTCL001: {h264: 20_000_000, hevc: 35_000_000, vp9: 20_000_000, av1: 25_000_000},
+	default: {h264: 20_000_000, hevc: 35_000_000, vp9: 30_000_000, av1: 25_000_000}
+};
+const CODEC_FAMILY = {h264: 'h264', avc: 'h264', hevc: 'hevc', h265: 'hevc', hev1: 'hevc', hvc1: 'hevc', dvh1: 'hevc', vp9: 'vp9', av1: 'av1', av01: 'av1'};
+
+const decoderBitrateCap = (modelName, videoCodec) => {
+	const caps = BITRATE_CAPS[modelName] || BITRATE_CAPS.default;
+	return caps[CODEC_FAMILY[videoCodec]] || 40_000_000;
+};
 const AUDIO_CONTAINERS = ['mp3', 'aac', 'm4a', 'm4b', 'flac', 'ogg', 'oga', 'opus', 'wav', 'webma'];
 
 // Without Dolby Vision of its own the WebView plays the base layer of a dual
@@ -76,7 +106,7 @@ export const getPlayMethod = (mediaSource, capabilities, options = {}) => {
 	const videoOk = !videoCodec || videoCodecs.includes(videoCodec);
 	const containerOk = !container || containerParts.some((part) => VIDEO_CONTAINERS.includes(part));
 	const hdrOk = rangeOk(videoStream, capabilities);
-	const maxBitrate = options.maxBitrate > 0 ? options.maxBitrate : (capabilities.uhd ? 60_000_000 : 40_000_000);
+	const maxBitrate = options.maxBitrate > 0 ? options.maxBitrate : decoderBitrateCap(capabilities.modelName, videoCodec);
 	const bitrateOk = !videoStream.BitRate || videoStream.BitRate <= maxBitrate;
 
 	console.log('[vegaVideo] Compatibility check:', {videoOk, audioOk, containerOk, hdrOk, bitrateOk});
