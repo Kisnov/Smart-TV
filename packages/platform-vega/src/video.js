@@ -5,16 +5,22 @@
 // files it can take as they are, and that there is no hardware window, screen
 // saver guard or audio output to drive from here.
 import {videoRangeTypeOf} from '@moonfin/app/src/utils/videoRange';
+import {getSharedVideoElement as sharedVideoElement} from '@moonfin/platform-webos/video';
 import {onShellMessage} from './bridge';
 
 export {
 	getMimeType,
 	canRenderEmbeddedPgsInBand,
-	getSharedVideoElement,
 	cleanupVideoElement,
 	waitForDecoderRelease,
 	setupVisibilityHandler
 } from '@moonfin/platform-webos/video';
+
+export const getSharedVideoElement = () => {
+	const video = sharedVideoElement();
+	video.disableRemotePlayback = true;
+	return video;
+};
 
 // A backgrounded app may keep no more than 150 MB and loses the decoder, so the
 // player lets go of playback and the user comes back to the details page.

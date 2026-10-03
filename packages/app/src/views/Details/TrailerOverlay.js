@@ -31,6 +31,7 @@ const TrailerOverlay = ({videoId, streamUrl, videoRef, muted, onClose, onKeyDown
 						autoPlay
 						controls
 						playsInline
+						disableRemotePlayback
 						muted={muted}
 					/>
 				) : (
