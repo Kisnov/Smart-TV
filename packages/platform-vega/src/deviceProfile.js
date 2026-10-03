@@ -107,8 +107,11 @@ const buildDirectPlayProfiles = (caps) => {
 		{Container: 'm4a', AudioCodec: 'aac', Type: 'Audio'},
 		{Container: 'm4b', AudioCodec: 'aac', Type: 'Audio'}
 	];
+	// A server side HLS source arrives as TS, and the WebView's HLS player pulls H.264, AAC
+	// and MPEG audio out of a TS segment and nothing else, so an HEVC track in there would
+	// play as audio over a black picture.
 	if (caps.nativeHls) {
-		profiles.push({Container: 'hls', Type: 'Video', VideoCodec: videoCodecs, AudioCodec: tsAudioCodecs});
+		profiles.push({Container: 'hls', Type: 'Video', VideoCodec: 'h264', AudioCodec: tsAudioCodecs});
 	}
 	return profiles;
 };
@@ -136,9 +139,14 @@ export const getJellyfinDeviceProfile = async () => {
 	const videoRangeTypes = buildVideoRangeTypes(caps);
 	const hlsAudioCodecs = ['aac', 'mp2'].concat(caps.ac3 ? ['ac3'] : [], caps.eac3 ? ['eac3'] : []).join(',');
 
+	// Transcodes go out as fMP4 segments, which carry HEVC as well as H.264 through the
+	// WebView's HLS player where a TS segment only gets H.264 through. The server takes the
+	// first codec it is allowed to encode, so a server with HEVC encoding on sends HEVC and
+	// any other sends H.264, and an HEVC source that only needs its audio converted is copied.
+	const hlsVideoCodecs = caps.hevc ? 'hevc,h264' : 'h264';
 	const transcodingProfiles = [
 		caps.nativeHls
-			? {Container: 'ts', Type: 'Video', AudioCodec: hlsAudioCodecs, VideoCodec: caps.hevc ? 'hevc,h264' : 'h264', Context: 'Streaming', Protocol: 'hls', MaxAudioChannels: '6', MinSegments: '1', BreakOnNonKeyFrames: false}
+			? {Container: 'mp4', Type: 'Video', AudioCodec: hlsAudioCodecs, VideoCodec: hlsVideoCodecs, Context: 'Streaming', Protocol: 'hls', MaxAudioChannels: '6', MinSegments: '1', BreakOnNonKeyFrames: false}
 			: {Container: 'ts', Type: 'Video', AudioCodec: 'aac', VideoCodec: 'h264', Context: 'Streaming', Protocol: 'hls', MaxAudioChannels: '2', MinSegments: '1', BreakOnNonKeyFrames: false},
 		{Container: 'mp4', Type: 'Video', AudioCodec: 'aac', VideoCodec: 'h264', Context: 'Static'},
 		...AUDIO_TRANSCODING_PROFILES

@@ -52,7 +52,8 @@ describe('the Vega device profile', () => {
 		const mp4 = profile.DirectPlayProfiles.find((entry) => entry.Container === 'mp4,m4v');
 		expect(mp4.VideoCodec).toBe('h264,hevc,dvh1');
 		expect(mp4.AudioCodec).not.toContain('ac3');
-		expect(profile.TranscodingProfiles[0]).toMatchObject({Protocol: 'hls', VideoCodec: 'hevc,h264', AudioCodec: 'aac,mp2'});
+		expect(profile.TranscodingProfiles[0]).toMatchObject({Protocol: 'hls', Container: 'mp4', VideoCodec: 'hevc,h264', AudioCodec: 'aac,mp2'});
+		expect(profile.DirectPlayProfiles.find((entry) => entry.Container === 'hls').VideoCodec).toBe('h264');
 		expect(profile.CodecProfiles.find((entry) => entry.Codec === 'hevc').Conditions[1].Value).toBe('SDR|DOVIWithSDR');
 		expect(profile.CodecProfiles.some((entry) => entry.Codec === 'av1')).toBe(false);
 	});
