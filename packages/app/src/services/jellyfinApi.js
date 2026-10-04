@@ -7,7 +7,6 @@ import {platformFetch} from './secureFetch';
 import {getPlatform} from '../platform';
 import {makeUserRoutes, trimQuerySeparator, legacyAuthHeader, buildUserImageUrl} from '../utils/serverRoutes';
 import * as userDataSync from './userDataSync';
-import {withEmbyNextUpSweep} from './embyNextUp';
 import {SUPPORTED_COMMANDS} from './remoteControl';
 const APP_VERSION = packageJson.version;
 
@@ -113,14 +112,20 @@ const LIVE_TV_CATEGORY_FLAGS = {movies: 'IsMovie', series: 'IsSeries', sports: '
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const PLAYBACK_TIMEOUT_MS = 120000;
+// Some servers answer a people search far slower than everything else, so it
+// gets a limit of its own rather than holding the other results back.
+const PEOPLE_SEARCH_TIMEOUT_MS = 10000;
 export const HOME_ROW_ITEM_FIELDS = 'DateCreated,PremiereDate,PrimaryImageAspectRatio,OfficialRating,Overview,Genres,GenreItems,ProductionYear,RunTimeTicks,CommunityRating,CriticRating,ProviderIds,ImageTags,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,ParentThumbItemId,ParentLogoItemId,ParentLogoImageTag,SeriesPrimaryImageTag,ParentPrimaryImageTag,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,UserData,AlbumArtist,AlbumId,AlbumPrimaryImageTag';
 
 // The home Next Up row asks the server for a window instead of the whole watch
 // history, which is what keeps the query fast on a large library. A series page
 // skips it, since a window there would hide the episode the user opened it for.
-// Emby has no equivalent parameter, so it keeps the unbounded query.
-const nextUpCutoffQuery = (seriesId, maxDays, type) => {
-	if (seriesId || type === 'emby') return '';
+// Emby has no window parameter, and 4.10 answers a Next Up that isn't scoped to
+// one series with an empty list unless it's asked for the legacy one, which is
+// the same list its own home screen shows. Older Emby servers ignore the flag.
+const homeNextUpQuery = (seriesId, maxDays, type) => {
+	if (seriesId) return '';
+	if (type === 'emby') return '&LegacyNextUp=true';
 	if (typeof maxDays !== 'number' || maxDays <= 0) return '';
 	const cutoff = new Date(Date.now() - maxDays * 86400000);
 	return `&NextUpDateCutoff=${encodeURIComponent(cutoff.toISOString())}`;
@@ -447,18 +452,12 @@ export const api = {
 	getResumeAudioItems: (limit = 20) =>
 		request(`${userRoutes.resume()}Limit=${limit}&MediaTypes=Audio&Fields=${encodeURIComponent(HOME_ROW_ITEM_FIELDS)}`),
 
-	getNextUp: async (limit = 24, seriesId = null, maxDays = 0) => {
+	getNextUp: (limit = 24, seriesId = null, maxDays = 0) => {
 		const fields = encodeURIComponent(HOME_ROW_ITEM_FIELDS);
 		let url = `/Shows/NextUp?UserId=${currentUser}&Limit=${limit}&Fields=${fields}`;
 		if (seriesId) url += `&SeriesId=${seriesId}`;
-		url += nextUpCutoffQuery(seriesId, maxDays, serverType);
-		const answer = await request(url);
-		if (serverType !== 'emby' || seriesId) return answer;
-		return withEmbyNextUpSweep(request, answer, {
-			itemsRoute: userRoutes.items(),
-			seriesNextUpUrl: (id) => `/Shows/NextUp?UserId=${currentUser}&SeriesId=${id}&Limit=1&Fields=${fields}`,
-			limit
-		});
+		url += homeNextUpQuery(seriesId, maxDays, serverType);
+		return request(url);
 	},
 
 	getPlaybackInfo: (itemId, body = {}) => {
@@ -500,16 +499,11 @@ export const api = {
 		method: 'POST'
 	}),
 
-	search: async (query, limit = 240) => {
-		const [itemsResult, peopleResult] = await Promise.all([
-			request(`${userRoutes.items()}searchTerm=${encodeURIComponent(query)}&Limit=${limit}&Recursive=true&IncludeItemTypes=Book,Movie,Series,Season,Episode,Video,MusicVideo,Trailer,Program,Playlist,MusicArtist,MusicAlbum,Audio,PhotoAlbum,Photo,BoxSet,Folder&Fields=PrimaryImageAspectRatio,ProductionYear,AlbumArtist,SeriesName,ParentIndexNumber,IndexNumber,ProviderIds,UserData,OfficialRating`),
-			request(`/Persons?searchTerm=${encodeURIComponent(query)}&Limit=${limit}&Fields=PrimaryImageAspectRatio`)
-		]);
+	search: (query, limit = 240) =>
+		request(`${userRoutes.items()}searchTerm=${encodeURIComponent(query)}&Limit=${limit}&Recursive=true&IncludeItemTypes=Book,Movie,Series,Season,Episode,Video,MusicVideo,Trailer,Program,Playlist,MusicArtist,MusicAlbum,Audio,PhotoAlbum,Photo,BoxSet,Folder&Fields=PrimaryImageAspectRatio,ProductionYear,AlbumArtist,SeriesName,ParentIndexNumber,IndexNumber,ProviderIds,UserData,OfficialRating`),
 
-		return {
-			Items: [...(itemsResult.Items || []), ...(peopleResult.Items || [])]
-		};
-	},
+	searchPeople: (query, limit = 24) =>
+		request(`/Persons?searchTerm=${encodeURIComponent(query)}&Limit=${limit}&Fields=PrimaryImageAspectRatio`, {timeoutMs: PEOPLE_SEARCH_TIMEOUT_MS}),
 
 	getSeasons: (seriesId) =>
 		request(`/Shows/${seriesId}/Seasons?UserId=${currentUser}&Fields=PrimaryImageAspectRatio`),
@@ -986,18 +980,12 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 		getResumeItems: () =>
 			serverRequest(`${serverUserRoutes.resume()}Limit=12&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,ProviderIds&MediaTypes=Video&EnableTotalRecordCount=false&ExcludeItemTypes=Book`),
 
-		getNextUp: async (limit = 12, seriesId = null, maxDays = 0) => {
+		getNextUp: (limit = 12, seriesId = null, maxDays = 0) => {
 			const fields = 'PrimaryImageAspectRatio,Overview,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,ParentLogoItemId,ParentLogoImageTag,ProviderIds';
 			let endpoint = `/Shows/NextUp?UserId=${userId}&Limit=${limit}&Fields=${fields}`;
 			if (seriesId) endpoint += `&SeriesId=${seriesId}`;
-			endpoint += nextUpCutoffQuery(seriesId, maxDays, serverTypeOverride);
-			const answer = await serverRequest(endpoint);
-			if (serverTypeOverride !== 'emby' || seriesId) return answer;
-			return withEmbyNextUpSweep(serverRequest, answer, {
-				itemsRoute: serverUserRoutes.items(),
-				seriesNextUpUrl: (id) => `/Shows/NextUp?UserId=${userId}&SeriesId=${id}&Limit=1&Fields=${fields}`,
-				limit
-			});
+			endpoint += homeNextUpQuery(seriesId, maxDays, serverTypeOverride);
+			return serverRequest(endpoint);
 		},
 
 		getLatestMedia: (libraryId = null, limit = 16) => {
@@ -1030,7 +1018,10 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 			serverRequest(`${serverUserRoutes.items()}IncludeItemTypes=${includeTypes}&Recursive=true&SortBy=Random&Limit=1&Fields=PrimaryImageAspectRatio,Overview&ExcludeItemTypes=BoxSet`),
 
 		search: (query, limit = 240) =>
-			serverRequest(`${serverUserRoutes.items()}SearchTerm=${encodeURIComponent(query)}&IncludeItemTypes=Book,Movie,Series,Season,Episode,Video,MusicVideo,Trailer,Program,Playlist,Person,MusicArtist,MusicAlbum,Audio,PhotoAlbum,Photo,BoxSet,Folder&Recursive=true&Limit=${limit}&Fields=PrimaryImageAspectRatio,Overview,AlbumArtist,SeriesName,ParentIndexNumber,IndexNumber,ProviderIds,UserData,OfficialRating`),
+			serverRequest(`${serverUserRoutes.items()}SearchTerm=${encodeURIComponent(query)}&IncludeItemTypes=Book,Movie,Series,Season,Episode,Video,MusicVideo,Trailer,Program,Playlist,MusicArtist,MusicAlbum,Audio,PhotoAlbum,Photo,BoxSet,Folder&Recursive=true&Limit=${limit}&Fields=PrimaryImageAspectRatio,Overview,AlbumArtist,SeriesName,ParentIndexNumber,IndexNumber,ProviderIds,UserData,OfficialRating`),
+
+		searchPeople: (query, limit = 24) =>
+			serverRequest(`/Persons?searchTerm=${encodeURIComponent(query)}&Limit=${limit}&Fields=PrimaryImageAspectRatio`, {timeoutMs: PEOPLE_SEARCH_TIMEOUT_MS}),
 
 		getSimilar: (itemId, limit = 12, bypass = null) => {
 			const bypassQuery = bypass ? `&bypass=${encodeURIComponent(bypass)}` : '';

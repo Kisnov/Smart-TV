@@ -3,7 +3,7 @@ import Spotlight from '@enact/spotlight';
 import Search from './Search';
 import {createRemoteSearch} from '../../services/remoteSearch';
 
-const mockApi = {getLibraries: jest.fn(), search: jest.fn()};
+const mockApi = {getLibraries: jest.fn(), search: jest.fn(), searchPeople: jest.fn()};
 const mockAuth = {api: mockApi, serverUrl: 'http://server', hasMultipleServers: false};
 const mockSettings = {settings: {}};
 const mockSave = jest.fn();
@@ -44,6 +44,7 @@ beforeEach(() => {
 	jest.clearAllMocks();
 	mockApi.getLibraries.mockResolvedValue([]);
 	mockApi.search.mockResolvedValue({Items: []});
+	mockApi.searchPeople.mockResolvedValue({Items: []});
 });
 afterEach(() => jest.useRealTimers());
 
