@@ -1414,6 +1414,7 @@
 	"Recommendations": "Recommendations",
 	"Recommendations (Seerr)": "Recommendations (Seerr)",
 	"Reconnecting to server...": "Reconnecting to server...",
+	"Reconnecting… ({attempt} of {total})": "Reconnecting… ({attempt} of {total})",
 	"Record": "Record",
 	"Record Series": "Record Series",
 	"Record server requests, playback and subtitle activity so problems can be traced": "Record server requests, playback and subtitle activity so problems can be traced",

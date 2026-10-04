@@ -75,7 +75,8 @@ export const isAudioStreamPlayable = (stream, capabilities) => {
 	return !codec || getSupportedAudioCodecs(capabilities).includes(codec);
 };
 
-const VIDEO_CONTAINERS = ['mp4', 'm4v', 'mov', 'ts', 'mpegts', 'mts', 'm2ts', 'mkv', 'matroska', 'webm'];
+// No MPEG-TS, the WebView cant open one, so the server remuxes it
+const VIDEO_CONTAINERS = ['mp4', 'm4v', 'mov', 'mkv', 'matroska', 'webm'];
 
 // The decoder limits Amazon lists per stick. The 4K Select takes more H.264
 // than the newer sticks and the HD stick takes less VP9.

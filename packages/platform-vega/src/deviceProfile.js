@@ -53,7 +53,9 @@ export const getDeviceCapabilities = async () => {
 		// and a 1080p H.264 MKV did direct play on a Fire TV Stick 4K 3rd Gen
 		mkv: true,
 		webm: true,
-		ts: true,
+		// canPlayType has no answer for MPEG-TS and a TS file or live channel fails to open,
+		// so the server remuxes it to HLS instead
+		ts: false,
 
 		nativeHls: canPlay('application/vnd.apple.mpegurl')
 	};
@@ -96,7 +98,6 @@ const buildDirectPlayProfiles = (caps) => {
 		{Container: 'webm', Type: 'Video', VideoCodec: webmVideoCodecs, AudioCodec: 'vorbis,opus'},
 		{Container: 'mp4,m4v', Type: 'Video', VideoCodec: videoCodecs, AudioCodec: audioCodecs},
 		{Container: 'mkv', Type: 'Video', VideoCodec: videoCodecs + (caps.vp9 ? ',vp9' : ''), AudioCodec: audioCodecs + ',vorbis'},
-		{Container: 'ts,mpegts', Type: 'Video', VideoCodec: videoCodecs, AudioCodec: tsAudioCodecs},
 		{Container: 'mov', Type: 'Video', VideoCodec: videoCodecs, AudioCodec: audioCodecs},
 		{Container: 'mp3', Type: 'Audio'},
 		{Container: 'flac', Type: 'Audio'},
@@ -144,10 +145,14 @@ export const getJellyfinDeviceProfile = async () => {
 	// first codec it is allowed to encode, so a server with HEVC encoding on sends HEVC and
 	// any other sends H.264, and an HEVC source that only needs its audio converted is copied.
 	const hlsVideoCodecs = caps.hevc ? 'hevc,h264' : 'h264';
+	// Jellyfin only takes a TS profile for a live channel and answers with a bare stream the
+	// WebView cant open when there is none, so live TV gets this one. It sits after fMP4 so
+	// everything else still gets fMP4, and stays H.264 since an HEVC track in TS plays black.
+	const liveProfile = {Container: 'ts', Type: 'Video', AudioCodec: 'aac', VideoCodec: 'h264', Context: 'Streaming', Protocol: 'hls', MaxAudioChannels: caps.nativeHls ? '6' : '2', MinSegments: '1', BreakOnNonKeyFrames: false};
 	const transcodingProfiles = [
-		caps.nativeHls
-			? {Container: 'mp4', Type: 'Video', AudioCodec: hlsAudioCodecs, VideoCodec: hlsVideoCodecs, Context: 'Streaming', Protocol: 'hls', MaxAudioChannels: '6', MinSegments: '1', BreakOnNonKeyFrames: false}
-			: {Container: 'ts', Type: 'Video', AudioCodec: 'aac', VideoCodec: 'h264', Context: 'Streaming', Protocol: 'hls', MaxAudioChannels: '2', MinSegments: '1', BreakOnNonKeyFrames: false},
+		...(caps.nativeHls
+			? [{Container: 'mp4', Type: 'Video', AudioCodec: hlsAudioCodecs, VideoCodec: hlsVideoCodecs, Context: 'Streaming', Protocol: 'hls', MaxAudioChannels: '6', MinSegments: '1', BreakOnNonKeyFrames: false}, liveProfile]
+			: [liveProfile]),
 		{Container: 'mp4', Type: 'Video', AudioCodec: 'aac', VideoCodec: 'h264', Context: 'Static'},
 		...AUDIO_TRANSCODING_PROFILES
 	];

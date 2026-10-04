@@ -43,6 +43,36 @@ let currentSession = null;
 let progressInterval = null;
 let healthMonitor = null;
 
+const apiForSession = (session) => (session.serverCredentials
+	? jellyfinApi.createApiForServer(
+		session.serverCredentials.serverUrl,
+		session.serverCredentials.accessToken,
+		session.serverCredentials.userId
+	)
+	: jellyfinApi.api);
+
+// Every PlaybackInfo opens a live channel again and the server counts each open
+// as a viewer, so a session gives its stream back once and only once, whether
+// it ends in a stop or is replaced by a fresh PlaybackInfo.
+const closeLiveStreamOnce = async (session) => {
+	if (!session.liveStreamId || session.liveStreamClosed) return;
+	session.liveStreamClosed = true;
+	try {
+		await apiForSession(session).closeLiveStream(session.liveStreamId);
+	} catch (closeErr) {
+		console.warn('[playback] Failed to close live stream:', closeErr.message);
+	}
+};
+
+// A session dropped for a fresh one closes its stream only after the fresh one
+// is back, even when both carry the same id, since closing first leaves a
+// shared stream with no viewers and makes it reconnect to its source.
+const replaceSession = (session) => {
+	const previous = currentSession;
+	currentSession = session;
+	if (previous && previous !== session) closeLiveStreamOnce(previous);
+};
+
 const DEFAULT_PASSTHROUGH_SETTINGS = {
 	passthroughEnabled: true,
 	ac3Passthrough: true,
@@ -421,6 +451,16 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 
 	const isLiveTV = options.isLiveTV || options.item?.Type === 'TvChannel';
 
+	// What the first request for an item allowed holds for every later one while
+	// it plays, so a track switch, a reopen or a fallback never brings back what
+	// Force Transcode or Prefer Transcoding turned off. A stop clears it with the
+	// session.
+	const playing = currentSession?.itemId === itemId ? currentSession : null;
+	const allowDirectPlay = playing ? playing.allowDirectPlay : options.enableDirectPlay !== false;
+	const allowDirectStream = playing ? playing.allowDirectStream : options.enableDirectStream !== false;
+	const enableDirectPlay = allowDirectPlay && options.enableDirectPlay !== false;
+	const enableDirectStream = allowDirectStream && options.enableDirectStream !== false;
+
 	// maxBitrate: user-set value (>0), or auto-detect from device capabilities
 	const maxBitrate = options.maxBitrate > 0 ? options.maxBitrate : getAutoMaxBitrate(capabilities);
 
@@ -455,7 +495,7 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 		startPositionTicks: requestedStartTime,
 		maxBitrate,
 		subtitleStreamIndex,
-		enableDirectPlay: options.enableDirectPlay !== false,
+		enableDirectPlay,
 		enableTranscoding: options.enableTranscoding !== false
 	});
 
@@ -468,8 +508,8 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 		DeviceProfile: deviceProfile,
 		StartTimeTicks: requestedStartTime,
 		AutoOpenLiveStream: true,
-		EnableDirectPlay: options.enableDirectPlay !== false,
-		EnableDirectStream: options.enableDirectStream !== false,
+		EnableDirectPlay: enableDirectPlay,
+		EnableDirectStream: enableDirectStream,
 		EnableTranscoding: options.enableTranscoding !== false,
 		AudioStreamIndex: options.audioStreamIndex,
 		SubtitleStreamIndex: sentSubtitleStreamIndex,
@@ -504,7 +544,7 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 		const audioStreams = extractAudioStreams(mediaSource);
 		const subtitleStreams = extractSubtitleStreams(mediaSource, itemId, creds, storedSettings.assDirectPlay === false, null, playMethod);
 
-		currentSession = {
+		replaceSession({
 			itemId,
 			playSessionId: playbackInfo.PlaySessionId,
 			mediaSourceId: mediaSource.Id,
@@ -516,8 +556,10 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 			audioStreamIndex: mediaSource.DefaultAudioStreamIndex,
 			subtitleStreamIndex: requestedSubtitleStreamIndex,
 			maxBitrate: options.maxBitrate,
+			allowDirectPlay,
+			allowDirectStream,
 			serverCredentials: creds
-		};
+		});
 
 		console.log(`[playback] Live TV: ${itemId} via ${playMethod}`);
 
@@ -591,8 +633,8 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 					DeviceProfile: deviceProfile,
 					StartTimeTicks: requestedStartTime,
 					AutoOpenLiveStream: true,
-					EnableDirectPlay: options.enableDirectPlay !== false,
-					EnableDirectStream: options.enableDirectStream !== false,
+					EnableDirectPlay: enableDirectPlay,
+					EnableDirectStream: enableDirectStream,
 					EnableTranscoding: options.enableTranscoding !== false,
 					AudioStreamIndex: altStream.Index,
 					SubtitleStreamIndex: sentSubtitleStreamIndex,
@@ -651,8 +693,8 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 				DeviceProfile: deviceProfile,
 				StartTimeTicks: requestedStartTime,
 				AutoOpenLiveStream: true,
-				EnableDirectPlay: options.enableDirectPlay !== false,
-				EnableDirectStream: options.enableDirectStream !== false,
+				EnableDirectPlay: enableDirectPlay,
+				EnableDirectStream: enableDirectStream,
 				EnableTranscoding: options.enableTranscoding !== false,
 				AudioStreamIndex: audioStreamIndex,
 				SubtitleStreamIndex: -1,
@@ -730,7 +772,7 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 	const audioOnlyRemux = playMethod === PlayMethod.Transcode && isAudioOnlyRemuxTranscode(mediaSource);
 	const reportedPlayMethod = audioOnlyRemux ? PlayMethod.DirectStream : playMethod;
 
-	currentSession = {
+	replaceSession({
 		itemId,
 		playSessionId: playbackInfo.PlaySessionId,
 		mediaSourceId: mediaSource.Id,
@@ -743,8 +785,10 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 		audioStreamIndex: audioStreamIndex ?? mediaSource.DefaultAudioStreamIndex,
 		subtitleStreamIndex: requestedSubtitleStreamIndex,
 		maxBitrate: options.maxBitrate,
+		allowDirectPlay,
+		allowDirectStream,
 		serverCredentials: creds
-	};
+	});
 
 	if (audioOnlyRemux) {
 		console.log(`[playback] Audio-only remux detected; reporting session as DirectStream (video=copy) for ${itemId}`);
@@ -1300,17 +1344,8 @@ export const reportStop = async (positionTicks) => {
 	stopProgressReporting();
 	stopHealthMonitoring();
 
-	// Use session's server credentials for cross-server support
-	const api = session.serverCredentials
-		? jellyfinApi.createApiForServer(
-			session.serverCredentials.serverUrl,
-			session.serverCredentials.accessToken,
-			session.serverCredentials.userId
-		)
-		: jellyfinApi.api;
-
 	try {
-		await api.reportPlaybackStopped({
+		await apiForSession(session).reportPlaybackStopped({
 			ItemId: session.itemId,
 			PlaySessionId: session.playSessionId,
 			MediaSourceId: session.mediaSourceId,
@@ -1320,13 +1355,7 @@ export const reportStop = async (positionTicks) => {
 		console.warn('[playback] Failed to report stop:', e.message);
 	}
 
-	if (session.liveStreamId) {
-		try {
-			await api.closeLiveStream(session.liveStreamId);
-		} catch (closeErr) {
-			console.warn('[playback] Failed to close live stream:', closeErr.message);
-		}
-	}
+	await closeLiveStreamOnce(session);
 };
 
 export const startProgressReporting = (getPositionTicks, intervalMs = 10000, getPlayState) => {

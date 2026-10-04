@@ -53,6 +53,7 @@ describe('the Vega device profile', () => {
 		expect(mp4.VideoCodec).toBe('h264,hevc,dvh1');
 		expect(mp4.AudioCodec).not.toContain('ac3');
 		expect(profile.TranscodingProfiles[0]).toMatchObject({Protocol: 'hls', Container: 'mp4', VideoCodec: 'hevc,h264', AudioCodec: 'aac,mp2'});
+		expect(profile.DirectPlayProfiles.some((entry) => entry.Container.split(',').includes('ts'))).toBe(false);
 		expect(profile.DirectPlayProfiles.find((entry) => entry.Container === 'hls').VideoCodec).toBe('h264');
 		expect(profile.CodecProfiles.find((entry) => entry.Codec === 'hevc').Conditions[1].Value).toBe('SDR|DOVIWithSDR');
 		expect(profile.CodecProfiles.some((entry) => entry.Codec === 'av1')).toBe(false);
@@ -65,6 +66,15 @@ describe('the Vega device profile', () => {
 		expect(getPlayMethod(source({MediaStreams: [{Type: 'Video', Codec: 'hevc', VideoRangeType: 'HDR10'}, {Type: 'Audio', Codec: 'aac', Index: 1}]}), capabilities)).toBe('Transcode');
 		expect(getPlayMethod(source({Container: 'avi'}), capabilities)).toBe('Transcode');
 		expect(getPlayMethod(source({SupportsDirectPlay: false}), capabilities)).toBe('DirectStream');
+	});
+
+	test('live TV gets an H.264 TS profile after the fMP4 one, since the server only takes TS for a channel', async () => {
+		const profile = await getJellyfinDeviceProfile();
+		expect(profile.TranscodingProfiles[1]).toMatchObject({Protocol: 'hls', Container: 'ts', VideoCodec: 'h264', AudioCodec: 'aac', Context: 'Streaming'});
+	});
+
+	test('an MPEG-TS source is never direct played, whatever the server offers', () => {
+		expect(getPlayMethod(source({Container: 'ts', MediaStreams: [{Type: 'Video', Codec: 'h264'}, {Type: 'Audio', Codec: 'aac', Index: 1}]}), capabilities)).toBe('Transcode');
 	});
 
 	test('a file the server marks as remux only is direct streamed when every track plays', () => {
