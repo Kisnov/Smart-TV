@@ -465,6 +465,7 @@ export const SETTINGS_SCHEMA = [
 				rows: [
 					{kind: KIND.SECTION, id: 'librariesGeneral', label: () => $L('General')},
 					{kind: KIND.NAV, id: 'hideLibraries', label: () => $L('Library Visibility'), desc: () => $L('Toggle home page visibility per library'), icon: 'show', action: (ctx) => ctx.actions.openLibraries()},
+					{kind: KIND.NAV, id: 'libraryOrder', label: () => $L('Library Order'), desc: () => $L('Choose the order of your libraries'), icon: 'swap_vert', keywords: () => ['reorder libraries', 'sort libraries', 'my media', 'navbar'], action: (ctx) => ctx.actions.openLibraryOrder()},
 					{kind: KIND.TOGGLE, key: 'unifiedLibraryMode', label: () => $L('Multi-Server Libraries'), desc: () => $L('Show libraries from all connected servers'), icon: 'dns'},
 					{kind: KIND.OPTION, key: 'recentlyReleasedSeriesType', label: () => $L('Recently Released Series Sort By'), desc: () => $L('Sort Recently Released Series home rows by series, latest season, or latest episode air date'), options: getRecentlyReleasedSeriesTypeOptions, fallback: () => $L('Series'), icon: 'tv'},
 					{kind: KIND.SECTION, id: 'libraryView', label: () => $L('Library View')},

@@ -259,7 +259,8 @@ export const getLatestPerLibraryFromAllServers = async (excludedLibraryIds = [],
 								_serverName: server.name
 							},
 							latest: taggedItems,
-							serverName: server.name
+							serverName: server.name,
+							libraryIndex: libraries.indexOf(lib)
 						});
 					}
 				} catch {
@@ -271,11 +272,12 @@ export const getLatestPerLibraryFromAllServers = async (excludedLibraryIds = [],
 		}
 	}));
 
+	// Each server's rows keep the order its libraries are in, which is the order the viewer chose.
 	results.sort((a, b) => {
 		if (a.serverName !== b.serverName) {
 			return a.serverName.localeCompare(b.serverName);
 		}
-		return (a.lib.Name || '').localeCompare(b.lib.Name || '');
+		return a.libraryIndex - b.libraryIndex;
 	});
 
 	return results;
@@ -531,7 +533,7 @@ export const getAllLibrariesFromAllServers = async () => {
 
 /**
  * Get user configuration from all servers
- * @returns {Promise<Array>} Array of {serverUrl, userId, accessToken, serverName, configuration} per server
+ * @returns {Promise<Array>} Array of {serverUrl, userId, accessToken, serverName, serverType, configuration} per server
  */
 export const getUserConfigFromAllServers = async () => {
 	const servers = await multiServerManager.getAllServersArray();
@@ -545,6 +547,7 @@ export const getUserConfigFromAllServers = async () => {
 				userId: server.userId,
 				accessToken: server.accessToken,
 				serverName: server.name,
+				serverType: server.serverType || 'jellyfin',
 				configuration: userData.Configuration
 			});
 		} catch (e) {
@@ -560,9 +563,10 @@ export const getUserConfigFromAllServers = async () => {
  * @param {string} accessToken - Auth token
  * @param {string} userId - User ID
  * @param {Object} config - Updated configuration object
+ * @param {string} [serverType] - Emby takes the configuration on its own route
  */
-export const updateUserConfigOnServer = async (serverUrl, accessToken, userId, config) => {
-	const api = createApiForServer(serverUrl, accessToken, userId);
+export const updateUserConfigOnServer = async (serverUrl, accessToken, userId, config, serverType = 'jellyfin') => {
+	const api = createApiForServer(serverUrl, accessToken, userId, serverType);
 	return api.updateUserConfiguration(config);
 };
 

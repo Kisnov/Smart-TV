@@ -48,6 +48,15 @@ export const getTokenParam = (type) => ((type || serverType) === 'emby' ? 'api_k
 // Exported for the callers that build a raw URL instead of going through request().
 export const userRoutes = makeUserRoutes(() => serverType, () => currentUser);
 
+// Emby keeps the libraries hidden from My Media in its views, so they are dropped here by the
+// user's own exclude list. Jellyfin already leaves them out.
+const withoutHiddenViews = async (views, user) => {
+	const [viewsResult, userResult] = await Promise.all([views, user.catch(() => null)]);
+	const excludes = userResult?.Configuration?.MyMediaExcludes || [];
+	if (excludes.length === 0 || !Array.isArray(viewsResult?.Items)) return viewsResult;
+	return {...viewsResult, Items: viewsResult.Items.filter((item) => !excludes.includes(item.Id))};
+};
+
 export const getUserImageUrl = (serverUrl, userId, imageTag, type) =>
 	buildUserImageUrl(serverUrl, userId, imageTag, type || serverType);
 
@@ -396,7 +405,9 @@ export const api = {
 		body: {Secret: secret}
 	}),
 
-	getLibraries: () => request(userRoutes.views()),
+	getLibraries: () => (serverType === 'emby'
+		? withoutHiddenViews(request(userRoutes.views()), request(`/Users/${currentUser}`))
+		: request(userRoutes.views())),
 
 	getAllLibraries: () => request(`${userRoutes.views()}IncludeHidden=true`),
 
@@ -928,7 +939,9 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 	};
 
 	return {
-		getLibraries: () => serverRequest(serverUserRoutes.views()),
+		getLibraries: () => (serverTypeOverride === 'emby'
+			? withoutHiddenViews(serverRequest(serverUserRoutes.views()), serverRequest(`/Users/${userId}`))
+			: serverRequest(serverUserRoutes.views())),
 
 		getAllLibraries: () => serverRequest(`${serverUserRoutes.views()}IncludeHidden=true`),
 

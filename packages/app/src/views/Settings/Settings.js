@@ -58,6 +58,7 @@ import HomeRowsView from './HomeRowsView';
 import ButtonLayoutView from './ButtonLayoutView';
 import DiagnosticsView from './DiagnosticsView';
 import LibrariesView from './LibrariesView';
+import LibraryOrderView from './LibraryOrderView';
 import MediaBarSourceView from './MediaBarSourceView';
 import SeerrAccountPanel from './SeerrAccountPanel';
 import {LOG_RENDER_STEP} from './useDiagnosticsLog';
@@ -210,6 +211,8 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 				Spotlight.focus('external-custom-rows-view');
 			} else if (cv.view === 'libraries') {
 				Spotlight.focus('libraries-view');
+			} else if (cv.view === 'libraryOrder') {
+				Spotlight.focus('library-order-view');
 			} else if (cv.view === 'ratingSources') {
 				Spotlight.focus('rating-sources-view');
 			} else if (cv.view === 'blockedRatings') {
@@ -767,6 +770,10 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		openLibraries, toggleLibraryVisibility, saveLibraryVisibility
 	} = useLibraryVisibility({api, settings, hasMultipleServers, pushView, popView, onLibrariesChanged});
 
+	const openLibraryOrder = useCallback(() => {
+		pushView({view: 'libraryOrder', returnFocusTo: 'setting-libraryOrder'});
+	}, [pushView]);
+
 	const {
 		mediaBarLibraries, mediaBarCollections, tempMediaBarLibraryIds, tempMediaBarCollectionIds,
 		mediaBarSourcesLoading, openMediaBarLibraries, openMediaBarCollections,
@@ -1027,6 +1034,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			openPinCode,
 			openKidsMode,
 			openLibraries,
+			openLibraryOrder,
 			openParentalControls,
 			openQrLink,
 			openRatingSources,
@@ -1051,7 +1059,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		settings, capabilities, seerr, achievements, seerrLabel, isSeerr, serverUrl, ratingsResetArmed, resetRatingsSettings,
 		serverVersion, availableThemes, activeThemeId, openThemes, openThemeStore, openHomeRows,
 		openDetailButtons, openOsdButtons, openDetailMetadata, openDiagnostics,
-		openPinCode, openKidsMode, openLibraries, openParentalControls, openQrLink, openRatingSources, openRowImageTypes, openExcludedGenres, openMediaBarLibraries,
+		openPinCode, openKidsMode, openLibraries, openLibraryOrder, openParentalControls, openQrLink, openRatingSources, openRowImageTypes, openExcludedGenres, openMediaBarLibraries,
 		openMediaBarCollections, openScreensaverLibraries, openScreensaverCollections, openScreensaverGenres,
 		openImdbLists, openExternalTmdbLists, openExternalCalendars,
 		openExternalCustomRows, openSeerrHomeRows, openScreen, handleMoonfinToggle, onRunSetupWizard
@@ -1499,6 +1507,13 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 					onToggleLibrary={toggleLibraryVisibility}
 					onCancel={popView}
 					onSave={saveLibraryVisibility}
+				/>
+			)}
+			{viewName === 'libraryOrder' && (
+				<LibraryOrderView
+					api={api}
+					unified={settings.unifiedLibraryMode && hasMultipleServers}
+					onLibrariesChanged={onLibrariesChanged}
 				/>
 			)}
 			{viewName === 'mediaBarLibraries' && (

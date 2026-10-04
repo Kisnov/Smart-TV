@@ -54,3 +54,35 @@ describe('search', () => {
 		expect(people[2]).toBe(10000);
 	});
 });
+
+describe('libraries', () => {
+	const answer = (byUrl) => platformFetch.mockImplementation((url) => {
+		const body = /Views(\?|$)/.test(url) ? byUrl.views : byUrl.user;
+		return Promise.resolve({ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body))});
+	});
+	const views = {Items: [{Id: 'movies'}, {Id: 'shows'}], TotalRecordCount: 2};
+
+	test('Emby leaves out what the user hid from My Media, since Emby itself does not', async () => {
+		setServerType('emby');
+		answer({views, user: {Configuration: {MyMediaExcludes: ['shows']}}});
+		const result = await api.getLibraries();
+		expect(result.Items.map((item) => item.Id)).toEqual(['movies']);
+	});
+
+	test('Emby keeps every library when the user cant be read', async () => {
+		setServerType('emby');
+		platformFetch.mockImplementation((url) => (/Views(\?|$)/.test(url)
+			? Promise.resolve({ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(views))})
+			: Promise.reject(new Error('offline'))));
+		const result = await api.getLibraries();
+		expect(result.Items.map((item) => item.Id)).toEqual(['movies', 'shows']);
+	});
+
+	test('Jellyfin is asked once and trusted, since it filters for itself', async () => {
+		setServerType('jellyfin');
+		answer({views, user: {Configuration: {MyMediaExcludes: ['shows']}}});
+		const result = await api.getLibraries();
+		expect(platformFetch).toHaveBeenCalledTimes(1);
+		expect(result.Items.map((item) => item.Id)).toEqual(['movies', 'shows']);
+	});
+});
