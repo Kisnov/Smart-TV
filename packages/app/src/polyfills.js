@@ -133,6 +133,7 @@ if (typeof document !== 'undefined') {
 	if (isLegacyTizen || isLegacyWebOS) {
 		document.documentElement.className = (document.documentElement.className ? document.documentElement.className + ' ' : '') + 'legacy';
 	}
+	if (isVega()) document.documentElement.classList.add('vega');
 	applyPerfTier(null);
 }
 
