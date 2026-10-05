@@ -115,6 +115,7 @@ describe('formatters', () => {
 		expect(formatCurrency(0)).toBeNull();
 		expect(formatCurrency(-5)).toBeNull();
 		expect(formatCurrency(null)).toBeNull();
-		expect(formatCurrency(1000)).toBeTruthy();
+		// The grouping follows the locale (1,000 / 1.000 / 1 000), so only the digits are pinned.
+		expect(formatCurrency(1000)).toMatch(/1\D?000/);
 	});
 });

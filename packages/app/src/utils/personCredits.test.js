@@ -11,10 +11,15 @@ import {
 	prepareCredits
 } from './personCredits';
 
+// The wording follows the viewer's locale, so the expected text comes from the same
+// formatter, built from the local calendar date the server's UTC value should land on.
+const longDate = (year, month, day) => new Date(year, month, day)
+	.toLocaleDateString(undefined, {year: 'numeric', month: 'long', day: 'numeric'});
+
 describe('person dates', () => {
 	test('a date reads as a month, a day and a year', () => {
-		expect(formatPersonDate('1975-01-05T00:00:00.0000000Z')).toBe('January 5, 1975');
-		expect(formatPersonDate('1962-11-30')).toBe('November 30, 1962');
+		expect(formatPersonDate('1975-01-05T00:00:00.0000000Z')).toBe(longDate(1975, 0, 5));
+		expect(formatPersonDate('1962-11-30')).toBe(longDate(1962, 10, 30));
 	});
 
 	test('nothing usable is nothing at all', () => {
@@ -31,10 +36,10 @@ describe('person dates', () => {
 
 	test('someone still alive is given their age, someone who died is given the date', () => {
 		expect(personDateLines('1975-01-05', '2020-03-02'))
-			.toEqual(['Born January 5, 1975', 'Died March 2, 2020']);
+			.toEqual([`Born ${longDate(1975, 0, 5)}`, `Died ${longDate(2020, 2, 2)}`]);
 
 		const living = personDateLines('1975-01-05', null);
-		expect(living[0]).toBe('Born January 5, 1975');
+		expect(living[0]).toBe(`Born ${longDate(1975, 0, 5)}`);
 		expect(living[1]).toMatch(/^Age \d+$/);
 	});
 
