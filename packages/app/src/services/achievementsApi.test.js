@@ -80,7 +80,7 @@ describe('availability', () => {
 	test('a server running the plugin is available and reports what the admin left on', async () => {
 		serve({'public-config': {LeaderboardEnabled: true, QuestsEnabled: false, ActivityFeedEnabled: false}});
 		expect(await api.probe()).toBe(true);
-		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: false, activityEnabled: false, unlockToastsEnabled: false});
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: false, activityEnabled: false, unlockToastsEnabled: false, friendsEnabled: true, friendsSimpleMode: false});
 	});
 
 	// A plugin too old to report a flag still serves the section, so only a definite no turns
@@ -88,7 +88,7 @@ describe('availability', () => {
 	test('a flag the plugin never mentions is still on', async () => {
 		serve({'public-config': {}});
 		await api.probe();
-		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true, activityEnabled: true, unlockToastsEnabled: false});
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true, activityEnabled: true, unlockToastsEnabled: false, friendsEnabled: true, friendsSimpleMode: false});
 	});
 
 	// The unlock notifications need a route an older plugin does not have, so they stay off
@@ -129,7 +129,7 @@ describe('availability', () => {
 		serve({'public-config': {LeaderboardEnabled: false, QuestsEnabled: false, ActivityFeedEnabled: false}});
 		await api.probe();
 		api.reset();
-		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true, activityEnabled: true, unlockToastsEnabled: false});
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true, activityEnabled: true, unlockToastsEnabled: false, friendsEnabled: true, friendsSimpleMode: false});
 	});
 });
 
@@ -714,5 +714,60 @@ describe('unlock notifications', () => {
 		await api.probe();
 		expect(await api.refreshUnlocks()).toBeNull();
 		expect(paths().some((path) => path.startsWith('users/user1/preferences'))).toBe(false);
+	});
+});
+
+describe('friends and chat', () => {
+	const SOCIAL = {
+		'public-config': {...CONFIG, FriendsEnabled: true, FriendsSimpleMode: true},
+		'users/user1/friends': {Friends: [{UserId: 'f1', UserName: 'Ada', Online: true}], Incoming: [], Outgoing: [], SimpleMode: true},
+		'users/user1/messages/threads': {Threads: [{conversationId: 'c1', otherUserName: 'Ada', lastMessage: 'hi', unreadCount: 1}]},
+		'users/user1/messages/f1': {ConversationId: 'c1'},
+		'users/user1/conversations/c1/messages': {Messages: [{id: 'm1', fromUserId: 'f1', text: 'hi'}]},
+		'users/user1/blocked': {Blocked: ['b1']},
+		'users/user1/directory': [{Id: 'f1', Name: 'Ada'}, {Id: 'x', Name: 'Hidden'}]
+	};
+
+	test('the probe reports whether friends are on and whether everyone already is one', async () => {
+		serve(SOCIAL);
+		await api.probe();
+		expect(api.getFlags()).toMatchObject({friendsEnabled: true, friendsSimpleMode: true});
+	});
+
+	test('reads the friends, the chats and a direct chat id', async () => {
+		serve(SOCIAL);
+		expect((await api.fetchFriends()).friends[0].userName).toBe('Ada');
+		expect((await api.fetchThreads())[0]).toMatchObject({conversationId: 'c1', unreadCount: 1});
+		expect(await api.openDirectChat('f1')).toBe('c1');
+		expect((await api.fetchMessages('c1'))[0].text).toBe('hi');
+		expect(await api.fetchBlocked()).toEqual(['b1']);
+	});
+
+	test('people come from the plugin directory, which a build without one leaves to /Users', async () => {
+		serve(SOCIAL);
+		expect((await api.fetchServerUsers()).map((user) => user.userName)).toEqual(['Ada', 'Hidden']);
+
+		platformFetch.mockImplementation((url) => Promise.resolve(url.endsWith('/Users')
+			? {ok: true, status: 200, json: () => Promise.resolve([{Id: 'u2', Name: 'Eve'}])}
+			: missing));
+		expect((await api.fetchServerUsers()).map((user) => user.userName)).toEqual(['Eve']);
+	});
+
+	test('a write carries the plugin answer, and its rate limit reads as a refusal with its wording', async () => {
+		platformFetch.mockImplementation((url, init) => {
+			const path = url.split('/Plugins/AchievementBadges/')[1];
+			if (path === 'users/user1/friends/f1' && init.method === 'POST') return Promise.resolve(ok({Success: true}));
+			if (path === 'users/user1/conversations/c1/messages') return Promise.resolve({ok: false, status: 429, text: () => Promise.resolve(JSON.stringify({Message: 'Slow down.'}))});
+			return Promise.resolve(missing);
+		});
+		expect((await api.sendFriendRequest('f1')).ok).toBe(true);
+		expect(await api.sendMessage('c1', 'hi')).toMatchObject({ok: false, message: 'Slow down.'});
+	});
+
+	test('saving privacy writes over a fresh copy of the preferences', async () => {
+		serve({...SOCIAL, 'users/user1/preferences': {AppearOffline: false, EnableUnlockToasts: true}});
+		expect(await api.saveSocialPrivacy({appearOffline: true, hideNowPlaying: false, hideLastWatched: false, messageNotifications: false})).toBe(true);
+		const [, init] = platformFetch.mock.calls.find((call) => call[1].method === 'POST');
+		expect(JSON.parse(init.body)).toEqual({AppearOffline: true, EnableUnlockToasts: true, HideNowPlaying: false, HideLastWatched: false, MessageNotifications: false});
 	});
 });

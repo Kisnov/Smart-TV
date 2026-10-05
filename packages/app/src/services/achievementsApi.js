@@ -4,8 +4,9 @@
 // Nothing here throws. A server without the plugin answers 404 on every route, and a panel that
 // asked for everything at once and got nothing back wants an empty screen rather than a pile of
 // errors, so a failed call reads as no answer. The login ping, the quest reroll, spending a
-// power-up, buying one, changing what the profile wears and the unlock notification switch are
-// the only things written, because they are the only parts the plugin expects a client to drive.
+// power-up, buying one, changing what the profile wears, the notification switches and the
+// friends and chat routes are the only things written, because they are the only parts the
+// plugin expects a client to drive.
 
 import {getServerUrl, getAuthHeader, getApiKey, getUserId, getServerType, getDeviceId} from './jellyfinApi';
 import {legacyAuthHeader} from '../utils/serverRoutes';
@@ -16,6 +17,8 @@ import {
 	parsePowerUpState, parsePowerUpSlots, parseShopCatalog, parseActivityFeed,
 	parseCounters, parseWatchClock, parseServerStats,
 	parseCosmeticCatalog, buildCosmeticLoadout, parseUnlockToastSettings,
+	parseFriendsList, parsePublicProfile, parseSocialUsers, parseSocialPrivacy, applySocialPrivacy,
+	parseThread, parseConversation, parseMessage,
 	COSMETIC_CHANGED, COSMETIC_REFUSED, COSMETIC_FAILED,
 	REROLLED, REROLL_ALREADY_USED, REROLL_FAILED,
 	POWER_UP_USED, POWER_UP_REFUSED, POWER_UP_FAILED,
@@ -36,6 +39,10 @@ let activityEnabled = true;
 // Off until the plugin says otherwise, so a build without the route is never polled for unlocks
 // it cant serve.
 let unlockToastsEnabled = false;
+// Friends and chat, as the admin left them. Simple mode makes everyone a friend, so there are
+// no requests to send.
+let friendsEnabled = true;
+let friendsSimpleMode = false;
 
 // Set when the admin hides the whole server's figures from everyone.
 let privacyMode = false;
@@ -90,10 +97,10 @@ const request = async (path, method = 'GET') => {
 // Writes to a path and tells a refusal apart from a fault. refusedWith is the status the plugin
 // answers when it means no, so that one comes back with whatever the plugin said, and anything
 // else reads as a plain failure.
-const post = async (path, {refusedWith, body: sent}) => {
+const post = async (path, {refusedWith, body: sent, method = 'POST'}) => {
 	if (!getApiKey()) return {};
 	try {
-		const res = await call(path, 'POST', sent);
+		const res = await call(path, method, sent);
 		const text = await res.text();
 		let body = null;
 		try {
@@ -119,7 +126,7 @@ const getList = async (path) => {
 	return Array.isArray(data) ? data.filter(isObject) : [];
 };
 
-export const getFlags = () => ({leaderboardEnabled, questsEnabled, activityEnabled, unlockToastsEnabled});
+export const getFlags = () => ({leaderboardEnabled, questsEnabled, activityEnabled, unlockToastsEnabled, friendsEnabled, friendsSimpleMode});
 
 // Clears what the last server said, so a set switched to one without the plugin cannot keep
 // showing the entry.
@@ -128,6 +135,8 @@ export const reset = () => {
 	questsEnabled = true;
 	activityEnabled = true;
 	unlockToastsEnabled = false;
+	friendsEnabled = true;
+	friendsSimpleMode = false;
 	privacyMode = false;
 	catalog = null;
 	unlockSettings = null;
@@ -146,6 +155,8 @@ export const probe = async () => {
 	questsEnabled = config.QuestsEnabled !== false;
 	activityEnabled = config.ActivityFeedEnabled !== false;
 	privacyMode = config.ForcePrivacyMode === true;
+	friendsEnabled = config.FriendsEnabled !== false;
+	friendsSimpleMode = config.FriendsSimpleMode === true;
 	const features = await getMap('admin/ui-features');
 	unlockToastsEnabled = Boolean(features) && features.EnableUnlockToasts !== false;
 	return true;
@@ -419,4 +430,163 @@ export const loadOverview = async () => {
 		questsEnabled,
 		activityEnabled
 	};
+};
+
+// ---------- Friends and chat ----------
+
+// One write on the signed-in user's friends or chat routes. A 429 is the plugin's rate limit,
+// which is a refusal with its own wording rather than a fault. What comes back says whether it
+// went through, what the plugin said, and whatever `read` pulls out of the answer.
+const social = async (method, path, {body, read} = {}) => {
+	const userId = getUserId();
+	if (!userId) return {ok: false, message: null, value: null};
+	const written = await post(`users/${userId}/${path}`, {refusedWith: 429, body, method});
+	const data = written.body;
+	if (!data) return {ok: false, message: written.message || null, value: null};
+	const ok = data.Success !== false;
+	return {ok, message: typeof data.Message === 'string' && data.Message ? data.Message : null, value: ok && read ? read(data) : null};
+};
+
+export const fetchFriends = async () => {
+	const userId = getUserId();
+	if (!userId) return null;
+	const json = await getMap(`users/${userId}/friends`);
+	return json ? parseFriendsList(json) : null;
+};
+
+// Accepts at once when that user already asked first.
+export const sendFriendRequest = (userId) => social('POST', `friends/${userId}`);
+export const acceptFriendRequest = (userId) => social('POST', `friends/${userId}/accept`);
+// Also declines a request from that user, or takes one back.
+export const removeFriend = (userId) => social('DELETE', `friends/${userId}`);
+
+// Answers 404 for someone who hides from the leaderboard, which comes back null like any miss.
+export const fetchPublicProfile = async (userId) => {
+	const json = await getMap(`profiles/${userId}/summary`);
+	return json ? parsePublicProfile(json) : null;
+};
+
+// The users this user can see. The plugin's directory leaves out accounts an admin hid from the
+// login screen, which Jellyfin's /Users lists to anyone signed in. Plugin builds before 2.4.1
+// have no directory and fall back to /Users.
+export const fetchServerUsers = async () => {
+	const userId = getUserId();
+	if (!userId) return [];
+	const directory = await request(`users/${userId}/directory`);
+	if (Array.isArray(directory)) return parseSocialUsers(directory);
+	try {
+		const res = await platformFetch(`${base()}/Users`, {headers: {...authHeaders(), Accept: 'application/json'}}, TIMEOUT_MS);
+		if (!res.ok) return [];
+		return parseSocialUsers(await res.json());
+	} catch {
+		return [];
+	}
+};
+
+export const fetchThreads = async () => {
+	const userId = getUserId();
+	if (!userId) return null;
+	const json = await getMap(`users/${userId}/messages/threads`);
+	if (!json) return null;
+	return Array.isArray(json.Threads) ? json.Threads.filter(isObject).map(parseThread) : [];
+};
+
+// The direct chat with that user. The plugin makes it on first use.
+export const openDirectChat = async (otherUserId) => {
+	const userId = getUserId();
+	if (!userId) return null;
+	const json = await getMap(`users/${userId}/messages/${otherUserId}?limit=1`);
+	return typeof json?.ConversationId === 'string' && json.ConversationId ? json.ConversationId : null;
+};
+
+export const fetchConversation = async (conversationId) => {
+	const userId = getUserId();
+	if (!userId) return null;
+	const json = await getMap(`users/${userId}/conversations/${conversationId}`);
+	return json?.Success === true && isObject(json.Conversation) ? parseConversation(json.Conversation) : null;
+};
+
+// The latest messages, oldest first. Reading them marks them as read.
+export const fetchMessages = async (conversationId, {limit = 200} = {}) => {
+	const userId = getUserId();
+	if (!userId) return null;
+	const json = await getMap(`users/${userId}/conversations/${conversationId}/messages?limit=${limit}`);
+	if (!json) return null;
+	return Array.isArray(json.Messages) ? json.Messages.filter(isObject).map(parseMessage) : [];
+};
+
+const readMessage = (value) => (isObject(value) ? parseMessage(value) : null);
+
+// The plugin caps a message at 1000 characters and 20 a minute, and says so in the refusal.
+export const sendMessage = (conversationId, text) =>
+	social('POST', `conversations/${conversationId}/messages`, {body: {Text: text}, read: (data) => readMessage(data.Sent)});
+
+export const editMessage = (messageId, text) =>
+	social('PATCH', `messages/${messageId}`, {body: {Text: text}, read: (data) => readMessage(data.Updated)});
+
+export const deleteMessage = (messageId) => social('DELETE', `messages/by-id/${messageId}`);
+
+// Empties the chat for everyone in it.
+export const clearConversation = (conversationId) => social('DELETE', `conversations/${conversationId}/clear`);
+
+// A group needs at least two friends besides the signed in user.
+export const createGroup = (title, memberIds) =>
+	social('POST', 'conversations', {
+		body: {Title: title || null, ParticipantIds: memberIds},
+		read: (data) => (isObject(data.Conversation) ? parseConversation(data.Conversation) : null)
+	});
+
+export const renameGroup = (conversationId, title) =>
+	social('POST', `conversations/${conversationId}/rename`, {body: {Title: title}});
+
+export const addGroupMember = (conversationId, userId) =>
+	social('POST', `conversations/${conversationId}/members/${userId}`);
+
+// Leaves the group when the member is the signed in user.
+export const removeGroupMember = (conversationId, userId) =>
+	social('DELETE', `conversations/${conversationId}/members/${userId}`);
+
+export const setGroupAdmin = (conversationId, userId, admin) =>
+	social(admin ? 'POST' : 'DELETE', `conversations/${conversationId}/admins/${userId}`);
+
+// Blocking works both ways in a direct chat, neither side can message the other. The plugin
+// leaves a group they share alone.
+export const setBlocked = (userId, blocked) => social(blocked ? 'POST' : 'DELETE', `block/${userId}`);
+
+export const fetchBlocked = async () => {
+	const userId = getUserId();
+	if (!userId) return [];
+	const json = await getMap(`users/${userId}/blocked`);
+	return Array.isArray(json?.Blocked) ? json.Blocked.filter((id) => typeof id === 'string') : [];
+};
+
+// The image behind an attachment. It needs the token, so it cant be a plain image url and is
+// handed back as an object url the caller releases.
+export const fetchAttachment = async (attachmentId) => {
+	if (!getApiKey()) return null;
+	try {
+		const res = await platformFetch(`${base()}/${ROOT}/attachments/${attachmentId}`, {headers: authHeaders()}, TIMEOUT_MS);
+		if (!res.ok) return null;
+		return URL.createObjectURL(await res.blob());
+	} catch {
+		return null;
+	}
+};
+
+export const fetchSocialPrivacy = async () => {
+	const userId = getUserId();
+	if (!userId) return null;
+	const json = await getMap(`users/${userId}/preferences`);
+	return json ? parseSocialPrivacy(json) : null;
+};
+
+// The plugin replaces its whole preferences object on save, so this reads a fresh copy first
+// and only changes the friend settings in it.
+export const saveSocialPrivacy = async (privacy) => {
+	const userId = getUserId();
+	if (!userId) return false;
+	const current = await getMap(`users/${userId}/preferences`);
+	if (!current) return false;
+	const written = await post(`users/${userId}/preferences`, {refusedWith: 400, body: applySocialPrivacy(current, privacy)});
+	return Boolean(written.body);
 };

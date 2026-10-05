@@ -20,7 +20,7 @@ export const ACHIEVEMENT_VIEWS = [
 
 const AchievementsScreens = ({view, badgeId, onOpen, onSelectItem}) => {
 	const {data: overview, loading, reload} = useLoadOnOpen(achievementsApi.loadOverview);
-	const {unlockToastsAvailable} = useAchievements();
+	const {unlockToastsAvailable, socialAvailable} = useAchievements();
 
 	const openBadge = useCallback(
 		(id) => onOpen('achievementsBadge', `achievement-badge-${id}`, id),
@@ -67,7 +67,7 @@ const AchievementsScreens = ({view, badgeId, onOpen, onSelectItem}) => {
 		return <AchievementsLibraryView completion={overview ? overview.libraryCompletion : {}} />;
 	}
 
-	return <AchievementsView overview={overview} loading={loading} onReload={reload} onOpen={onOpen} unlockToastsAvailable={unlockToastsAvailable} />;
+	return <AchievementsView overview={overview} loading={loading} onReload={reload} onOpen={onOpen} unlockToastsAvailable={unlockToastsAvailable} socialAvailable={socialAvailable} />;
 };
 
 export default AchievementsScreens;

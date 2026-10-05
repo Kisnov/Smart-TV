@@ -34,6 +34,7 @@ import {getActiveServer} from '../services/multiServerManager';
 import {SeerrProvider, useSeerr} from '../context/SeerrContext';
 import {AchievementsProvider, useAchievements} from '../context/AchievementsContext';
 import {achievementIconPath} from '../views/Settings/achievements/achievementIcons';
+import {threadIsPhoto} from '../utils/achievementsModel';
 import {ServerMessagesProvider, useServerMessages} from '../context/ServerMessagesContext';
 import {SyncPlayProvider, useSyncPlay} from '../context/SyncPlayContext';
 import {useVersionCheck} from '../hooks/useVersionCheck';
@@ -191,7 +192,7 @@ const AppContent = (props) => {
 
 	// Banners for badges the user just unlocked, shown in turn so they dont stack. The plugin's
 	// grouping setting decides between one banner for the lot and one each.
-	const {unlocks, clearUnlocks} = useAchievements();
+	const {unlocks, clearUnlocks, incomingMessages, shownIncomingMessage} = useAchievements();
 	const [badgeToasts, setBadgeToasts] = useState([]);
 	const showNextBadgeToast = useCallback(() => setBadgeToasts((queue) => queue.slice(1)), []);
 	useEffect(() => {
@@ -218,6 +219,20 @@ const AppContent = (props) => {
 			icon: achievementIconPath(badge.icon)
 		}))]);
 	}, [unlocks, clearUnlocks, panelIndex]);
+
+	// A banner for a chat that got a message from someone else, one at a time. Held back over
+	// a film when the mute setting says so, which is on unless the viewer turned it off.
+	const incomingThread = incomingMessages[0] || null;
+	const muteChat = settings.muteChatBannersDuringPlayback !== false && panelIndex === PANELS.PLAYER;
+	useEffect(() => {
+		if (incomingThread && muteChat) shownIncomingMessage();
+	}, [incomingThread, muteChat, shownIncomingMessage]);
+	const chatToast = incomingThread && !muteChat ? {
+		key: `${incomingThread.conversationId}-${incomingThread.lastAt ? incomingThread.lastAt.getTime() : incomingThread.unreadCount}`,
+		title: $L('New message from {name}').replace('{name}', incomingThread.name),
+		body: threadIsPhoto(incomingThread) ? $L('Photo') : incomingThread.lastMessage,
+		icon: achievementIconPath('forum')
+	} : null;
 	const [selectedItem, setSelectedItem] = useState(null);
 	const [selectedLibrary, setSelectedLibrary] = useState(null);
 	const [selectedGameLibrary, setSelectedGameLibrary] = useState(null);
@@ -243,6 +258,8 @@ const AppContent = (props) => {
 	const serverMessagesBackRef = useRef(null);
 	const [showExitDialog, setShowExitDialog] = useState(false);
 	const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+	// The screen the settings panel opens on when something other than the gear opened it.
+	const [settingsInitialView, setSettingsInitialView] = useState(null);
 	const [showShuffleOverlay, setShowShuffleOverlay] = useState(false);
 	const [shuffleOriginSpotlightId, setShuffleOriginSpotlightId] = useState('navbar-shuffle');
 	const [pinCodeInput, setPinCodeInput] = useState('');
@@ -1017,6 +1034,12 @@ const AppContent = (props) => {
 	}, [navigateTo]);
 
 	const handleOpenSettings = useCallback(() => {
+		setSettingsInitialView(null);
+		setShowSettingsPanel(true);
+	}, []);
+
+	const handleOpenFriends = useCallback(() => {
+		setSettingsInitialView('friends');
 		setShowSettingsPanel(true);
 	}, []);
 
@@ -1515,6 +1538,7 @@ const AppContent = (props) => {
 					onSelectLibrary={handleSelectLibrary}
 					onUserMenu={handleOpenAccountModal}
 					onMessages={handleOpenServerMessages}
+					onFriends={handleOpenFriends}
 				/>
 			) : showNavBar ? (
 				<NavBar
@@ -1533,6 +1557,7 @@ const AppContent = (props) => {
 					onSelectLibrary={handleSelectLibrary}
 					onUserMenu={handleOpenAccountModal}
 					onMessages={handleOpenServerMessages}
+					onFriends={handleOpenFriends}
 				/>
 			) : null}
 			<ItemMenuProvider onPlay={handlePlayFromMenu} onOpenItem={handleSelectItem} backRef={itemMenuBackRef}>
@@ -1832,6 +1857,10 @@ const AppContent = (props) => {
 				notification={badgeToasts[0] || null}
 				onDismiss={showNextBadgeToast}
 			/>
+			<SeerrNotificationToast
+				notification={chatToast}
+				onDismiss={shownIncomingMessage}
+			/>
 			<ServerMessagesDialog
 				open={showServerMessages}
 				onClose={handleCloseServerMessages}
@@ -1889,6 +1918,7 @@ const AppContent = (props) => {
 			)}
 			{showSettingsPanel && (
 				<SettingsPanel
+					initialView={settingsInitialView}
 					onClose={handleCloseSettingsPanel}
 					onLibrariesChanged={fetchLibraries}
 					onRunSetupWizard={handleRunSetupWizard}

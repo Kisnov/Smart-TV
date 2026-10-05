@@ -44,6 +44,7 @@ import renderDescriptorRow from './settingsDescriptorRow';
 import {CategoriesView, CategoryView, SubcategoryView, OptionsView} from './BrowseViews';
 import {ThemesView, ThemeStoreView} from './ThemeViews';
 import AchievementsScreens, {ACHIEVEMENT_VIEWS} from './achievements/AchievementsScreens';
+import FriendsScreens, {FRIENDS_VIEWS} from './friends/FriendsScreens';
 import {isConfirmSpendOpen} from './achievements/ConfirmSpendDialog';
 import {kidsModeNeedsPin} from '../../utils/kidsMode';
 import {sortRatingsBySeverity} from '../../utils/parentalFilter';
@@ -78,7 +79,7 @@ const PROFILE_CHIPS = [
 ];
 
 
-const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, panelMode }) => {
+const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, panelMode, initialView }) => {
 	const { api, serverUrl, accessToken, hasMultipleServers, logoutAll, activeServerInfo, user, serverType } = useAuth();
 	const { settings, updateSetting, updateSettings, resetSettings, restoreSyncedDefaults, availableThemes, activeThemeId, selectThemeById, saveStoreTheme, deleteStoreTheme } = useSettings();
 	const { capabilities } = useDeviceInfo();
@@ -113,7 +114,9 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 	const searchResultsRef = useRef([]);
 	const searchQueryRef = useRef('');
 
-	const [navStack, setNavStack] = useState([{ view: 'categories' }]);
+	// Opened on a screen of its own when the shell asked for one, with the categories under it
+	// so BACK still walks out the usual way.
+	const [navStack, setNavStack] = useState(() => (initialView ? [{view: 'categories'}, {view: initialView}] : [{view: 'categories'}]));
 	const currentView = navStack[navStack.length - 1];
 	const pendingFocusRef = useRef(null);
 	const navStackRef = useRef(navStack);
@@ -749,6 +752,11 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		pushView({view, returnFocusTo, badgeId});
 	}, [pushView]);
 
+	// The friends and chat screens do the same, carrying which person or chat they are about.
+	const openFriendsView = useCallback((view, returnFocusTo, params) => {
+		pushView({view, returnFocusTo, params});
+	}, [pushView]);
+
 	const {
 		themeStoreCatalog, themeStoreLoading, themeStoreError, themeStoreBusyId,
 		openThemes, openThemeStore, handleStoreThemeClick
@@ -1325,6 +1333,15 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 					options={currentView.options}
 					currentValue={currentView.settingKey === '__themeSelection' ? activeThemeId : settings[currentView.settingKey]}
 					onSelect={selectOptionValue}
+				/>
+			)}
+			{FRIENDS_VIEWS.indexOf(viewName) >= 0 && (
+				<FriendsScreens
+					view={viewName}
+					params={currentView.params}
+					onOpen={openFriendsView}
+					onBack={popView}
+					onSelectItem={onSelectItem}
 				/>
 			)}
 			{ACHIEVEMENT_VIEWS.indexOf(viewName) >= 0 && (

@@ -84,12 +84,12 @@ const OpenScreenRow = ({id, title, desc, icon, view, onOpen, enabled = true}) =>
 	return <NavRow id={id} title={title} desc={desc} icon={icon} onClick={enabled ? handleClick : null} />;
 };
 
-const Message = ({children}) => <div className={css.message}>{children}</div>;
+export const Message = ({children}) => <div className={css.message}>{children}</div>;
 
 // What a screen shows when the plugin answered it with nothing.
-const LoadFailed = ({spotlightId, onRetry}) => (
+export const LoadFailed = ({spotlightId, onRetry, message}) => (
 	<>
-		<Message>{$L('Could not load your achievements.')}</Message>
+		<Message>{message || $L('Could not load your achievements.')}</Message>
 		<div className={css.retryRow}>
 			<SpottableDiv className={css.retryButton} spotlightId={spotlightId} onClick={onRetry}>
 				{$L('Retry')}
@@ -280,7 +280,7 @@ const RankHeader = ({rank, summary, worn}) => {
 };
 
 // Each badge takes focus so the remote can reach the ones past the right edge.
-const Showcase = ({badges}) => (
+export const Showcase = ({badges}) => (
 	<>
 		<SectionTitle>{$L('Showcase')}</SectionTitle>
 		<div className={css.showcase}>
@@ -345,7 +345,7 @@ const UnlockToastsRow = () => {
 	);
 };
 
-export const AchievementsView = ({overview, loading, onReload, onOpen, unlockToastsAvailable}) => {
+export const AchievementsView = ({overview, loading, onReload, onOpen, unlockToastsAvailable, socialAvailable}) => {
 	if (loading) return <SettingsView spotlightId="achievements-view"><Message>{$L('Loading...')}</Message></SettingsView>;
 
 	if (!overview) {
@@ -366,6 +366,16 @@ export const AchievementsView = ({overview, loading, onReload, onOpen, unlockToa
 		<SettingsView spotlightId="achievements-view">
 			<RankHeader rank={overview.rank} summary={overview.summary} worn={overview.cosmetics} />
 			{overview.equipped.length > 0 && <Showcase badges={overview.equipped} />}
+			{socialAvailable && (
+				<OpenScreenRow
+					id="achievements-friends"
+					title={$L('Friends')}
+					desc={$L("See who's online and chat with people on this server")}
+					icon="groups"
+					view="friends"
+					onOpen={onOpen}
+				/>
+			)}
 			{unlockToastsAvailable && <UnlockToastsRow />}
 			<OpenScreenRow
 				id="achievements-badges"
