@@ -295,7 +295,6 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 
 	// Detail screens, modern layout
 	rule(`.${modernDetailCss.metaRow}, .${modernDetailCss.techSize}`, `color: ${os(0.75)};`);
-	rule(`.${modernDetailCss.actionPrimary}`, `background-color: ${accent}; color: ${onAccent};`);
 	rule(`.${modernDetailCss.actionBtn}:focus`, `background: ${buttonFocused}; border-color: ${focusColor}; color: ${buttonInk};`);
 	rule(`.${modernDetailCss.overflowList} .${modernDetailCss.actionBtn}:focus`, `background: ${os(0.1)}; border-color: ${focusColor}; color: ${onBackground};`);
 	rule(`.${modernDetailCss.upNextCard}`, `background-color: ${surfaceA(0.82)};`);
@@ -446,7 +445,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 			`.${detailsCss.episodeCard}`, `.${detailsCss.chapterCard}`, `.${detailsCss.extraCard}`,
 			`.${detailsCss.seasonPosterWrapper}`, `.${detailsCss.episodeNumber}`, `.${detailsCss.badge}`,
 			`.${detailsCss.trackItem}`, `.${detailsCss.actionBtn}`, `.${detailsCss.toast}`, `.${detailsCss.seasonEp}`,
-			`.${modernDetailCss.actionBtn}`, `.${modernDetailCss.actionPrimary}`, `.${modernDetailCss.upNextCard}`,
+			`.${modernDetailCss.actionBtn}`, `.${modernDetailCss.upNextCard}`,
 			`.${tabBarCss.tabBar}`, `.${tabBarCss.tab}`, `.${overviewCss.spottable}`,
 			`.${browseCss.featuredInfoBox}`, `.${browseCss.bannerCard}`, `.${browseCss.galleryActiveRight}`,
 			`.${browseCss.galleryPill}`, `.${browseCss.makdDots}`, `.${browseCss.featuredIndicators}`
