@@ -9,6 +9,7 @@ import {getAvailableThemeList, getAvailableThemes, isBuiltInThemeId, registerSto
 import {applyOledMode} from '../utils/oledMode';
 import {normalizeRatingSources, ratingSourcesToServer} from '../utils/ratingSources';
 import {SEASONAL_DENSITIES, normalizeSeasonalTheme} from '../utils/seasonalEffects';
+import {normalizeSeasonalHiddenHolidays, normalizeSeasonalRowCountry} from '../utils/seasonalRow';
 import {
 	IMAGES as LOADING_IMAGES,
 	POSITIONS as LOADING_POSITIONS,
@@ -166,6 +167,8 @@ const VALUE_CONVERSIONS = {
 		fromServer: normalizeSeasonalTheme
 	},
 	seasonalDensity: oneOf(SEASONAL_DENSITIES),
+	seasonalRowCountry: {fromServer: normalizeSeasonalRowCountry},
+	seasonalRowHiddenHolidays: {fromServer: normalizeSeasonalHiddenHolidays},
 	screensaverContentType: {
 		toServer: v => CONTENT_TYPE_TO_SERVER[v],
 		fromServer: v => CONTENT_TYPE_FROM_SERVER[v]
@@ -235,6 +238,7 @@ export const SYNCABLE_KEYS = [
 	'rewatchIncludeMovies', 'rewatchIncludeShows', 'rewatchIncludeCollections', 'rewatchSortBy',
 	'navbarPosition', 'featuredBarStyle', 'featuredContentType', 'featuredItemCount',
 	'featuredTrailerPreview', 'featuredTrailerMuted', 'mediaBarTrailerCaptions', 'unifiedLibraryMode', 'seasonalTheme', 'seasonalDensity',
+	'seasonalRowEnabled', 'seasonalRowCountry', 'seasonalRowHiddenHolidays',
 	'visualTheme', 'customThemeId',
 	'showRatingLabels',
 	'showRatingBadges',
@@ -375,10 +379,12 @@ const resolveFromEnvelope = (envelope, adminDefaults) => {
 
 	// Same precedence as everything else, except the layout moves as one unit. The first
 	// profile that has any layout supplies all of it, so admin defaults only reach a user
-	// with no layout of their own.
-	const homeRows = homeRowsFromProfile(envelope?.tv)
-		?? homeRowsFromProfile(envelope?.global)
-		?? homeRowsFromProfile(adminDefaults);
+	// with no layout of their own. A layout from a client that predates the seasonal row
+	// lacks it, so its own toggle decides how it comes back.
+	const enabledById = {seasonal: resolved.seasonalRowEnabled === true};
+	const homeRows = homeRowsFromProfile(envelope?.tv, enabledById)
+		?? homeRowsFromProfile(envelope?.global, enabledById)
+		?? homeRowsFromProfile(adminDefaults, enabledById);
 	if (homeRows !== undefined) {
 		resolved.homeRows = homeRows;
 		resolved.serverPluginSections = serverPluginSections();
@@ -519,7 +525,7 @@ export function SettingsProvider({children}) {
 				));
 				let migrated = false;
 				const hasExplicitHomeRowsStyle = Object.prototype.hasOwnProperty.call(stored, 'homeRowsStyle');
-				const mergedHomeRows = mergeHomeRows(stored.homeRows);
+				const mergedHomeRows = mergeHomeRows(stored.homeRows, {seasonal: stored.seasonalRowEnabled === true});
 				if (mergedHomeRows !== stored.homeRows) {
 					stored.homeRows = mergedHomeRows;
 					migrated = true;

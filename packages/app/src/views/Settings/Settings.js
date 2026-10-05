@@ -51,7 +51,7 @@ import {readServerRatings} from './serverRatings';
 import {getBlockedRatings, setBlockedRatings} from '../../services/parentalControls';
 import useParentalFilter from '../../hooks/useParentalFilter';
 import {SeerrHomeRowsView, ImdbListsView} from './HomeRowToggleViews';
-import {ExternalTmdbListsView, ExternalCalendarsView, ExternalCustomRowsView} from './ExternalRowViews';
+import {ExternalTmdbListsView, ExternalCalendarsView, ExternalCustomRowsView, SeasonalRowView} from './ExternalRowViews';
 import {RatingSourcesView, ExcludedGenresView, PinCodeView, BlockedRatingsView, RowImageTypesView} from './PickerViews';
 import {KidsModeSetView, KidsModeExitView} from './KidsModeViews';
 import HomeRowsView from './HomeRowsView';
@@ -703,6 +703,10 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		pushView({ view: 'imdbLists', returnFocusTo: 'setting-imdbLists' });
 	}, [pushView]);
 
+	const openSeasonalRow = useCallback(() => {
+		pushView({view: 'seasonalRow', returnFocusTo: 'setting-seasonalRow'});
+	}, [pushView]);
+
 	const openExternalTmdbLists = useCallback(() => {
 		pushView({view: 'externalTmdbLists', returnFocusTo: 'setting-externalTmdbLists'});
 	}, [pushView]);
@@ -1046,6 +1050,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			openScreensaverCollections,
 			openScreensaverGenres,
 			openImdbLists,
+			openSeasonalRow,
 			openExternalTmdbLists,
 			openExternalCalendars,
 			openExternalCustomRows,
@@ -1061,7 +1066,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		openDetailButtons, openOsdButtons, openDetailMetadata, openDiagnostics,
 		openPinCode, openKidsMode, openLibraries, openLibraryOrder, openParentalControls, openQrLink, openRatingSources, openRowImageTypes, openExcludedGenres, openMediaBarLibraries,
 		openMediaBarCollections, openScreensaverLibraries, openScreensaverCollections, openScreensaverGenres,
-		openImdbLists, openExternalTmdbLists, openExternalCalendars,
+		openImdbLists, openSeasonalRow, openExternalTmdbLists, openExternalCalendars,
 		openExternalCustomRows, openSeerrHomeRows, openScreen, handleMoonfinToggle, onRunSetupWizard
 	]);
 
@@ -1386,6 +1391,9 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			)}
 			{viewName === 'imdbLists' && (
 				<ImdbListsView settings={settings} onUpdateSettings={updateSettings} />
+			)}
+			{viewName === 'seasonalRow' && (
+				<SeasonalRowView settings={settings} onUpdateSettings={updateSettings} />
 			)}
 			{viewName === 'externalTmdbLists' && (
 				<ExternalTmdbListsView enabledMap={homeRowEnabledMap} onToggleRow={toggleHomeRowEnabled} />

@@ -2,6 +2,7 @@ import $L from '@enact/i18n/$L';
 import seerrApi from '../services/seerrApi';
 import {fetchCustomRow, constructSourceUrl} from '../services/externalRowsApi';
 import {fetchWithTimeout} from './fetchTimeout';
+import {seasonalTitle} from './seasonalTitles';
 
 const HOME_ROW_LIMIT = 20;
 const VALIDATE_TIMEOUT_MS = 45000;
@@ -84,7 +85,11 @@ const normalizeExternalItem = (item, rowId, source) => {
 		ProductionYear: yearOf(item),
 		ProviderIds: item.providerIds,
 		UserRating: item.userRating,
+		OfficialRating: item.officialRating ?? null,
 		Overview: item.overview || null,
+		CommunityRating: item.rating ?? null,
+		Genres: Array.isArray(item.genres) ? item.genres : [],
+		RunTimeTicks: item.runTimeTicks ?? null,
 		_externalPosterUrl: item.posterUrl ? seerrApi.getImageUrl(item.posterUrl, 'w342') : null,
 		_externalBackdropUrl: item.backdropUrl ? seerrApi.getImageUrl(item.backdropUrl, 'w780') : null,
 		_external: true,
@@ -94,6 +99,28 @@ const normalizeExternalItem = (item, rowId, source) => {
 		_seerrType: 'item',
 		_seerrMediaType: mediaType,
 		_seerrRaw: seerrRawFor(tmdbId, imdbId, item.name, mediaType)
+	};
+};
+
+// The seasonal row as Browse draws it. Owned movies are library items already and stay as
+// they came, so their cards build server image URLs and a select opens them to play.
+// Suggestions become Seerr cards, marked so a blocked rating also hides an unrated one.
+export const buildSeasonalRow = (payload, hiddenHolidays = []) => {
+	if (!payload?.holiday || hiddenHolidays.includes(payload.holiday)) return null;
+	const owned = (payload.items || []).filter((item) => item && item.Id);
+	const suggestions = (payload.suggestions || []).map((item) => ({
+		...normalizeExternalItem(item, 'seasonal', 'seerr'),
+		_strictRating: true
+	}));
+	const items = [...owned, ...suggestions];
+	if (items.length === 0) return null;
+	return {
+		id: 'seasonal',
+		holiday: payload.holiday,
+		title: seasonalTitle(payload.holiday),
+		items,
+		isExternalRow: true,
+		isSeasonalRow: true
 	};
 };
 

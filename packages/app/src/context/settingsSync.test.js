@@ -291,3 +291,27 @@ describe('localToProfile for the seasonal effect', () => {
 		expect(profile).toEqual({seasonalSurprise: 'confetti', seasonalDensity: 'light'});
 	});
 });
+
+describe('the seasonal row settings', () => {
+	test('are syncable', () => {
+		for (const key of ['seasonalRowEnabled', 'seasonalRowCountry', 'seasonalRowHiddenHolidays']) {
+			expect(SYNCABLE_KEYS).toContain(key);
+		}
+	});
+
+	test('take a country this app can read and drop one it cant', () => {
+		expect(profileToLocal({seasonalRowCountry: 'ca'}).seasonalRowCountry).toBe('CA');
+		expect(profileToLocal({seasonalRowCountry: 'other'}).seasonalRowCountry).toBe('other');
+		expect(profileToLocal({seasonalRowCountry: 'everywhere'}).seasonalRowCountry).toBeUndefined();
+	});
+
+	test('keep only the holidays this app knows in the hidden list', () => {
+		expect(profileToLocal({seasonalRowHiddenHolidays: ['pride', 'bogus']}).seasonalRowHiddenHolidays).toEqual(['pride']);
+		expect(profileToLocal({seasonalRowHiddenHolidays: 'pride'}).seasonalRowHiddenHolidays).toBeUndefined();
+	});
+
+	test('carry the toggle through as it was sent', () => {
+		expect(profileToLocal({seasonalRowEnabled: true}).seasonalRowEnabled).toBe(true);
+		expect(profileToLocal({seasonalRowEnabled: false}).seasonalRowEnabled).toBe(false);
+	});
+});

@@ -29,6 +29,11 @@ const LOADERS = {
 		tizen: () => import('@moonfin/platform-tizen/volume'),
 		webos: () => import('@moonfin/platform-webos/volume'),
 		vega: () => import('@moonfin/platform-vega/volume')
+	},
+	countryCode: {
+		tizen: () => import('@moonfin/platform-tizen/countryCode'),
+		webos: () => import('@moonfin/platform-webos/countryCode'),
+		vega: () => import('@moonfin/platform-vega/countryCode')
 	}
 };
 
