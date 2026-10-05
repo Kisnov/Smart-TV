@@ -8,6 +8,7 @@ import {noteAnsweredSettings, SETUP_QUESTION_KEYS} from '../utils/setupWizardGat
 import {getAvailableThemeList, getAvailableThemes, isBuiltInThemeId, registerStoreTheme, removeStoreTheme, replaceCustomThemes, resolveThemeById} from '../theme/themeRegistry';
 import {applyOledMode} from '../utils/oledMode';
 import {normalizeRatingSources, ratingSourcesToServer} from '../utils/ratingSources';
+import {SEASONAL_DENSITIES, normalizeSeasonalTheme} from '../utils/seasonalEffects';
 import {
 	IMAGES as LOADING_IMAGES,
 	POSITIONS as LOADING_POSITIONS,
@@ -161,6 +162,10 @@ const VALUE_CONVERSIONS = {
 	loadingAnimationSize: oneOf(LOADING_SIZES),
 	loadingAnimationPosition: oneOf(LOADING_POSITIONS),
 	loadingAnimationSpeed: oneOf(LOADING_SPEEDS),
+	seasonalTheme: {
+		fromServer: normalizeSeasonalTheme
+	},
+	seasonalDensity: oneOf(SEASONAL_DENSITIES),
 	screensaverContentType: {
 		toServer: v => CONTENT_TYPE_TO_SERVER[v],
 		fromServer: v => CONTENT_TYPE_FROM_SERVER[v]
@@ -229,7 +234,7 @@ export const SYNCABLE_KEYS = [
 	'sinceYouWatchedSource', 'sinceYouWatchedSourceItem', 'sinceYouWatchedSourceType', 'sinceYouWatchedIncludeWatched',
 	'rewatchIncludeMovies', 'rewatchIncludeShows', 'rewatchIncludeCollections', 'rewatchSortBy',
 	'navbarPosition', 'featuredBarStyle', 'featuredContentType', 'featuredItemCount',
-	'featuredTrailerPreview', 'featuredTrailerMuted', 'mediaBarTrailerCaptions', 'unifiedLibraryMode', 'seasonalTheme',
+	'featuredTrailerPreview', 'featuredTrailerMuted', 'mediaBarTrailerCaptions', 'unifiedLibraryMode', 'seasonalTheme', 'seasonalDensity',
 	'visualTheme', 'customThemeId',
 	'showRatingLabels',
 	'showRatingBadges',
@@ -533,6 +538,15 @@ export function SettingsProvider({children}) {
 					const normalizedDetailStyle = normalizeDetailScreenStyle(stored.detailScreenStyle);
 					if (normalizedDetailStyle !== stored.detailScreenStyle) {
 						stored.detailScreenStyle = normalizedDetailStyle;
+						migrated = true;
+					}
+				}
+				if (stored.seasonalTheme !== undefined) {
+					// Was winter, spring, summer, fall or halloween before this app took
+					// Moonfin-Core's effects.
+					const seasonalTheme = normalizeSeasonalTheme(stored.seasonalTheme) || 'none';
+					if (seasonalTheme !== stored.seasonalTheme) {
+						stored.seasonalTheme = seasonalTheme;
 						migrated = true;
 					}
 				}

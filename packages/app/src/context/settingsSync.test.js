@@ -59,6 +59,26 @@ describe('profileToLocal', () => {
 		expect(profileToLocal({screensaverMode: 'logo'}).screensaverMode).toBe('logo');
 	});
 
+	test("takes Moonfin-Core's seasonal effect and density", () => {
+		const local = profileToLocal({seasonalSurprise: 'fireworks', seasonalDensity: 'heavy'});
+
+		expect(local.seasonalTheme).toBe('fireworks');
+		expect(local.seasonalDensity).toBe('heavy');
+	});
+
+	test("maps this app's old seasonal effects that are still in the profile", () => {
+		expect(profileToLocal({seasonalSurprise: 'winter'}).seasonalTheme).toBe('snow');
+		expect(profileToLocal({seasonalSurprise: 'fall'}).seasonalTheme).toBe('leaves');
+		expect(profileToLocal({seasonalSurprise: 'halloween'}).seasonalTheme).toBe('none');
+	});
+
+	test('ignores a seasonal effect or density this app does not know', () => {
+		const local = profileToLocal({seasonalSurprise: 'aurora', seasonalDensity: 'blizzard'});
+
+		expect(local.seasonalTheme).toBeUndefined();
+		expect(local.seasonalDensity).toBeUndefined();
+	});
+
 	test('takes the screensaver customization stored in the profile', () => {
 		const local = profileToLocal({
 			screensaverBackdrop: 'neonPulse',
@@ -247,5 +267,20 @@ describe('SYNCABLE_KEYS', () => {
 
 	test('includes detailButtonsMaxVisible', () => {
 		expect(SYNCABLE_KEYS).toContain('detailButtonsMaxVisible');
+	});
+
+	test('includes seasonalDensity', () => {
+		expect(SYNCABLE_KEYS).toContain('seasonalDensity');
+	});
+});
+
+describe('localToProfile for the seasonal effect', () => {
+	test('sends the effect and density under the names Core reads', () => {
+		const profile = localToProfile(
+			{...defaultSettings, seasonalTheme: 'confetti', seasonalDensity: 'light'},
+			['seasonalTheme', 'seasonalDensity']
+		);
+
+		expect(profile).toEqual({seasonalSurprise: 'confetti', seasonalDensity: 'light'});
 	});
 });

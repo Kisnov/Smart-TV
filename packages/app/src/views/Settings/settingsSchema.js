@@ -50,6 +50,7 @@ import {
 	getScreensaverPositionOptions,
 	getScreensaverSizeOptions,
 	getScreensaverTimeoutOptions,
+	getSeasonalDensityOptions,
 	getSeasonalThemeOptions,
 	getSeekStepOptions,
 	getServerSortOptions,
@@ -560,7 +561,8 @@ export const SETTINGS_SCHEMA = [
 				description: () => $L('Visual effects and seasonal decorations'),
 				rows: [
 					{kind: KIND.SECTION, id: 'seasonalEffects', label: () => $L('Seasonal Effects')},
-					{kind: KIND.OPTION, key: 'seasonalTheme', label: () => $L('Seasonal Surprise'), options: getSeasonalThemeOptions, fallback: () => $L('None'), icon: 'star_shine'}
+					{kind: KIND.OPTION, key: 'seasonalTheme', label: () => $L('Seasonal Surprise'), options: getSeasonalThemeOptions, fallback: () => $L('None'), icon: 'star_shine'},
+					{kind: KIND.OPTION, key: 'seasonalDensity', label: () => $L('Density'), options: getSeasonalDensityOptions, fallback: () => $L('Normal'), icon: 'blur_on'}
 				]
 			},
 			{

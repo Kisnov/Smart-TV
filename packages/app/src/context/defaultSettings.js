@@ -252,6 +252,7 @@ export const defaultSettings = {
 	outroAction: 'ask',
 	replaceSkipOutroWithNextUp: false,
 	seasonalTheme: 'none',
+	seasonalDensity: 'normal',
 	themeMusicEnabled: false,
 	themeMusicVolume: 30,
 	themeMusicOnHomeRows: false,

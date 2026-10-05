@@ -1836,7 +1836,12 @@ const AppContent = (props) => {
 				onDismiss={dismissScreensaver}
 				serverUrl={serverUrl}
 			/>
-			<SeasonalTheme theme={settings.seasonalTheme} />
+			{/* Home only, and unmounted under the screensaver and the full screen overlays so it
+			never keeps animating behind them. */}
+			{panelIndex === PANELS.BROWSE && !showScreensaver && !showShuffleOverlay &&
+				!photoViewerItem && !comicViewerItem && (
+				<SeasonalTheme theme={settings.seasonalTheme} density={settings.seasonalDensity} />
+			)}
 			<NoConnection />
 			<DebugOverlay />
 			{connectionState !== 'connected' && isAuthenticated && (
