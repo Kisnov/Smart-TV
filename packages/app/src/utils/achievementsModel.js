@@ -68,6 +68,25 @@ const RARITY_COLORS = {
 export const rarityColor = (rarity) =>
 	RARITY_COLORS[String(rarity || '').trim().toLowerCase()] || RARITY_COLORS.common;
 
+const RARITY_RANKS = {uncommon: 1, rare: 2, epic: 3, legendary: 4, mythic: 5};
+
+const rarityRank = (rarity) => RARITY_RANKS[String(rarity || '').trim().toLowerCase()] || 0;
+
+// The plugin's own unlock notification settings for the user, the ones jellyfin-web follows too.
+// `allows` says whether a badge of that rarity clears the minimum, ranked the way the plugin
+// ranks them.
+export const parseUnlockToastSettings = (json) => {
+	const minimumRarity = asString(json.MinimumToastRarity).trim().toLowerCase() || 'all';
+	return {
+		enabled: json.EnableUnlockToasts !== false,
+		minimumRarity,
+		// One notification for everything a read turned up, rather than one each.
+		grouped: json.UnlockToastGrouping !== 'individual',
+		muteDuringPlayback: asBool(json.MuteToastsDuringPlayback),
+		allows: (rarity) => minimumRarity === 'all' || rarityRank(rarity) >= rarityRank(minimumRarity)
+	};
+};
+
 // The rank tier carries its own colour as the plugin wrote it. Six hex digits or the caller
 // keeps whatever it was going to use instead.
 export const parseHexColor = (value) => {

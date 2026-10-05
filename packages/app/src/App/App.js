@@ -32,7 +32,8 @@ import {seedLanguagePreferences} from '../utils/languagePrefSeed';
 import {shouldRun as shouldRunSetupWizard, beginRerun as beginSetupWizardRerun} from '../utils/setupWizardGate';
 import {getActiveServer} from '../services/multiServerManager';
 import {SeerrProvider, useSeerr} from '../context/SeerrContext';
-import {AchievementsProvider} from '../context/AchievementsContext';
+import {AchievementsProvider, useAchievements} from '../context/AchievementsContext';
+import {achievementIconPath} from '../views/Settings/achievements/achievementIcons';
 import {ServerMessagesProvider, useServerMessages} from '../context/ServerMessagesContext';
 import {SyncPlayProvider, useSyncPlay} from '../context/SyncPlayContext';
 import {useVersionCheck} from '../hooks/useVersionCheck';
@@ -187,6 +188,36 @@ const AppContent = (props) => {
 	}, [settingsLoaded, user?.Id, serverUrl, legacyBlockedRatings, updateSettings]);
 
 	const [panelIndex, setPanelIndex] = useState(PANELS.LOGIN);
+
+	// Banners for badges the user just unlocked, shown in turn so they dont stack. The plugin's
+	// grouping setting decides between one banner for the lot and one each.
+	const {unlocks, clearUnlocks} = useAchievements();
+	const [badgeToasts, setBadgeToasts] = useState([]);
+	const showNextBadgeToast = useCallback(() => setBadgeToasts((queue) => queue.slice(1)), []);
+	useEffect(() => {
+		if (!unlocks) return;
+		clearUnlocks();
+		if (unlocks.muteDuringPlayback && panelIndex === PANELS.PLAYER) return;
+		const {badges} = unlocks;
+		if (unlocks.grouped && badges.length > 1) {
+			const top = badges.reduce((best, badge) => (badge.score > best.score ? badge : best));
+			const names = badges.slice(0, 3).map((badge) => badge.title).join(', ');
+			const more = badges.length - 3;
+			setBadgeToasts((queue) => [...queue, {
+				key: unlocks.key,
+				title: $L('{count} achievements unlocked').replace('{count}', String(badges.length)),
+				body: more > 0 ? `${names} ${$L('+{count} more').replace('{count}', String(more))}` : names,
+				icon: achievementIconPath(top.icon)
+			}]);
+			return;
+		}
+		setBadgeToasts((queue) => [...queue, ...badges.map((badge, index) => ({
+			key: `${unlocks.key}-${index}`,
+			title: $L('Achievement unlocked'),
+			body: badge.title,
+			icon: achievementIconPath(badge.icon)
+		}))]);
+	}, [unlocks, clearUnlocks, panelIndex]);
 	const [selectedItem, setSelectedItem] = useState(null);
 	const [selectedLibrary, setSelectedLibrary] = useState(null);
 	const [selectedGameLibrary, setSelectedGameLibrary] = useState(null);
@@ -1796,6 +1827,10 @@ const AppContent = (props) => {
 			<SeerrNotificationToast
 				notification={remoteMessage}
 				onDismiss={clearRemoteMessage}
+			/>
+			<SeerrNotificationToast
+				notification={badgeToasts[0] || null}
+				onDismiss={showNextBadgeToast}
 			/>
 			<ServerMessagesDialog
 				open={showServerMessages}

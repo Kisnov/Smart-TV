@@ -13,7 +13,8 @@ jest.mock('./jellyfinApi', () => ({
 	getAuthHeader: () => 'MediaBrowser Token="mockToken"',
 	getApiKey: () => mockToken,
 	getUserId: () => mockUserId,
-	getServerType: () => mockServerType
+	getServerType: () => mockServerType,
+	getDeviceId: () => 'tv-1'
 }));
 
 jest.mock('../utils/serverRoutes', () => ({legacyAuthHeader: () => ({})}));
@@ -79,7 +80,7 @@ describe('availability', () => {
 	test('a server running the plugin is available and reports what the admin left on', async () => {
 		serve({'public-config': {LeaderboardEnabled: true, QuestsEnabled: false, ActivityFeedEnabled: false}});
 		expect(await api.probe()).toBe(true);
-		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: false, activityEnabled: false});
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: false, activityEnabled: false, unlockToastsEnabled: false});
 	});
 
 	// A plugin too old to report a flag still serves the section, so only a definite no turns
@@ -87,7 +88,20 @@ describe('availability', () => {
 	test('a flag the plugin never mentions is still on', async () => {
 		serve({'public-config': {}});
 		await api.probe();
-		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true, activityEnabled: true});
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true, activityEnabled: true, unlockToastsEnabled: false});
+	});
+
+	// The unlock notifications need a route an older plugin does not have, so they stay off
+	// until the plugin says it serves them.
+	test('unlock notifications are on only when the plugin offers them', async () => {
+		serve({'public-config': CONFIG, 'admin/ui-features': {EnableUnlockToasts: true}});
+		await api.probe();
+		expect(api.getFlags().unlockToastsEnabled).toBe(true);
+
+		api.reset();
+		serve({'public-config': CONFIG, 'admin/ui-features': {EnableUnlockToasts: false}});
+		await api.probe();
+		expect(api.getFlags().unlockToastsEnabled).toBe(false);
 	});
 
 	test('a server without the plugin is unavailable after one look', async () => {
@@ -115,7 +129,7 @@ describe('availability', () => {
 		serve({'public-config': {LeaderboardEnabled: false, QuestsEnabled: false, ActivityFeedEnabled: false}});
 		await api.probe();
 		api.reset();
-		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true, activityEnabled: true});
+		expect(api.getFlags()).toEqual({leaderboardEnabled: true, questsEnabled: true, activityEnabled: true, unlockToastsEnabled: false});
 	});
 });
 
@@ -652,5 +666,53 @@ describe('shop', () => {
 
 		expect((await api.buyShopItem('pu-xp-boost-1')).outcome).toBe('failed');
 		expect(platformFetch).not.toHaveBeenCalled();
+	});
+});
+
+describe('unlock notifications', () => {
+	const PREFERENCES = {EnableUnlockToasts: true, MinimumToastRarity: 'rare', UnlockToastGrouping: 'grouped', MuteToastsDuringPlayback: true};
+	const unlocked = (id, rarity, at) => ({Id: id, Title: id, Rarity: rarity, Unlocked: true, UnlockedAt: at});
+	const withUnlocks = (preferences, badges) => serve({
+		'public-config': CONFIG,
+		'admin/ui-features': {EnableUnlockToasts: true},
+		'users/user1/preferences': preferences,
+		'users/user1/unlocks-since': {Now: '2026-10-05T12:00:00Z', Badges: badges}
+	});
+	const sinceOf = () => decodeURIComponent(/since=([^&]*)/.exec(paths().filter((path) => path.startsWith('users/user1/unlocks-since')).pop())[1]);
+
+	test('reads the user settings from the plugin and writes the switch over a fresh copy', async () => {
+		withUnlocks(PREFERENCES, []);
+		expect(await api.fetchUnlockToastSettings()).toMatchObject({enabled: true, minimumRarity: 'rare', grouped: true, muteDuringPlayback: true});
+
+		expect(await api.saveUnlockToasts(false)).toBe(true);
+		const [, init] = platformFetch.mock.calls.find((call) => call[1].method === 'POST');
+		expect(JSON.parse(init.body)).toEqual({...PREFERENCES, EnableUnlockToasts: false});
+	});
+
+	test('the first read only records the clock, the next one hands back what cleared the minimum', async () => {
+		withUnlocks(PREFERENCES, [unlocked('b1', 'Common', '2026-10-05T11:59:00Z'), unlocked('b2', 'Epic', '2026-10-05T11:59:30Z')]);
+		await api.probe();
+		expect(await api.refreshUnlocks()).toBeNull();
+
+		const unlocks = await api.refreshUnlocks();
+		expect(sinceOf()).toBe('2026-10-05T12:00:00Z');
+		expect(unlocks.badges.map((badge) => badge.id)).toEqual(['b2']);
+		expect(unlocks).toMatchObject({grouped: true, muteDuringPlayback: true});
+		// The same unlock is never passed on twice.
+		expect(await api.refreshUnlocks()).toBeNull();
+	});
+
+	test('notifications the user switched off read nothing and start fresh once back on', async () => {
+		withUnlocks({EnableUnlockToasts: false}, [unlocked('b1', 'Epic', '2026-10-05T11:59:00Z')]);
+		await api.probe();
+		expect(await api.refreshUnlocks()).toBeNull();
+		expect(paths().some((path) => path.startsWith('users/user1/unlocks-since'))).toBe(false);
+	});
+
+	test('a plugin without the route is never asked', async () => {
+		serve({'public-config': CONFIG, 'users/user1/preferences': PREFERENCES});
+		await api.probe();
+		expect(await api.refreshUnlocks()).toBeNull();
+		expect(paths().some((path) => path.startsWith('users/user1/preferences'))).toBe(false);
 	});
 });

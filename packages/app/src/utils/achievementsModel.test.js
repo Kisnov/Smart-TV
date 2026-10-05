@@ -5,7 +5,7 @@ import {
 	parseWatchClock, parseServerStats, statsAreEmpty, parseCosmeticCatalog, buildCosmeticLoadout,
 	cosmeticsOf, equippedCosmetic, ownsCosmetic, wornAvatarIcon, wornTitle, cosmeticsAreEmpty,
 	wearingCosmetic, boughtCosmetic, COSMETIC_AVATAR, COSMETIC_RANK_TITLE,
-	parseHexColor, rarityColor, scoreForRarity
+	parseHexColor, rarityColor, scoreForRarity, parseUnlockToastSettings
 } from './achievementsModel';
 
 const badge = (over) => parseBadge({
@@ -43,6 +43,26 @@ describe('rarityColor', () => {
 		expect(rarityColor('Legendary')).toBe('#FF9800');
 		expect(rarityColor('mythic')).toBe('#E91E63');
 		expect(rarityColor('Transcendent')).toBe('#9AA5B1');
+	});
+});
+
+describe('parseUnlockToastSettings', () => {
+	test('reads the plugin flags, with everything on and ungrouped only when it says so', () => {
+		const settings = parseUnlockToastSettings({});
+		expect(settings.enabled).toBe(true);
+		expect(settings.minimumRarity).toBe('all');
+		expect(settings.grouped).toBe(true);
+		expect(settings.muteDuringPlayback).toBe(false);
+		expect(parseUnlockToastSettings({EnableUnlockToasts: false, UnlockToastGrouping: 'individual', MuteToastsDuringPlayback: true}))
+			.toMatchObject({enabled: false, grouped: false, muteDuringPlayback: true});
+	});
+
+	test('ranks rarities against the minimum the way the plugin does', () => {
+		const rare = parseUnlockToastSettings({MinimumToastRarity: 'Rare'});
+		expect(rare.allows('Common')).toBe(false);
+		expect(rare.allows('rare')).toBe(true);
+		expect(rare.allows('Legendary')).toBe(true);
+		expect(parseUnlockToastSettings({MinimumToastRarity: 'all'}).allows('Common')).toBe(true);
 	});
 });
 

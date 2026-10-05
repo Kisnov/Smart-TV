@@ -3,19 +3,19 @@
 //
 // Nothing here throws. A server without the plugin answers 404 on every route, and a panel that
 // asked for everything at once and got nothing back wants an empty screen rather than a pile of
-// errors, so a failed call reads as no answer. Nothing here polls, and the login ping, the quest
-// reroll, spending a power-up, buying one and changing what the profile wears are the only things
-// written, because they are the only parts the plugin expects a client to drive.
+// errors, so a failed call reads as no answer. The login ping, the quest reroll, spending a
+// power-up, buying one, changing what the profile wears and the unlock notification switch are
+// the only things written, because they are the only parts the plugin expects a client to drive.
 
-import {getServerUrl, getAuthHeader, getApiKey, getUserId, getServerType} from './jellyfinApi';
+import {getServerUrl, getAuthHeader, getApiKey, getUserId, getServerType, getDeviceId} from './jellyfinApi';
 import {legacyAuthHeader} from '../utils/serverRoutes';
 import {platformFetch} from './secureFetch';
 import {
-	isObject, parseBadgeChase, parseSummary, parseRank, parseBadges, parseQuests, parseRerolledQuests,
+	isObject, parseBadge, parseBadgeChase, parseSummary, parseRank, parseBadges, parseQuests, parseRerolledQuests,
 	parseLeaderboardEntry, parseRecap, parseLibraryCompletion,
 	parsePowerUpState, parsePowerUpSlots, parseShopCatalog, parseActivityFeed,
 	parseCounters, parseWatchClock, parseServerStats,
-	parseCosmeticCatalog, buildCosmeticLoadout,
+	parseCosmeticCatalog, buildCosmeticLoadout, parseUnlockToastSettings,
 	COSMETIC_CHANGED, COSMETIC_REFUSED, COSMETIC_FAILED,
 	REROLLED, REROLL_ALREADY_USED, REROLL_FAILED,
 	POWER_UP_USED, POWER_UP_REFUSED, POWER_UP_FAILED,
@@ -33,6 +33,9 @@ export const DEFAULT_RECAP_PERIOD = 'month';
 let leaderboardEnabled = true;
 let questsEnabled = true;
 let activityEnabled = true;
+// Off until the plugin says otherwise, so a build without the route is never polled for unlocks
+// it cant serve.
+let unlockToastsEnabled = false;
 
 // Set when the admin hides the whole server's figures from everyone.
 let privacyMode = false;
@@ -40,6 +43,18 @@ let privacyMode = false;
 // The catalogue lives in the plugin's own code, so it only changes when the server takes a new
 // release, which ends this session with it.
 let catalog = null;
+
+// The user's own unlock notification settings, trusted for as long as jellyfin-web trusts them
+// so a change made there lands here, and the server's clock from the last unlock read, handed
+// back as the next cutoff so a device clock that is off cant skip or repeat unlocks. The cursor
+// is null until the first read, which only records it.
+const UNLOCK_SETTINGS_MAX_AGE_MS = 5 * 60 * 1000;
+let unlockSettings = null;
+let unlockSettingsReadAt = 0;
+let unlockCursor = null;
+// Unlocks already passed on, by badge id and unlock time.
+const SHOWN_UNLOCKS_CAP = 400;
+const shownUnlocks = new Set();
 
 const base = () => (getServerUrl() || '').replace(/\/+$/, '');
 
@@ -104,7 +119,7 @@ const getList = async (path) => {
 	return Array.isArray(data) ? data.filter(isObject) : [];
 };
 
-export const getFlags = () => ({leaderboardEnabled, questsEnabled, activityEnabled});
+export const getFlags = () => ({leaderboardEnabled, questsEnabled, activityEnabled, unlockToastsEnabled});
 
 // Clears what the last server said, so a set switched to one without the plugin cannot keep
 // showing the entry.
@@ -112,8 +127,13 @@ export const reset = () => {
 	leaderboardEnabled = true;
 	questsEnabled = true;
 	activityEnabled = true;
+	unlockToastsEnabled = false;
 	privacyMode = false;
 	catalog = null;
+	unlockSettings = null;
+	unlockSettingsReadAt = 0;
+	unlockCursor = null;
+	shownUnlocks.clear();
 };
 
 // Whether the plugin answered here. public-config needs no administrator, so an ordinary user
@@ -126,7 +146,84 @@ export const probe = async () => {
 	questsEnabled = config.QuestsEnabled !== false;
 	activityEnabled = config.ActivityFeedEnabled !== false;
 	privacyMode = config.ForcePrivacyMode === true;
+	const features = await getMap('admin/ui-features');
+	unlockToastsEnabled = Boolean(features) && features.EnableUnlockToasts !== false;
 	return true;
+};
+
+// ---------- Unlock notifications ----------
+
+const rememberUnlockSettings = (json) => {
+	unlockSettings = parseUnlockToastSettings(json);
+	unlockSettingsReadAt = Date.now();
+	return unlockSettings;
+};
+
+export const fetchUnlockToastSettings = async () => {
+	const userId = getUserId();
+	if (!userId) return null;
+	const json = await getMap(`users/${userId}/preferences`);
+	return json ? rememberUnlockSettings(json) : null;
+};
+
+// Turns the plugin's unlock notifications on or off for this user, which jellyfin-web follows
+// too. The plugin replaces its whole preferences object on save, so this writes over a fresh
+// copy of it.
+export const saveUnlockToasts = async (enabled) => {
+	const userId = getUserId();
+	if (!userId) return false;
+	const current = await getMap(`users/${userId}/preferences`);
+	if (!current) return false;
+	const next = {...current, EnableUnlockToasts: enabled};
+	const written = await post(`users/${userId}/preferences`, {refusedWith: 400, body: next});
+	if (!written.body) return false;
+	rememberUnlockSettings(next);
+	return true;
+};
+
+// Reads the badges unlocked since the last read and hands back the ones the user's plugin
+// settings want shown, with how to show them, or null when there is nothing to say. The first
+// read only records the server's clock, so badges earned before the app started dont all pop up
+// at once.
+export const refreshUnlocks = async () => {
+	if (!unlockToastsEnabled) return null;
+	const userId = getUserId();
+	if (!userId) return null;
+
+	let settings = unlockSettings;
+	if (!unlockSettingsReadAt || Date.now() - unlockSettingsReadAt >= UNLOCK_SETTINGS_MAX_AGE_MS) {
+		// A failed read keeps the last settings rather than dropping the cursor and every unlock
+		// earned before the next good read.
+		settings = (await fetchUnlockToastSettings()) || settings;
+	}
+	if (!settings) return null;
+	if (!settings.enabled) {
+		// Turning them back on starts from then, not from before they were off.
+		unlockCursor = null;
+		return null;
+	}
+
+	const cursor = unlockCursor;
+	const since = encodeURIComponent(cursor || new Date().toISOString());
+	// The device id lets the plugin hold back unlocks earned on another device when the user
+	// only wants them where they happened.
+	const json = await getMap(`users/${userId}/unlocks-since?since=${since}&deviceId=${encodeURIComponent(getDeviceId() || '')}`);
+	if (!json) return null;
+	if (typeof json.Now === 'string' && json.Now) unlockCursor = json.Now;
+	if (!cursor) return null;
+
+	const rows = Array.isArray(json.Badges) ? json.Badges.filter(isObject) : [];
+	const badges = [];
+	rows.forEach((row) => {
+		const key = `${row.Id}|${row.UnlockedAt}`;
+		if (shownUnlocks.has(key)) return;
+		shownUnlocks.add(key);
+		const badge = parseBadge(row);
+		if (settings.allows(badge.rarity)) badges.push(badge);
+	});
+	while (shownUnlocks.size > SHOWN_UNLOCKS_CAP) shownUnlocks.delete(shownUnlocks.values().next().value);
+	if (!badges.length) return null;
+	return {badges, grouped: settings.grouped, muteDuringPlayback: settings.muteDuringPlayback};
 };
 
 // The one thing the plugin needs a client to drive, since it is what keeps a daily login streak
