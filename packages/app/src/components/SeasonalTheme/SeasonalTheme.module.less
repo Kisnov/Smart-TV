@@ -44,7 +44,8 @@
 }
 
 // @drift and @amp are in vw, @swing and @spin in degrees. @flips is how many times
-// confetti turns over on the way down, 0 for a shape that never does.
+// confetti or a petal turns over on the way down. A stop only carries the transform parts
+// its family moves, since the build writes every keyframe out twice for old engines.
 .fall(@name, @drift, @amp, @cycles, @swing, @spin, @flips, @steps) {
 	.@{name} {
 		animation-name: @name;
@@ -54,40 +55,97 @@
 		each(range(0, @steps), {
 			@t: (@value / @steps);
 			@phase: (@t * @cycles * 2 * pi());
-			@x: round(@drift * @t + @amp * sin(@phase), 3);
-			@y: round(-12 + 124 * @t, 3);
-			@r: round(@swing * cos(@phase) + @spin * @t, 2);
-			@s: if((@flips > 0), round(0.12 + 0.88 * abs(cos(@t * @flips * pi())), 3), 1);
+			@x: round(@drift * @t + @amp * sin(@phase), 2);
+			@y: round(-12 + 124 * @t, 2);
+			@r: round(@swing * cos(@phase) + @spin * @t, 1);
+			@s: round(0.12 + 0.88 * abs(cos(@t * @flips * pi())), 2);
+			@turn: if(((@swing = 0) and (@spin = 0)), ~"", ~" rotate(@{r}deg)");
+			@flip: if((@flips > 0), ~" scaleY(@{s})", ~"");
 			@pct: round(@t * 100, 2);
 			@stop: ~"@{pct}%";
 			@{stop} {
-				transform: translate3d(~"@{x}vw", ~"@{y}vh", 0) rotate(~"@{r}deg") scaleY(@s);
+				transform: ~"translate3d(@{x}vw, @{y}vh, 0)@{turn}@{flip}";
 			}
 		});
 	}
 }
 
-.fall(snow0, 0, 0.6, 3, 0, 40, 0, 18);
-.fall(snow1, 0, 1.1, 3, 0, -40, 0, 18);
-.fall(snow2, -5, 0.6, 3, 0, -40, 0, 18);
-.fall(snow3, -5, 1.1, 3, 0, 40, 0, 18);
-.fall(snow4, 5, 0.6, 3, 0, 40, 0, 18);
-.fall(snow5, 5, 1.1, 3, 0, -40, 0, 18);
+.fall(snow0, -4, 0.6, 3, 0, 40, 0, 12);
+.fall(snow1, -4, 1.1, 3, 0, -40, 0, 12);
+.fall(snow2, 4, 0.6, 3, 0, -40, 0, 12);
+.fall(snow3, 4, 1.1, 3, 0, 40, 0, 12);
 
 // A leaf tilts into its swing, like a pendulum.
-.fall(leaves0, 0, 2.4, 5, 38, 0, 0, 30);
-.fall(leaves1, 0, -2.4, 5, -38, 0, 0, 30);
-.fall(leaves2, -6, 2.4, 5, 38, 0, 0, 30);
-.fall(leaves3, -6, -2.4, 5, -38, 0, 0, 30);
-.fall(leaves4, 6, 2.4, 5, 38, 0, 0, 30);
-.fall(leaves5, 6, -2.4, 5, -38, 0, 0, 30);
+.fall(leaves0, -6, 2.4, 3, 38, 0, 0, 18);
+.fall(leaves1, -6, -2.4, 3, -38, 0, 0, 18);
+.fall(leaves2, 6, 2.4, 3, 38, 0, 0, 18);
+.fall(leaves3, 6, -2.4, 3, -38, 0, 0, 18);
 
-.fall(confetti0, 0, 1, 2, 0, 720, 8, 36);
-.fall(confetti1, 0, 1, 2, 0, -720, 8, 36);
-.fall(confetti2, -6, 1, 2, 0, 720, 7, 36);
-.fall(confetti3, -6, 1, 2, 0, -720, 9, 36);
-.fall(confetti4, 6, 1, 2, 0, 720, 9, 36);
-.fall(confetti5, 6, 1, 2, 0, -720, 7, 36);
+.fall(confetti0, -6, 1, 2, 0, 720, 8, 36);
+.fall(confetti1, -6, 1, 2, 0, -720, 7, 36);
+.fall(confetti2, 6, 1, 2, 0, 720, 7, 36);
+.fall(confetti3, 6, 1, 2, 0, -720, 8, 36);
+
+// Petals swing like leaves and turn over slowly as they go.
+.fall(petals0, -6, 1.8, 3, 22, 0, 2, 24);
+.fall(petals1, -6, -1.8, 3, -22, 0, 3, 24);
+.fall(petals2, 6, 1.8, 3, 22, 0, 3, 24);
+.fall(petals3, 6, -1.8, 3, -22, 0, 2, 24);
+
+// A firefly loops around its spot and pulses @pulses times on the way. Every term comes
+// back to where it started at the end of the cycle, so the loop has no seam.
+.wander(@name, @ax, @ay, @phase, @pulses) {
+	.@{name} {
+		animation-name: @name;
+	}
+
+	@keyframes @name {
+		each(range(0, 24), {
+			@t: (@value / 24);
+			@a: (@t * 2 * pi());
+			@x: round(@ax * sin(@a) + 0.3 * @ax * sin(3 * @a + @phase), 2);
+			@y: round(@ay * sin(2 * @a + @phase), 2);
+			@pulse: sin(@t * @pulses * pi());
+			@glow: round(0.15 + 0.85 * @pulse * @pulse, 2);
+			@pct: round(@t * 100, 2);
+			@stop: ~"@{pct}%";
+			@{stop} {
+				opacity: @glow;
+				transform: translate3d(~"@{x}vw", ~"@{y}vh", 0);
+			}
+		});
+	}
+}
+
+.wander(fireflies0, 3, 2, 0, 3);
+.wander(fireflies1, -2.5, 2.5, 1.2, 4);
+.wander(fireflies2, 4, 1.5, 2.4, 3);
+.wander(fireflies3, -3.5, 2, 3.6, 5);
+
+// A flyer crosses the screen from @from to @to in vw, bobbing @bob vh @bobs times.
+.flight(@name, @from, @to, @bob, @bobs) {
+	.@{name} {
+		animation-name: @name;
+	}
+
+	@keyframes @name {
+		each(range(0, 20), {
+			@t: (@value / 20);
+			@x: round(@from + (@to - @from) * @t, 2);
+			@y: round(@bob * sin(@t * @bobs * 2 * pi()), 2);
+			@pct: round(@t * 100, 2);
+			@stop: ~"@{pct}%";
+			@{stop} {
+				transform: translate3d(~"@{x}vw", ~"@{y}vh", 0);
+			}
+		});
+	}
+}
+
+.flight(flyRight0, -10, 110, 2.5, 4);
+.flight(flyRight1, -10, 110, 4, 3);
+.flight(flyLeft0, 110, -10, 3, 5);
+.flight(flyLeft1, 110, -10, 2, 3);
 
 // Shapes. They draw into their particle's layer, pseudo elements included. Leaves and
 // confetti take their color inline.
@@ -158,6 +216,117 @@
 
 .strip {
 	border-radius: 0.1vh;
+}
+
+.petal {
+	border-radius: 50% 50% 50% 50% / 65% 65% 35% 35%;
+	background-image: radial-gradient(circle at 50% 25%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 70%);
+}
+
+.bauble {
+	border-radius: 50%;
+	background-image: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0) 45%);
+}
+
+// The cap the bauble hangs from.
+.bauble::before {
+	content: '';
+	position: absolute;
+	left: 38%;
+	top: -14%;
+	width: 24%;
+	height: 16%;
+	border-radius: 0.1vh;
+	background: #c9a227;
+}
+
+.star {
+	background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23ffd54f' d='M16 2L19.5 11.2L29.3 11.7L21.7 17.9L24.2 27.3L16 22L7.8 27.3L10.3 17.9L2.7 11.7L12.5 11.2Z'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-size: 100% 100%;
+}
+
+.firefly {
+	border-radius: 50%;
+}
+
+.blossom {
+	background-image: url('./art/blossom.svg');
+	background-repeat: no-repeat;
+	background-size: 100% 100%;
+}
+
+.candy {
+	background-image: url('./art/candy.svg');
+	background-repeat: no-repeat;
+	background-size: 100% 100%;
+}
+
+.flyer {
+	position: absolute;
+	left: 0;
+	animation-timing-function: linear;
+	animation-iteration-count: infinite;
+}
+
+.bat,
+.beeRight,
+.beeLeft,
+.ghost {
+	background-repeat: no-repeat;
+	background-size: 100% 100%;
+	animation-direction: alternate;
+	animation-iteration-count: infinite;
+}
+
+// The bee is drawn head up, so its buzz keeps it turned a quarter toward where it flies.
+.beeRight,
+.beeLeft {
+	background-image: url('./art/bee.svg');
+	animation-timing-function: linear;
+}
+
+.beeRight {
+	animation-name: beeBuzzRight;
+}
+
+.beeLeft {
+	animation-name: beeBuzzLeft;
+}
+
+@keyframes beeBuzzRight {
+	from { transform: translate3d(0, -0.35vh, 0) rotate(84deg); }
+	to { transform: translate3d(0, 0.35vh, 0) rotate(96deg); }
+}
+
+@keyframes beeBuzzLeft {
+	from { transform: translate3d(0, -0.35vh, 0) rotate(-96deg); }
+	to { transform: translate3d(0, 0.35vh, 0) rotate(-84deg); }
+}
+
+.ghost {
+	background-image: url('./art/ghost.svg');
+	opacity: 0.85;
+	animation-name: ghostFloat;
+	animation-timing-function: ease-in-out;
+}
+
+@keyframes ghostFloat {
+	from { transform: translate3d(0, -1.2vh, 0) rotate(-4deg); }
+	to { transform: translate3d(0, 1.2vh, 0) rotate(4deg); }
+}
+
+// Seen from the front, so it reads the same flying either way.
+.bat {
+	background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 20'%3E%3Cpath fill='%232e2238' d='M16 5L17.6 2.4L18.4 6.4L19 8L31 3Q29.5 8.5 27 9Q24.5 8 23 10.5Q20.5 10.5 19 13.5L17 17L16 19.5L15 17L13 13.5Q11.5 10.5 9 10.5Q7.5 8 5 9Q2.5 8.5 1 3L13 8L13.6 6.4L14.4 2.4Z'/%3E%3C/svg%3E");
+	transform-origin: 50% 40%;
+	animation-name: batFlap;
+	animation-timing-function: ease-in-out;
+}
+
+@keyframes batFlap {
+	from { transform: scaleY(1); }
+	to { transform: scaleY(0.35); }
 }
 
 .disc {

@@ -69,7 +69,14 @@ describe('profileToLocal', () => {
 	test("maps this app's old seasonal effects that are still in the profile", () => {
 		expect(profileToLocal({seasonalSurprise: 'winter'}).seasonalTheme).toBe('snow');
 		expect(profileToLocal({seasonalSurprise: 'fall'}).seasonalTheme).toBe('leaves');
-		expect(profileToLocal({seasonalSurprise: 'halloween'}).seasonalTheme).toBe('none');
+		expect(profileToLocal({seasonalSurprise: 'spring'}).seasonalTheme).toBe('petals');
+		expect(profileToLocal({seasonalSurprise: 'summer'}).seasonalTheme).toBe('fireflies');
+	});
+
+	test('takes the newer seasonal effects as they are', () => {
+		for (const effect of ['christmas', 'petals', 'fireflies', 'halloween']) {
+			expect(profileToLocal({seasonalSurprise: effect}).seasonalTheme).toBe(effect);
+		}
 	});
 
 	test('ignores a seasonal effect or density this app does not know', () => {

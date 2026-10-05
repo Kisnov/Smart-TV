@@ -12,10 +12,10 @@ describe('normalizeSeasonalTheme', () => {
 		expect(normalizeSeasonalTheme('fall')).toBe('leaves');
 	});
 
-	test('turns the dropped effects off', () => {
-		expect(normalizeSeasonalTheme('spring')).toBe('none');
-		expect(normalizeSeasonalTheme('summer')).toBe('none');
-		expect(normalizeSeasonalTheme('halloween')).toBe('none');
+	test("maps this app's old spring and summer onto petals and fireflies", () => {
+		expect(normalizeSeasonalTheme('spring')).toBe('petals');
+		expect(normalizeSeasonalTheme('summer')).toBe('fireflies');
+		expect(normalizeSeasonalTheme('halloween')).toBe('halloween');
 	});
 
 	test('leaves a value it does not know undefined, so the local choice stays', () => {

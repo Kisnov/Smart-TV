@@ -1,15 +1,13 @@
 // The seasonal effects and densities, under the names Moonfin-Core and the plugin use.
-export const SEASONAL_EFFECTS = ['none', 'snow', 'fireworks', 'confetti', 'leaves'];
+export const SEASONAL_EFFECTS = ['none', 'snow', 'fireworks', 'confetti', 'leaves', 'christmas', 'petals', 'fireflies', 'halloween'];
 export const SEASONAL_DENSITIES = ['light', 'normal', 'heavy'];
 
-// This app had its own effects before it took Core's set, and pushed them into users'
-// tv profiles. Spring, summer and halloween were dropped.
+// The original Android TV client and older builds of this app sync these names.
 const LEGACY_EFFECTS = {
 	winter: 'snow',
 	fall: 'leaves',
-	spring: 'none',
-	summer: 'none',
-	halloween: 'none'
+	spring: 'petals',
+	summer: 'fireflies'
 };
 
 // Undefined for a value this app doesn't know, so a sync leaves the local choice alone.

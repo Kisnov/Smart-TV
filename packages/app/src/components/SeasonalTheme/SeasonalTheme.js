@@ -17,6 +17,13 @@ const Falling = ({particle}) => (
 	/>
 );
 
+// A flyer is two layers, the flight across the screen and the flap, buzz or float.
+const Flyer = ({flyer}) => (
+	<div className={`${css.flyer} ${css[flyer.path]}`} style={flyer.style}>
+		<div className={css[flyer.sprite]} style={flyer.spriteStyle} />
+	</div>
+);
+
 // The mover jumps to its next spot while the burst is dark. The sparks sit still inside
 // one ring that grows, sags and fades, so a whole burst is four layers.
 const Burst = ({burst}) => (
@@ -76,6 +83,7 @@ const SeasonalTheme = ({theme, density}) => {
 	return (
 		<div ref={overlayRef} className={css.overlay} aria-hidden="true">
 			{particles.falling.map(particle => <Falling key={particle.key} particle={particle} />)}
+			{particles.flyers.map(flyer => <Flyer key={flyer.key} flyer={flyer} />)}
 			{particles.bursts.map(burst => <Burst key={burst.key} burst={burst} />)}
 		</div>
 	);

@@ -1,7 +1,9 @@
 import {
 	BURST_COUNTS,
 	BURST_SECONDS,
+	COUNT_SHARE,
 	FALL_COUNTS,
+	FLYER_COUNTS,
 	SPARKS_PER_BURST,
 	buildSeasonalParticles
 } from './seasonalParticles';
@@ -11,10 +13,11 @@ const seconds = (value) => parseFloat(value);
 describe('buildSeasonalParticles', () => {
 	test('density and the performance tier set how many particles fall', () => {
 		for (const tier of ['low', 'mid', 'high']) {
-			for (const effect of ['snow', 'leaves', 'confetti']) {
+			for (const effect of ['snow', 'leaves', 'confetti', 'christmas', 'petals', 'fireflies', 'halloween']) {
 				for (const density of ['light', 'normal', 'heavy']) {
 					const {falling, bursts} = buildSeasonalParticles(effect, density, 1, tier);
-					expect(falling).toHaveLength(FALL_COUNTS[tier][density]);
+					const share = COUNT_SHARE[effect] || 1;
+					expect(falling).toHaveLength(Math.round(FALL_COUNTS[tier][density] * share));
 					expect(bursts).toHaveLength(0);
 				}
 			}
@@ -36,10 +39,10 @@ describe('buildSeasonalParticles', () => {
 	});
 
 	test('every particle starts somewhere along its fall, so the screen starts full', () => {
-		for (const effect of ['snow', 'leaves', 'confetti']) {
+		for (const effect of ['snow', 'leaves', 'confetti', 'christmas', 'petals', 'halloween']) {
 			for (const seed of [1, 2, 3]) {
 				for (const {style, path} of buildSeasonalParticles(effect, 'heavy', seed).falling) {
-					expect(path).toMatch(new RegExp(`^${effect}[0-5]$`));
+					expect(path).toMatch(/^(snow|leaves|confetti|petals)[0-3]$/);
 					const left = parseFloat(style.left);
 					expect(left).toBeGreaterThanOrEqual(0);
 					expect(left).toBeLessThan(100);
@@ -87,8 +90,67 @@ describe('buildSeasonalParticles', () => {
 		}
 	});
 
+	test('christmas mixes baubles and stars into the snow', () => {
+		const {falling} = buildSeasonalParticles('christmas', 'heavy', 4);
+		expect([...new Set(falling.map(p => p.shape))].sort()).toEqual(['bauble', 'dot', 'flake', 'star']);
+		for (const p of falling) expect(p.path).toMatch(/^snow[0-3]$/);
+	});
+
+	test('spring drops petals and whole blossoms and sends bees across', () => {
+		const {falling, flyers} = buildSeasonalParticles('petals', 'heavy', 6);
+		expect(new Set(falling.map(p => p.shape))).toEqual(new Set(['petal', 'blossom']));
+		for (const p of falling) expect(p.path).toMatch(/^petals[0-3]$/);
+		for (const p of falling.filter(f => f.shape === 'petal')) {
+			expect(parseFloat(p.style.width)).toBeLessThan(parseFloat(p.style.height));
+		}
+		expect(flyers).toHaveLength(FLYER_COUNTS.petals.heavy);
+		for (const f of flyers) expect(f.sprite).toMatch(/^bee(Left|Right)$/);
+	});
+
+	test('bees turn to face the way their flight goes', () => {
+		for (const f of buildSeasonalParticles('petals', 'heavy', 6).flyers) {
+			expect(f.sprite).toBe(f.path.startsWith('flyLeft') ? 'beeLeft' : 'beeRight');
+		}
+	});
+
+	test('fireflies sit at a spot of their own and glow in their own color', () => {
+		for (const p of buildSeasonalParticles('fireflies', 'heavy', 8).falling) {
+			expect(p.shape).toBe('firefly');
+			expect(p.path).toMatch(/^fireflies[0-3]$/);
+			expect(parseFloat(p.style.top)).toBeGreaterThanOrEqual(25);
+			expect(p.style.backgroundImage).toMatch(/^radial-gradient/);
+			expect(p.style.opacity).toBeUndefined();
+		}
+	});
+
+	test('halloween flyers cross on their own paths at each density', () => {
+		for (const density of ['light', 'normal', 'heavy']) {
+			const {falling, flyers} = buildSeasonalParticles('halloween', density, 2);
+			expect(flyers).toHaveLength(FLYER_COUNTS.halloween[density]);
+			for (const p of falling) expect(p.path).toMatch(/^leaves[0-3]$/);
+			for (const f of flyers) {
+				expect(f.path).toMatch(/^fly(Left|Right)[01]$/);
+				expect(f.style.WebkitAnimationDelay).toBe(f.style.animationDelay);
+				expect(f.spriteStyle.WebkitAnimationDuration).toBe(f.spriteStyle.animationDuration);
+			}
+		}
+	});
+
+	test('halloween sends bats and a ghost over candy and leaves', () => {
+		const {falling, flyers} = buildSeasonalParticles('halloween', 'heavy', 2);
+		expect(new Set(flyers.map(f => f.sprite))).toEqual(new Set(['bat', 'ghost']));
+		expect(new Set(falling.map(p => p.shape))).toEqual(new Set(['candy', 'leaf', 'leafMirror']));
+	});
+
+	test('only spring and halloween have flyers', () => {
+		for (const effect of ['snow', 'christmas', 'fireflies', 'leaves', 'confetti', 'fireworks']) {
+			expect(buildSeasonalParticles(effect, 'heavy', 1).flyers).toHaveLength(0);
+		}
+	});
+
 	test('draws nothing for none or an effect it does not know', () => {
-		expect(buildSeasonalParticles('none', 'normal', 1)).toEqual({falling: [], bursts: []});
-		expect(buildSeasonalParticles('aurora', 'normal', 1)).toEqual({falling: [], bursts: []});
+		const empty = {falling: [], flyers: [], bursts: []};
+		expect(buildSeasonalParticles('none', 'normal', 1)).toEqual(empty);
+		expect(buildSeasonalParticles('aurora', 'normal', 1)).toEqual(empty);
 	});
 });

@@ -615,9 +615,13 @@ export const getMediaSegmentActionOptions = () => [
 export const getSeasonalThemeOptions = () => [
 	{ value: 'none', label: $L('None') },
 	{ value: 'snow', label: $L('Snow') },
+	{ value: 'christmas', label: $L('Christmas') },
 	{ value: 'fireworks', label: $L('Fireworks') },
 	{ value: 'confetti', label: $L('Confetti') },
-	{ value: 'leaves', label: $L('Falling Leaves') }
+	{ value: 'petals', label: $L('Spring Petals') },
+	{ value: 'fireflies', label: $L('Fireflies') },
+	{ value: 'leaves', label: $L('Falling Leaves') },
+	{ value: 'halloween', label: $L('Halloween') }
 ];
 
 export const getSeasonalDensityOptions = () => [

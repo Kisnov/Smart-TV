@@ -1,7 +1,7 @@
 import {act, fireEvent, render} from '@testing-library/react';
 
 import SeasonalTheme, {RESUME_AFTER_MS} from './SeasonalTheme';
-import {BURST_COUNTS, FALL_COUNTS, SPARKS_PER_BURST} from './seasonalParticles';
+import {BURST_COUNTS, COUNT_SHARE, FALL_COUNTS, FLYER_COUNTS, SPARKS_PER_BURST} from './seasonalParticles';
 
 // The CLI ships a second copy of React, so the components' JSX goes through the copy under test.
 // Children written side by side arrive as an array, and are spread so React doesn't ask for keys.
@@ -27,7 +27,7 @@ beforeEach(() => {
 
 describe('SeasonalTheme', () => {
 	test('draws nothing for none, a missing value or one it does not know', () => {
-		for (const theme of ['none', undefined, 'aurora', 'halloween']) {
+		for (const theme of ['none', undefined, 'aurora', 'harvest']) {
 			const {container, unmount} = render(<SeasonalTheme theme={theme} density="normal" />);
 			expect(container.firstChild).toBeNull();
 			unmount();
@@ -44,6 +44,27 @@ describe('SeasonalTheme', () => {
 				unmount();
 			}
 		}
+	});
+
+	test('draws the newer effects with their own shapes', () => {
+		for (const [theme, shape] of [['christmas', '.bauble'], ['petals', '.petal, .blossom'], ['fireflies', '.firefly'], ['halloween', '.candy, .leaf, .leafMirror']]) {
+			const {unmount} = render(<SeasonalTheme theme={theme} density="heavy" />);
+			const share = COUNT_SHARE[theme] || 1;
+			expect(count('.particle')).toBe(Math.round(FALL_COUNTS.high.heavy * share));
+			expect(count(shape)).toBeGreaterThan(0);
+			unmount();
+		}
+	});
+
+	test('draws each flyer as a flight with its sprite inside', () => {
+		const {unmount} = render(<SeasonalTheme theme="halloween" density="heavy" />);
+		expect(count('.flyer')).toBe(FLYER_COUNTS.halloween.heavy);
+		expect(count('.flyer > .bat') + count('.flyer > .ghost')).toBe(FLYER_COUNTS.halloween.heavy);
+		expect(count('.flyer > .ghost')).toBeGreaterThan(0);
+		unmount();
+
+		render(<SeasonalTheme theme="petals" density="heavy" />);
+		expect(count('.flyer > .beeLeft') + count('.flyer > .beeRight')).toBe(FLYER_COUNTS.petals.heavy);
 	});
 
 	test('draws fewer on the low tier', () => {
