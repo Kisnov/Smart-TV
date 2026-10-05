@@ -27,6 +27,8 @@ let serverType = 'jellyfin';
 // for them are skipped so a restricted user does not repeatedly hit the server
 // with 401s, which can trip reverse-proxy Fail2Ban jails (#272).
 const accessDeniedParentIds = new Set();
+// The library's provider ids on Jellyfin, read when an outside list row needs matching.
+let libraryIndex = null;
 const parentIdOf = (endpoint) => {
 	const match = /[?&]ParentId=([^&]+)/.exec(endpoint);
 	return match ? match[1] : null;
@@ -64,6 +66,7 @@ export const setAuth = (userId, token) => {
 	currentUser = userId;
 	accessToken = token;
 	accessDeniedParentIds.clear();
+	libraryIndex = null;
 	if (token) reportCapabilities();
 };
 
@@ -241,46 +244,112 @@ export function reportCapabilities() {
 	}).catch(() => {});
 }
 
+// TMDB numbers movies and shows separately, so its id only names a title together with the
+// type. IMDb ids are unique on their own.
+const providerKeys = (ids, type) => {
+	const keys = [];
+	if (ids?.Tmdb && (type === 'Movie' || type === 'Series')) keys.push(`tmdb.${type}.${ids.Tmdb}`);
+	if (ids?.Imdb) keys.push(`imdb.${ids.Imdb}`);
+	return keys;
+};
+
+const addToIndex = (index, item, value) => {
+	for (const key of providerKeys(item.ProviderIds, item.Type)) {
+		if (!index[key]) index[key] = value;
+	}
+};
+
+const MATCH_CHUNK = 40;
+const OWNED_TYPES = 'IncludeItemTypes=Movie,Series';
+
+// Emby can filter by provider id itself, so it's asked for every id the items carry.
+const matchOnEmby = async (wanted) => {
+	const tokens = [];
+	for (const {ProviderIds: ids} of wanted) {
+		for (const token of [ids.Tmdb && `tmdb.${ids.Tmdb}`, ids.Imdb && `imdb.${ids.Imdb}`]) {
+			if (token && !tokens.includes(token)) tokens.push(token);
+		}
+	}
+	const found = {};
+	for (let i = 0; i < tokens.length; i += MATCH_CHUNK) {
+		const chunk = tokens.slice(i, i + MATCH_CHUNK);
+		const query = chunk.map((token) => encodeURIComponent(token)).join(',');
+		const res = await request(`${userRoutes.items()}Recursive=true&${OWNED_TYPES}&AnyProviderIdEquals=${query}&Fields=${HOME_ROW_ITEM_FIELDS}&Limit=${chunk.length * 2}`);
+		for (const item of (res?.Items || [])) addToIndex(found, item, item);
+	}
+	return found;
+};
+
+// Jellyfin ignores a provider id filter and answers with the whole library, so the library's
+// ids are read once a page at a time and reused for a while.
+const INDEX_PAGE = 1000;
+const INDEX_TTL_MS = 30 * 60 * 1000;
+
+const loadLibraryIndex = async () => {
+	const index = {};
+	let start = 0;
+	let pageFull = true;
+	while (pageFull) {
+		const res = await request(`${userRoutes.items()}Recursive=true&${OWNED_TYPES}&Fields=ProviderIds&EnableImages=false&EnableUserData=false&EnableTotalRecordCount=false&StartIndex=${start}&Limit=${INDEX_PAGE}`);
+		const page = res?.Items || [];
+		for (const item of page) addToIndex(index, item, item.Id);
+		pageFull = page.length === INDEX_PAGE;
+		start += INDEX_PAGE;
+	}
+	return index;
+};
+
+const readLibraryIndex = () => {
+	if (!libraryIndex || Date.now() - libraryIndex.at > INDEX_TTL_MS) {
+		const index = loadLibraryIndex();
+		libraryIndex = {at: Date.now(), index};
+		// A failed read isn't kept, so the next home load tries again.
+		index.catch(() => {
+			if (libraryIndex?.index === index) libraryIndex = null;
+		});
+	}
+	return libraryIndex.index;
+};
+
+// The module holds its state between tests otherwise.
+export const resetLibraryIndexForTests = () => {
+	libraryIndex = null;
+};
+
+const matchOnJellyfin = async (wanted) => {
+	const index = await readLibraryIndex();
+	const ids = [];
+	for (const it of wanted) {
+		for (const key of providerKeys(it.ProviderIds, it.Type)) {
+			if (index[key] && !ids.includes(index[key])) ids.push(index[key]);
+		}
+	}
+	const found = {};
+	for (let i = 0; i < ids.length; i += MATCH_CHUNK) {
+		const chunk = ids.slice(i, i + MATCH_CHUNK);
+		const res = await request(`${userRoutes.items()}Ids=${chunk.join(',')}&Fields=${HOME_ROW_ITEM_FIELDS}`);
+		for (const item of (res?.Items || [])) addToIndex(found, item, item);
+	}
+	return found;
+};
+
 // Resolves external list items (carrying TMDB/IMDb provider ids) against the
-// local library. Owned titles are swapped for the real Jellyfin item so they
+// local library. Owned titles are swapped for the real library item so they
 // are playable, unowned ones are returned unchanged for the Seerr fallback.
-// Queries are batched with anyProviderIdEquals to avoid one request per item.
 export const resolveItemsByProviderIds = async (items) => {
 	if (!Array.isArray(items) || items.length === 0 || !currentUser) return items || [];
+	const wanted = items.filter((it) => providerKeys(it.ProviderIds, it.Type).length > 0);
+	if (wanted.length === 0) return items;
 
-	const keyFor = (ids) => {
-		if (!ids) return null;
-		if (ids.Tmdb) return `tmdb.${ids.Tmdb}`;
-		if (ids.Imdb) return `imdb.${ids.Imdb}`;
-		return null;
-	};
-
-	const pairs = [];
-	for (const it of items) {
-		const key = keyFor(it.ProviderIds);
-		if (key && !pairs.includes(key)) pairs.push(key);
-	}
-	if (pairs.length === 0) return items;
-
-	const found = {};
-	const CHUNK = 40;
-	for (let i = 0; i < pairs.length; i += CHUNK) {
-		const chunk = pairs.slice(i, i + CHUNK);
-		try {
-			const query = chunk.map((p) => encodeURIComponent(p)).join(',');
-			const res = await request(`${userRoutes.items()}Recursive=true&anyProviderIdEquals=${query}&Fields=${HOME_ROW_ITEM_FIELDS}&Limit=${chunk.length * 2}`);
-			for (const jf of (res?.Items || [])) {
-				const p = jf.ProviderIds || {};
-				if (p.Tmdb) found[`tmdb.${p.Tmdb}`] = jf;
-				if (p.Imdb) found[`imdb.${p.Imdb}`] = jf;
-			}
-		} catch (e) {
-			void e;
-		}
+	let found;
+	try {
+		found = await (serverType === 'emby' ? matchOnEmby(wanted) : matchOnJellyfin(wanted));
+	} catch {
+		return items;
 	}
 
 	return items.map((it) => {
-		const key = keyFor(it.ProviderIds);
+		const key = providerKeys(it.ProviderIds, it.Type).find((candidate) => found[candidate]);
 		const jf = key ? found[key] : null;
 		return jf ? {
 			...it,
