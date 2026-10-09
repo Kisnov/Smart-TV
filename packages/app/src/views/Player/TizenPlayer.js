@@ -1599,6 +1599,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		loadMedia();
 
 		return () => {
+			// leaving the player stales a load still in flight, the same as a newer load does
+			loadGenerationRef.current++; // eslint-disable-line react-hooks/exhaustive-deps
+
 			// Report stop whenever a session is still open. A normal back-out has
 			// already stopped and cleared it. Don't gate on position, live TV and
 			// freshly opened media sit at 0 and would otherwise leak.
