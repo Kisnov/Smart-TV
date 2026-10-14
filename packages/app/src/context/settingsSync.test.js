@@ -369,6 +369,93 @@ describe('the seasonal row settings', () => {
 	});
 });
 
+// Core reads these as enums by name and silently keeps its own value when a name doesn't
+// match, so the spellings below are copied from Moonfin-Core's preference_constants.dart.
+describe('choices Core spells differently', () => {
+	const pushOne = (key, value) => localToProfile({...defaultSettings, [key]: value}, [key]);
+
+	test('send the detail screen style by name and read either spelling back', () => {
+		expect(pushOne('detailScreenStyle', 'v1')).toEqual({detailScreenStyle: 'classic'});
+		expect(pushOne('detailScreenStyle', 'v4')).toEqual({detailScreenStyle: 'nouveau'});
+		expect(pushOne('detailScreenStyle', 'v5')).toEqual({detailScreenStyle: 'minimalist'});
+		expect(profileToLocal({detailScreenStyle: 'spotlight'}).detailScreenStyle).toBe('v3');
+		expect(profileToLocal({detailScreenStyle: 'v2'}).detailScreenStyle).toBe('v2');
+		expect(profileToLocal({detailScreenStyle: 'bogus'}).detailScreenStyle).toBeUndefined();
+	});
+
+	test('send the built-in themes under Core ids and read them back as this app ids', () => {
+		expect(pushOne('visualTheme', 'neon_pulse')).toEqual({visualTheme: 'neonPulse'});
+		expect(pushOne('visualTheme', '8bit_hero')).toEqual({visualTheme: 'eightbitHero'});
+		expect(pushOne('visualTheme', 'glass')).toEqual({visualTheme: 'glass'});
+		expect(profileToLocal({visualTheme: 'neonPulse'}).visualTheme).toBe('neon_pulse');
+		expect(profileToLocal({visualTheme: 'eightbitHero'}).visualTheme).toBe('8bit_hero');
+		expect(profileToLocal({visualTheme: '8bit_hero'}).visualTheme).toBe('8bit_hero');
+	});
+
+	test('send the focus color by name and keep Theme Default off the server', () => {
+		expect(pushOne('focusBorderColor', '#00a4dc')).toEqual({focusColor: 'moonfinCyan'});
+		expect(pushOne('focusBorderColor', '#FFFFFF')).toEqual({focusColor: 'white'});
+		expect(pushOne('focusBorderColor', '')).toEqual({});
+		expect(profileToLocal({focusColor: 'darkBlue'}).focusBorderColor).toBe('#003366');
+		expect(profileToLocal({focusColor: 'eightBitGold'}).focusBorderColor).toBe('#ffcd75');
+		expect(profileToLocal({focusColor: '#ff2e92'}).focusBorderColor).toBe('#ff2e92');
+	});
+
+	test('send the watched indicator that hides the unwatched count under Core name', () => {
+		expect(pushOne('watchedIndicatorBehavior', 'hideCount')).toEqual({watchedIndicator: 'hideUnwatched'});
+		expect(pushOne('watchedIndicatorBehavior', 'episodesOnly')).toEqual({watchedIndicator: 'episodesOnly'});
+		expect(profileToLocal({watchedIndicator: 'hideUnwatched'}).watchedIndicatorBehavior).toBe('hideCount');
+		expect(profileToLocal({watchedIndicator: 'never'}).watchedIndicatorBehavior).toBe('never');
+	});
+
+	test('send the genres row item filter under Core names', () => {
+		expect(pushOne('genresRowItemFilter', 'all')).toEqual({genresRowItemFilter: 'both'});
+		expect(pushOne('genresRowItemFilter', 'Movie')).toEqual({genresRowItemFilter: 'movies'});
+		expect(pushOne('genresRowItemFilter', 'Series')).toEqual({genresRowItemFilter: 'series'});
+		expect(profileToLocal({genresRowItemFilter: 'both'}).genresRowItemFilter).toBe('all');
+		expect(profileToLocal({genresRowItemFilter: 'movies'}).genresRowItemFilter).toBe('Movie');
+		expect(profileToLocal({genresRowItemFilter: 'Movie'}).genresRowItemFilter).toBe('Movie');
+	});
+
+	test('send the home row sorts as Core option names and never pass one to the server as a field', () => {
+		expect(pushOne('favoritesRowSortBy', 'SortName')).toEqual({favoritesRowSortBy: 'name'});
+		expect(pushOne('collectionsRowSortBy', 'PlaylistOrder')).toEqual({collectionsRowSortBy: 'playlistOrder'});
+		expect(pushOne('genresRowSortBy', 'OfficialRating')).toEqual({genresRowSortBy: 'rating'});
+		expect(profileToLocal({favoritesRowSortBy: 'dateAdded'}).favoritesRowSortBy).toBe('DateCreated');
+		expect(profileToLocal({genresRowSortBy: 'communityRating'}).genresRowSortBy).toBe('CommunityRating');
+		expect(profileToLocal({collectionsRowSortBy: 'DateCreated'}).collectionsRowSortBy).toBe('DateCreated');
+		expect(profileToLocal({favoritesRowSortBy: 'datePlayed'}).favoritesRowSortBy).toBeUndefined();
+	});
+
+	test('keep the library or collection pick for the media bar off the server', () => {
+		expect(pushOne('mediaBarSourceType', 'collection')).toEqual({});
+		expect(profileToLocal({mediaBarSourceType: 'recentlyAdded'}).mediaBarSourceType).toBeUndefined();
+		expect(profileToLocal({mediaBarSourceType: 'library'}).mediaBarSourceType).toBe('library');
+	});
+
+	test('leave the interface language alone when Core follows the system', () => {
+		expect(profileToLocal({languageOverride: 'system'}).uiLanguage).toBeUndefined();
+		expect(profileToLocal({languageOverride: 'ca'}).uiLanguage).toBe('ca');
+	});
+
+	test('survive a full push and read back unchanged', () => {
+		const local = {
+			...defaultSettings,
+			detailScreenStyle: 'v4',
+			visualTheme: '8bit_hero',
+			focusBorderColor: '#4b0082',
+			watchedIndicatorBehavior: 'hideCount',
+			genresRowItemFilter: 'Series',
+			favoritesRowSortBy: 'Runtime'
+		};
+		const back = profileToLocal(localToProfile(local));
+
+		for (const key of ['detailScreenStyle', 'visualTheme', 'focusBorderColor', 'watchedIndicatorBehavior', 'genresRowItemFilter', 'favoritesRowSortBy']) {
+			expect(back[key]).toBe(local[key]);
+		}
+	});
+});
+
 describe('activeSyncProfile', () => {
 	test('names each profile the plugin stores', () => {
 		for (const profile of SYNC_PROFILES) {

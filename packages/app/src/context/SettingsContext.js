@@ -132,6 +132,58 @@ const POSTER_SIZES_TO_SERVER = {default: 'medium', xlarge: 'extraLarge'};
 const POSTER_SIZES_FROM_SERVER = {medium: 'default', extraLarge: 'xlarge'};
 const posterSizeFromServer = oneOf(['small', 'default', 'large', 'xlarge', 'grandparents']).fromServer;
 
+const hasOwn = (map, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(map, key);
+
+// A choice this app and Core both offer under different names. Core matches the names it
+// reads without regard to case and quietly drops one it doesn't know, so what goes out has
+// to be its own spelling. What comes back may be either spelling, since older builds of this
+// app pushed their own, and a value with no counterpart is left out so the current one stays.
+const renamedChoice = (localToServer) => {
+	const toLocal = {};
+	for (const [local, server] of Object.entries(localToServer)) {
+		toLocal[local.toLowerCase()] = local;
+		toLocal[server.toLowerCase()] = local;
+	}
+	return {
+		toServer: v => (hasOwn(localToServer, v) ? localToServer[v] : undefined),
+		fromServer: v => (typeof v === 'string' && hasOwn(toLocal, v.toLowerCase()) ? toLocal[v.toLowerCase()] : undefined)
+	};
+};
+
+// Core names the detail screen styles where this app numbers them.
+const detailScreenStyleChoice = renamedChoice({
+	v1: 'classic', v2: 'modern', v3: 'spotlight', v4: 'nouveau', v5: 'minimalist'
+});
+
+// Core drops the underscores from the built-in theme ids.
+const visualThemeChoice = renamedChoice({
+	moonfin: 'moonfin', neon_pulse: 'neonPulse', glass: 'glass', '8bit_hero': 'eightbitHero'
+});
+
+// Core keeps the focus border as a named color. Theme Default has no name there, so it stays
+// off the server, and Core's 8-Bit Gold still reads back as its color.
+const focusColorChoice = renamedChoice({
+	'#ffffff': 'white', '#000000': 'black', '#808080': 'gray', '#003366': 'darkBlue',
+	'#6a0dad': 'purple', '#008080': 'teal', '#000080': 'navy', '#36454f': 'charcoal',
+	'#8b4513': 'brown', '#8b0000': 'darkRed', '#006400': 'darkGreen', '#708090': 'slate',
+	'#4b0082': 'indigo', '#00a4dc': 'moonfinCyan', '#ff2e92': 'neonPulseMagenta', '#ffcd75': 'eightBitGold'
+});
+
+// Both hide the unwatched count and keep the watched tick.
+const watchedIndicatorChoice = renamedChoice({
+	always: 'always', hideCount: 'hideUnwatched', episodesOnly: 'episodesOnly', never: 'never'
+});
+
+const genresRowItemFilterChoice = renamedChoice({all: 'both', Movie: 'movies', Series: 'series'});
+
+// This app stores the server's sort field, Core the name of its option. Core's options with
+// no counterpart here are left out rather than handed to the server as a sort field.
+const homeRowSortChoice = renamedChoice({
+	PlaylistOrder: 'playlistOrder', SortName: 'name', DateCreated: 'dateAdded',
+	PremiereDate: 'premiereDate', OfficialRating: 'rating', Runtime: 'runtime', Random: 'random',
+	CriticRating: 'criticRating', CommunityRating: 'communityRating'
+});
+
 const VALUE_CONVERSIONS = {
 	homeRowsPosterSize: {
 		toServer: v => POSTER_SIZES_TO_SERVER[v] || v,
@@ -164,8 +216,27 @@ const VALUE_CONVERSIONS = {
 		toServer: v => CONTENT_TYPE_TO_SERVER[v],
 		fromServer: v => CONTENT_TYPE_FROM_SERVER[v]
 	},
+	// Here this picks libraries or collections. Core uses the same server key for where the
+	// bar draws its titles from (random, recently added or released), so pushing it would
+	// overwrite that choice with a value Core reads as random.
 	mediaBarSourceType: {
+		toServer: () => undefined,
 		fromServer: v => (v === 'library' || v === 'collection' ? v : undefined)
+	},
+	detailScreenStyle: detailScreenStyleChoice,
+	visualTheme: visualThemeChoice,
+	focusBorderColor: {
+		toServer: v => focusColorChoice.toServer(typeof v === 'string' ? v.toLowerCase() : v),
+		fromServer: focusColorChoice.fromServer
+	},
+	watchedIndicatorBehavior: watchedIndicatorChoice,
+	genresRowItemFilter: genresRowItemFilterChoice,
+	favoritesRowSortBy: homeRowSortChoice,
+	collectionsRowSortBy: homeRowSortChoice,
+	genresRowSortBy: homeRowSortChoice,
+	// Core's default is to follow the system, which this app has no setting for.
+	uiLanguage: {
+		fromServer: v => (v === 'system' ? undefined : v)
 	},
 	liveTvChannelSortBy: {
 		fromServer: v => (['number', 'name', 'favoritesFirst'].includes(v) ? v : undefined)
@@ -235,6 +306,11 @@ const VALUE_CONVERSIONS = {
 	// homeRows is missing on purpose. The home layout is two server fields that have to
 	// move together, so it gets resolved whole rather than a key at a time.
 };
+
+const SERVER_SPELLED_KEYS = [
+	'visualTheme', 'focusBorderColor', 'watchedIndicatorBehavior', 'genresRowItemFilter',
+	'favoritesRowSortBy', 'collectionsRowSortBy', 'genresRowSortBy'
+];
 
 export const SYNCABLE_KEYS = [
 	'showShuffleButton', 'shuffleContentType', 'showGenresButton',
@@ -611,6 +687,19 @@ export function SettingsProvider({children}) {
 						stored.detailScreenStyle = normalizedDetailStyle;
 						migrated = true;
 					}
+				}
+				for (const key of SERVER_SPELLED_KEYS) {
+					// Sync used to store Core's spelling of these as it came, which nothing
+					// here recognizes.
+					const local = VALUE_CONVERSIONS[key].fromServer(stored[key]);
+					if (local !== undefined && local !== stored[key]) {
+						stored[key] = local;
+						migrated = true;
+					}
+				}
+				if (stored.uiLanguage === 'system') {
+					stored.uiLanguage = defaultSettings.uiLanguage;
+					migrated = true;
 				}
 				if (stored.seasonalTheme !== undefined) {
 					// Was winter, spring, summer, fall or halloween before this app took
