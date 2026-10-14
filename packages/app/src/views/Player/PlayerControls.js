@@ -15,12 +15,13 @@ import {ModalContainer} from '../../utils/spotlightContainers';
 import {numberedTrackName, sortSubtitleStreams, subtitleTrackDetail, audioTrackDetail} from '../../utils/trackLabels';
 import TrackOptionRow, {TrackDivider} from '../../components/TrackOptionRow';
 import EpisodeBrowser from './EpisodeBrowser';
+import SyncPlayPlayerPanel from './SyncPlayPlayerPanel';
 import {
 	SpottableButton, SpottableDiv,
 	formatTime, getQualityPresets,
 	IconPlay, IconPause, IconRewind, IconForward, IconSubtitle, IconSubtitleOff, IconAudio,
 	IconChapters, IconEpisodes, IconPrevious, IconNext, IconQuality, IconInfo, IconCast, IconZoom,
-	IconShuffle, IconRepeat, IconRepeatOne, IconSleep, IconGuide, IconChannels
+	IconShuffle, IconRepeat, IconRepeatOne, IconSleep, IconGuide, IconChannels, IconSyncPlay
 } from './PlayerConstants';
 import {formatClockTime} from '../../utils/clock';
 import {episodeLine} from '../../utils/liveTvGuide';
@@ -36,7 +37,7 @@ export const usePlayerButtons = ({
 	nextEpisode, isAudioMode, isLiveTV, hasNextTrack, hasPrevTrack,
 	shuffleMode, repeatMode, selectedQuality,
 	selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey,
-	sleepMinutes, canBrowseEpisodes = false
+	sleepMinutes, canBrowseEpisodes = false, inSyncPlayGroup = false
 }) => {
 	const {settings} = useSettings();
 	const topButtons = useMemo(() => {
@@ -96,6 +97,8 @@ export const usePlayerButtons = ({
 			], {order: osdOrder, hidden: osdHidden});
 		}
 		return arrange([
+			// Only there while this device is in a group, as on Core.
+			...(inSyncPlayGroup ? [{id: 'syncPlay', icon: <IconSyncPlay />, label: $L('SyncPlay'), action: 'syncPlay'}] : []),
 			...(chapters.length > 0 ? [{id: 'chapters', icon: <IconChapters />, label: $L('Chapters'), action: 'chapter'}] : []),
 			// Only an episode has a season to browse, so a movie never gets this button.
 			...(canBrowseEpisodes ? [{id: 'episodes', icon: <IconEpisodes />, label: $L('Episodes'), action: 'episodes'}] : []),
@@ -109,7 +112,7 @@ export const usePlayerButtons = ({
 			{id: 'sleep', icon: <IconSleep />, label: $L('Sleep timer'), action: 'sleep', active: sleepMinutes != null},
 			{id: 'info', icon: <IconInfo />, label: $L('Playback Information'), action: 'info'}
 		], {order: osdOrder, hidden: osdHidden, catalogue: OSD_BUTTONS});
-	}, [audioStreams.length, chapters.length, canBrowseEpisodes, subtitleStreams.length, isAudioMode, isLiveTV, selectedQuality, selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey, sleepMinutes, osdOrder, osdHidden]);
+	}, [audioStreams.length, chapters.length, canBrowseEpisodes, subtitleStreams.length, isAudioMode, isLiveTV, selectedQuality, selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey, sleepMinutes, inSyncPlayGroup, osdOrder, osdHidden]);
 
 	return {topButtons, bottomButtons};
 };
@@ -867,6 +870,10 @@ const PlayerControls = ({
 					onClose={closeModal}
 					onOffsetChange={handleSubtitleOffsetChange}
 				/>
+			)}
+
+			{activeModal === 'syncPlay' && (
+				<SyncPlayPlayerPanel css={css} closeModal={closeModal} stopPropagation={stopPropagation} />
 			)}
 
 			{activeModal === 'subtitleSettings' && (
