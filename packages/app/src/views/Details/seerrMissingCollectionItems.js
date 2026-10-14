@@ -1,5 +1,6 @@
 import seerrApi from '../../services/seerrApi';
 import {MEDIA_STATUS} from '../../utils/seerrStatus';
+import {blocksSeerrAdult, isSeerrAdult} from '../../utils/seerrAdultFilter';
 
 export const providerId = (item, name) => {
 	const ids = item?.ProviderIds;
@@ -106,7 +107,8 @@ export const fetchMissingCollectionItems = async ({boxSet, members = [], setting
 		const missingParts = parts.filter((part) =>
 			!libraryTmdbIds.has(String(part.id)) &&
 			!libraryTitles.has((part.title || part.name)?.trim().toLowerCase()) &&
-			part.mediaInfo?.status !== MEDIA_STATUS.BLOCKLISTED
+			part.mediaInfo?.status !== MEDIA_STATUS.BLOCKLISTED &&
+			!(blocksSeerrAdult(settings) && isSeerrAdult(part))
 		);
 
 		return missingParts.map(makeMissingCollectionItem);

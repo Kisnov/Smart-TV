@@ -4,6 +4,7 @@ import {getActiveParentalFilter} from './parentalControls';
 import {byLastPlayedDesc} from '../utils/libraryScopeRules';
 import seerrApi from './seerrApi';
 import {normalizeMediaItem} from '../utils/seerrHomeRows';
+import {blocksSeerrAdult, withoutSeerrAdult} from '../utils/seerrAdultFilter';
 
 // How many a row shows, and how many are asked for to fill it. The server scored
 // sources are asked for more because the watched ones get dropped here, but not
@@ -557,7 +558,8 @@ export async function getOnlineRecommendations(settings, seed) {
 	const mediaType = seed.Type === 'Series' ? 'tv' : 'movie';
 
 	let results = await fetchTmdbRecommendations(settings.tmdbApiKey, String(tmdbId), mediaType);
-	if (!results.length) results = await fetchSeerrRecommendations(String(tmdbId), mediaType);
+	// What Seerr suggests goes through its adult filter, as on Core.
+	if (!results.length) results = withoutSeerrAdult(await fetchSeerrRecommendations(String(tmdbId), mediaType), blocksSeerrAdult(settings));
 
 	return results.filter((item) => item && item.id).slice(0, 15).map(normalizeMediaItem);
 }

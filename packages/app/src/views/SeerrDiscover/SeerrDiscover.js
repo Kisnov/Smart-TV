@@ -16,6 +16,7 @@ import {KEYS} from '../../utils/keys';
 import hydrateRequestMediaItems from '../../utils/seerrHydration';
 import {STREAMING_NETWORKS, MOVIE_STUDIOS, SEERR_SHORTCUTS, pickShortcutBackdrops, normalizeMediaItem, normalizeRequestItem} from '../../utils/seerrHomeRows';
 import {libraryIdOf} from '../../utils/seerrTarget';
+import {blocksSeerrAdult, withoutSeerrAdult} from '../../utils/seerrAdultFilter';
 import {isScrolledAway} from '../../utils/quickReturn';
 import {focusedCardIndex, cardToRestore} from '../../utils/rowFocusMemory';
 
@@ -411,6 +412,7 @@ const SeerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSelectSt
 	// info header goes with it, the way Home drops its top info area.
 	const useModernRows = settings.homeRowsStyle !== 'v1';
 	const rowSpacing = modernRowSpacing(settings);
+	const blockAdult = blocksSeerrAdult(settings);
 	const [rows, setRows] = useState({});
 	const [rowPages, setRowPages] = useState({});
 	const [rowHasMore, setRowHasMore] = useState({});
@@ -505,19 +507,22 @@ const SeerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSelectSt
 				]);
 
 				const hydratedMyRequests = await hydrateRequestMediaItems(myRequestsData.results || []);
+				// The adult filter goes before the rows are cut to size, so each still fills up.
+				// Paging below keeps going by what the server sent, not by what is left.
+				const media = (data) => withoutSeerrAdult(data.results || [], blockAdult);
 
 				setRows({
-					shortcuts: getShortcuts(trendingData.results || []),
-					myRequests: hydratedMyRequests,
-					trending: (trendingData.results || []).slice(0, ITEMS_PER_PAGE),
-					popularMovies: (moviesData.results || []).slice(0, ITEMS_PER_PAGE),
-					popularTv: (tvData.results || []).slice(0, ITEMS_PER_PAGE),
+					shortcuts: getShortcuts(media(trendingData)),
+					myRequests: withoutSeerrAdult(hydratedMyRequests, blockAdult, (request) => request?.media),
+					trending: media(trendingData).slice(0, ITEMS_PER_PAGE),
+					popularMovies: media(moviesData).slice(0, ITEMS_PER_PAGE),
+					popularTv: media(tvData).slice(0, ITEMS_PER_PAGE),
 					genreMovies: genreMovies || [],
 					genreTv: genreTv || [],
 					studios: MOVIE_STUDIOS,
 					networks: STREAMING_NETWORKS,
-					upcomingMovies: (upcomingMoviesData.results || []).slice(0, ITEMS_PER_PAGE),
-					upcomingTv: (upcomingTvData.results || []).slice(0, ITEMS_PER_PAGE)
+					upcomingMovies: media(upcomingMoviesData).slice(0, ITEMS_PER_PAGE),
+					upcomingTv: media(upcomingTvData).slice(0, ITEMS_PER_PAGE)
 				});
 
 				// Track pagination state
@@ -549,7 +554,7 @@ const SeerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSelectSt
 		} else {
 			setIsLoading(false);
 		}
-	}, [isAuthenticated, contextUser]);
+	}, [isAuthenticated, contextUser, blockAdult]);
 
 	// Load more items for a specific row
 	const loadMoreForRow = useCallback(async (rowId) => {
@@ -587,9 +592,10 @@ const SeerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSelectSt
 
 			const newItems = data.results || [];
 			if (newItems.length > 0) {
+				const shown = withoutSeerrAdult(newItems, blockAdult);
 				setRows(prev => {
 					const existingIds = new Set(prev[rowId].map(item => item.id));
-					const uniqueNew = newItems.filter(item => !existingIds.has(item.id));
+					const uniqueNew = shown.filter(item => !existingIds.has(item.id));
 					return {...prev, [rowId]: [...prev[rowId], ...uniqueNew.slice(0, ITEMS_PER_PAGE)]};
 				});
 				setRowPages(prev => ({...prev, [rowId]: nextPage}));
@@ -602,7 +608,7 @@ const SeerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSelectSt
 		} finally {
 			setRowLoading(prev => ({...prev, [rowId]: false}));
 		}
-	}, [rowLoading, rowHasMore, rowPages]);
+	}, [rowLoading, rowHasMore, rowPages, blockAdult]);
 
 	// The Modern rows only look at their items when deciding to redraw, so they're handed
 	// a callback that always reaches the current paging state.

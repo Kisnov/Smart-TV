@@ -5,7 +5,7 @@ import {getSeerrHomeRowConfigs, fetchSeerrHomeRow, SEERR_SECTION_TO_CONFIG} from
 // The discover rows Seerr provides. They are fetched separately from the library rows because
 // they come from a different server and only exist while Seerr is connected and signed in. The
 // rows still on their way come back as [pending], so they can hold their place.
-const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows}) => {
+const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, blockAdult = true}) => {
 	const [seerrRows, setSeerrRows] = useState([]);
 	const [pending, setPending] = useState([]);
 
@@ -36,7 +36,7 @@ const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows})
 				const configId = SEERR_SECTION_TO_CONFIG[section.id];
 				const cfg = configFor(section);
 				if (!cfg) return null;
-				const items = await fetchSeerrHomeRow(configId, {userId: seerrUserId});
+				const items = await fetchSeerrHomeRow(configId, {userId: seerrUserId, blockAdult});
 				if (!items.length) return null;
 				return {
 					id: section.id,
@@ -53,7 +53,7 @@ const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows})
 		return () => {
 			cancelled = true;
 		};
-	}, [seerrEnabled, seerrAuthenticated, seerrUserId, homeRows]);
+	}, [seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, blockAdult]);
 
 	return {rows: seerrRows, pending};
 };
