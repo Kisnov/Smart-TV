@@ -390,7 +390,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		shuffleMode, repeatMode, selectedQuality,
 		selectedSubtitleIndex, canDownloadRemoteSubtitles: !isAudioMode && Boolean(item?.Id), hasCastMembers, zoomModeLabel, zoomModeKey: zoomMode,
 		sleepMinutes,
-		canBrowseEpisodes: canBrowseEpisodes({item, isLiveTV, isAudioMode})
+		canBrowseEpisodes: canBrowseEpisodes({item, isLiveTV, isAudioMode}),
+		// A cinema mode intro is not something the viewer chose to watch.
+		canFavorite: Boolean(item?.Id) && !isPreroll(item),
+		isFavorite
 	});
 
 	useEffect(() => {
