@@ -11,6 +11,7 @@ import seerrApi from '../../services/seerrApi';
 import SeerrStatusChip from '../../components/SeerrStatusChip';
 import SeerrNotificationToast from '../../components/SeerrNotificationToast';
 import {MEDIA_STATUS, isUnlimitedQuota} from '../../utils/seerrStatus';
+import {isPartRequestable} from '../../utils/seerrRequestRules';
 import {KEYS} from '../../utils/keys';
 
 import css from './SeerrCollection.module.less';
@@ -18,16 +19,6 @@ import css from './SeerrCollection.module.less';
 const SpottableDiv = Spottable('div');
 const RowContainer = SpotlightContainerDecorator({enterTo: 'last-focused'}, 'div');
 const PopupContainer = SpotlightContainerDecorator({enterTo: 'default-element'}, 'div');
-
-// A part can be requested when seerr has no media record for it, or the
-// record's per-flavor status is unknown and not blocklisted.
-const isPartRequestable = (part, is4k) => {
-	const info = part.mediaInfo;
-	if (!info) return true;
-	if (info.status === MEDIA_STATUS.BLOCKLISTED) return false;
-	const status = (is4k ? info.status4k : info.status) || MEDIA_STATUS.UNKNOWN;
-	return status <= MEDIA_STATUS.UNKNOWN;
-};
 
 const getPartStatusInfo = (part, is4k) => {
 	const info = part.mediaInfo;

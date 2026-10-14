@@ -4,8 +4,8 @@ jest.mock('@enact/i18n/$L', () => ({__esModule: true, default: (str) => str}));
 
 import {MEDIA_STATUS, REQUEST_STATUS} from './seerrStatus';
 import {
-	cancelableRequests, isContinuingSeries, requestOfferFor, seasonNumbersOf,
-	unavailableOrRequestedSeasons
+	cancelableRequests, isContinuingSeries, isInLibrary, isPartRequestable, requestOfferFor,
+	seasonNumbersOf, unavailableOrRequestedSeasons
 } from './seerrRequestRules';
 
 describe('isContinuingSeries', () => {
@@ -50,6 +50,47 @@ describe('unavailableOrRequestedSeasons', () => {
 	it('counts what an open request already speaks for', () => {
 		const requests = [{seasons: [{seasonNumber: 5}]}];
 		expect([...unavailableOrRequestedSeasons([], requests, false)]).toEqual([5]);
+	});
+
+	it('offers a season again once Seerr marks it deleted or blocklisted', () => {
+		const seasons = [
+			{seasonNumber: 1, status: MEDIA_STATUS.PARTIALLY_AVAILABLE},
+			{seasonNumber: 2, status: MEDIA_STATUS.DELETED},
+			{seasonNumber: 3, status: MEDIA_STATUS.BLOCKLISTED},
+			{seasonNumber: 4, status: MEDIA_STATUS.PROCESSING}
+		];
+		expect([...unavailableOrRequestedSeasons(seasons, [], false)]).toEqual([1]);
+	});
+});
+
+describe('isInLibrary', () => {
+	it('counts only what the library holds in full or in part', () => {
+		expect(isInLibrary(MEDIA_STATUS.AVAILABLE)).toBe(true);
+		expect(isInLibrary(MEDIA_STATUS.PARTIALLY_AVAILABLE)).toBe(true);
+		expect(isInLibrary(MEDIA_STATUS.DELETED)).toBe(false);
+		expect(isInLibrary(MEDIA_STATUS.BLOCKLISTED)).toBe(false);
+		expect(isInLibrary(MEDIA_STATUS.PENDING)).toBe(false);
+		expect(isInLibrary(undefined)).toBe(false);
+	});
+});
+
+describe('isPartRequestable', () => {
+	const part = (status, status4k) => ({mediaInfo: {status, status4k}});
+
+	it('offers a film Seerr knows nothing about', () => {
+		expect(isPartRequestable({}, false)).toBe(true);
+		expect(isPartRequestable(part(MEDIA_STATUS.UNKNOWN), false)).toBe(true);
+	});
+
+	it('offers a film again once it has been deleted from the library', () => {
+		expect(isPartRequestable(part(MEDIA_STATUS.DELETED), false)).toBe(true);
+		expect(isPartRequestable(part(MEDIA_STATUS.AVAILABLE, MEDIA_STATUS.DELETED), true)).toBe(true);
+	});
+
+	it('holds back a film that is requested, in the library or blocklisted', () => {
+		expect(isPartRequestable(part(MEDIA_STATUS.PROCESSING), false)).toBe(false);
+		expect(isPartRequestable(part(MEDIA_STATUS.AVAILABLE), false)).toBe(false);
+		expect(isPartRequestable(part(MEDIA_STATUS.BLOCKLISTED, MEDIA_STATUS.UNKNOWN), true)).toBe(false);
 	});
 });
 
