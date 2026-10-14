@@ -27,6 +27,8 @@ import FocusedItemHud from './FocusedItemHud';
 import useFavoriteTabs from './useFavoriteTabs';
 import {cardMetrics, clampTabIndex, favoriteCardImage} from './favoriteTabs';
 
+import LoadFailedNotice from '../../components/LoadFailedNotice';
+
 import css from './Favorites.module.less';
 
 const SpottableDiv = Spottable('div');
@@ -82,6 +84,8 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 
 	const [allItems, setAllItems] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
+	// Whether the first page failed, so an empty grid says so instead of "No favorites found".
+	const [loadFailed, setLoadFailed] = useState(false);
 	const [totalCount, setTotalCount] = useState(0);
 	const [sortKey, setSortKey] = useStorage('favorites_sortKey', 'SortName');
 	const [typeFilterKey, setTypeFilterKey] = useState('all');
@@ -189,6 +193,7 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 	const loadItems = useCallback(async (startIndex = 0, append = false) => {
 		if (append && loadingMoreRef.current) return;
 		if (append) loadingMoreRef.current = true;
+		if (!append) setLoadFailed(false);
 
 		try {
 			if (unifiedMode) {
@@ -223,6 +228,7 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 			}
 		} catch (err) {
 			console.error('Failed to load favorites:', err);
+			if (!append) setLoadFailed(true);
 		} finally {
 			setIsLoading(false);
 			loadingMoreRef.current = false;
@@ -238,6 +244,13 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 		initialFocusDoneRef.current = false;
 		loadItems(0, false);
 	}, [viewStyleLoaded, isHome, sortKey, typeFilterKey, loadItems]);
+
+	const retryLoad = useCallback(() => {
+		setIsLoading(true);
+		loadingMoreRef.current = false;
+		apiFetchIndexRef.current = 0;
+		loadItems(0, false);
+	}, [loadItems]);
 
 	useEffect(() => {
 		if (displayItems.length > 0 && !displayLoading && !initialFocusDoneRef.current) {
@@ -513,7 +526,11 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 							<LoadingSpinner />
 						</div>
 					) : displayItems.length === 0 ? (
-						<div className={css.empty}>{emptyText}</div>
+						!isHome && loadFailed ? (
+							<LoadFailedNotice spotlightId='favorites-load-retry' onRetry={retryLoad} />
+						) : (
+							<div className={css.empty}>{emptyText}</div>
+						)
 					) : (
 						<div className={css.gridWrapper} {...menuHold}>
 							<VirtualGridList

@@ -31,6 +31,7 @@ import {useUserDataList} from '../../hooks/useUserDataSync';
 import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
 import {GRID_DIRECTIONS, IMAGE_SIZES, IMAGE_TYPES, LETTERS, capitalize, createGridKeyDown, createToolbarKeyDown, cycleValue, focusOverhang, horizontalCellPad, stopPropagation} from '../../utils/gridChrome';
 import LibrarySkeleton from './LibrarySkeleton';
+import LoadFailedNotice from '../../components/LoadFailedNotice';
 
 import css from './Library.module.less';
 
@@ -213,6 +214,8 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 	const [allItems, setAllItems] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
+	// Whether the first page failed, so an empty grid says so instead of "No items found".
+	const [loadFailed, setLoadFailed] = useState(false);
 	const [totalCount, setTotalCount] = useState(0);
 	// What the ratings filter dropped from the fetched pages, so the count shown leaves it out.
 	const [blockedCount, setBlockedCount] = useState(0);
@@ -383,6 +386,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 		if (!append) {
 			fetchGenerationRef.current++;
+			setLoadFailed(false);
 		}
 		const generation = fetchGenerationRef.current;
 
@@ -534,13 +538,23 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				showPage(newItems);
 				setTotalCount(result.TotalRecordCount || 0);
 			}
-		} catch (err) { console.error('[Library] loadItems error:', err); } finally {
+		} catch (err) {
+			console.error('[Library] loadItems error:', err);
+			if (!append && generation === fetchGenerationRef.current) setLoadFailed(true);
+		} finally {
 			setIsLoading(false);
 			loadingMoreRef.current = false;
 		}
 	}, [isPlaylistLibrary, effectiveApi, library, genreFilter, studioFilter, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, isFolderView, currentFolderId, currentFolderCollectionType, isMusicLibrary, musicContentType, getItemTypeForLibrary, getExcludeItemTypes, settings.groupItemsIntoCollections, isGenreMode]);
 
 	loadItemsRef.current = loadItems;
+
+	const retryLoad = useCallback(() => {
+		setIsLoading(true);
+		loadingMoreRef.current = false;
+		apiFetchIndexRef.current = 0;
+		loadItemsRef.current(0, false);
+	}, []);
 
 	// Grouping covers the whole library, so the rest of it loads in the
 	// background the way scrolling to the end would have.
@@ -1441,7 +1455,11 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							/>
 						</div>
 					) : items.length === 0 ? (
-						<div className={css.empty}>{$L('No items found')}</div>
+						loadFailed ? (
+							<LoadFailedNotice spotlightId='library-load-retry' onRetry={retryLoad} />
+						) : (
+							<div className={css.empty}>{$L('No items found')}</div>
+						)
 					) : groupedActive ? (
 						<div className={css.groupRows} ref={groupRowsRef}>
 							{groups.map((group, index) => (
