@@ -123,6 +123,14 @@ const MIN_INTERVAL_MS = 100;
 const secondsToMs = (v) => (typeof v === 'number' ? Math.round(v * 1000) : undefined);
 const msToSeconds = (v) => (typeof v === 'number' ? Math.round(v / 1000) : undefined);
 
+// The start delay slider here runs 0 to 5 seconds, so anything above that is milliseconds.
+const MAX_START_DELAY_SECONDS = 5;
+const startDelayFromServer = (v) => {
+	if (typeof v !== 'number' || !isFinite(v) || v < 0) return undefined;
+	if (v <= MAX_START_DELAY_SECONDS) return v;
+	return Math.min(MAX_START_DELAY_SECONDS, v / 1000);
+};
+
 // A choice this app doesn't offer is left out, so the one already picked stays.
 const oneOf = (values) => ({fromServer: v => (values.includes(v) ? v : undefined)});
 
@@ -184,6 +192,11 @@ const VALUE_CONVERSIONS = {
 		toServer: v => CONTENT_TYPE_TO_SERVER[v],
 		fromServer: v => CONTENT_TYPE_FROM_SERVER[v]
 	},
+	// Older builds of this app pushed tv as it is, so that still reads back.
+	shuffleContentType: {
+		toServer: v => CONTENT_TYPE_TO_SERVER[v],
+		fromServer: v => CONTENT_TYPE_FROM_SERVER[v] || (v === 'tv' ? 'tv' : undefined)
+	},
 	// The clock is a toggle here and a three way choice on the other clients. Anything that
 	// isn't "never" shows a clock, so the toggle reads as on.
 	showClock: {
@@ -219,6 +232,13 @@ const VALUE_CONVERSIONS = {
 	unpauseRewind: {
 		toServer: secondsToMs,
 		fromServer: msToSeconds
+	},
+	// Seconds here, milliseconds on the other clients. Taken as it came, one second set on
+	// another client made every video here wait over sixteen minutes. A value of a few
+	// units is the seconds an older build of this app pushed.
+	videoStartDelay: {
+		toServer: secondsToMs,
+		fromServer: startDelayFromServer
 	},
 	autoAdvanceInterval: {
 		toServer: secondsToMs,
@@ -624,6 +644,15 @@ export function SettingsProvider({children}) {
 				if (typeof stored.homeRowOverlay === 'string') {
 					// Was an on and off picker stored as strings before it became a switch.
 					stored.homeRowOverlay = stored.homeRowOverlay === 'on';
+					migrated = true;
+				}
+				if (typeof stored.videoStartDelay === 'number' && stored.videoStartDelay > MAX_START_DELAY_SECONDS) {
+					// Sync used to store the other clients' milliseconds as seconds.
+					stored.videoStartDelay = startDelayFromServer(stored.videoStartDelay);
+					migrated = true;
+				}
+				if (stored.shuffleContentType === 'tvshows') {
+					stored.shuffleContentType = 'tv';
 					migrated = true;
 				}
 				if (stored.trickPlayEnabled === false && stored.trickPlayMode === undefined) {

@@ -549,3 +549,36 @@ describe('the profile push queue', () => {
 		]);
 	});
 });
+
+describe('the video start delay', () => {
+	test('goes out in the milliseconds the other clients store', () => {
+		expect(localToProfile({...defaultSettings, videoStartDelay: 1.5}, ['videoStartDelay'])).toEqual({videoStartDelay: 1500});
+		expect(localToProfile({...defaultSettings, videoStartDelay: 0}, ['videoStartDelay'])).toEqual({videoStartDelay: 0});
+	});
+
+	test('comes back as seconds, never longer than the slider here goes', () => {
+		expect(profileToLocal({videoStartDelay: 1000}).videoStartDelay).toBe(1);
+		expect(profileToLocal({videoStartDelay: 250}).videoStartDelay).toBe(0.25);
+		expect(profileToLocal({videoStartDelay: 9000}).videoStartDelay).toBe(5);
+	});
+
+	test('still reads the seconds an older build of this app pushed', () => {
+		expect(profileToLocal({videoStartDelay: 2.5}).videoStartDelay).toBe(2.5);
+		expect(profileToLocal({videoStartDelay: 0}).videoStartDelay).toBe(0);
+	});
+
+	test('drops a value that makes no sense', () => {
+		expect(profileToLocal({videoStartDelay: -1}).videoStartDelay).toBeUndefined();
+		expect(profileToLocal({videoStartDelay: '1000'}).videoStartDelay).toBeUndefined();
+	});
+});
+
+describe('the shuffle content type', () => {
+	test('says tvshows to the other clients and reads it back as tv', () => {
+		expect(localToProfile({...defaultSettings, shuffleContentType: 'tv'}, ['shuffleContentType'])).toEqual({shuffleContentType: 'tvshows'});
+		expect(profileToLocal({shuffleContentType: 'tvshows'}).shuffleContentType).toBe('tv');
+		expect(profileToLocal({shuffleContentType: 'movies'}).shuffleContentType).toBe('movies');
+		expect(profileToLocal({shuffleContentType: 'tv'}).shuffleContentType).toBe('tv');
+		expect(profileToLocal({shuffleContentType: 'music'}).shuffleContentType).toBeUndefined();
+	});
+});
