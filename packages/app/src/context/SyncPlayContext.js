@@ -22,6 +22,9 @@ export const SyncPlayProvider = ({children}) => {
 	// A fresh object per server play queue, so consumers can tell a new queue
 	// apart from the same item still sitting there.
 	const [playQueueUpdate, setPlayQueueUpdate] = useState(null);
+	// The server keeps this per member and never reports it back, so the switch here follows
+	// what this device last asked for. Every group starts with it off.
+	const [ignoreWait, setIgnoreWaitState] = useState(false);
 	const queueSeqRef = useRef(0);
 	const queueItemRef = useRef(null);
 	const listenerRef = useRef(null);
@@ -56,11 +59,13 @@ export const SyncPlayProvider = ({children}) => {
 			switch (event) {
 				case 'groupJoined':
 					setGroup(data);
+					setIgnoreWaitState(false);
 					break;
 				case 'groupLeft':
 					setGroup(null);
 					setPlayQueue(null);
 					setPlayQueueUpdate(null);
+					setIgnoreWaitState(false);
 					break;
 				case 'stateUpdate':
 					setGroup(prev => prev ? {...prev, State: data?.State} : null);
@@ -148,8 +153,14 @@ export const SyncPlayProvider = ({children}) => {
 			setGroup(null);
 			setPlayQueue(null);
 			setPlayQueueUpdate(null);
+			setIgnoreWaitState(false);
 		}
 		return success;
+	}, []);
+
+	const handleSetIgnoreWait = useCallback((enabled) => {
+		setIgnoreWaitState(enabled);
+		syncPlayService.setIgnoreWait(enabled);
 	}, []);
 
 	// Where the group is now, from its last queue update or command and the
@@ -196,7 +207,8 @@ export const SyncPlayProvider = ({children}) => {
 		previousItem: syncPlayService.previousItem,
 		setRepeatMode: syncPlayService.setRepeatMode,
 		setShuffleMode: syncPlayService.setShuffleMode,
-		setIgnoreWait: syncPlayService.setIgnoreWait
+		ignoreWait,
+		setIgnoreWait: handleSetIgnoreWait
 	};
 
 	return (

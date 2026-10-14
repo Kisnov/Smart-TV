@@ -4,6 +4,8 @@ import Spottable from '@enact/spotlight/Spottable';
 import Spotlight from '@enact/spotlight';
 import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDecorator';
 import {useSyncPlay} from '../../context/SyncPlayContext';
+import {api} from '../../services/jellyfinApi';
+import {MENU_ICON_PATHS} from '../ItemContextMenu/itemMenuActions';
 import {isBackKey} from '../../utils/keys';
 import {isTvKeyboardVisible} from '../TVKeyboard/keyboardBus';
 import SpottableInput from '../SpottableInput/SpottableInput';
@@ -19,6 +21,41 @@ const DialogContainer = SpotlightContainerDecorator({
 const GroupsContainer = SpotlightContainerDecorator({
 	enterTo: 'last-focused'
 }, 'div');
+
+const QueueContainer = SpotlightContainerDecorator({
+	enterTo: 'last-focused'
+}, 'div');
+
+// Queue entries carry only an item id, so the names come from one lookup per queue. A queue
+// that only moved around keeps the names it already has.
+const useQueueTitles = (entries) => {
+	const [titles, setTitles] = useState({});
+	const idsKey = entries.map((entry) => entry.ItemId).filter(Boolean).join(',');
+	useEffect(() => {
+		if (!idsKey) return;
+		let cancelled = false;
+		api.getItems({Ids: idsKey, EnableImages: false, EnableUserData: false})
+			.then((result) => {
+				if (cancelled) return;
+				const next = {};
+				(result?.Items || []).forEach((item) => {
+					if (item?.Id) next[String(item.Id).replace(/-/g, '').toLowerCase()] = item.Name;
+				});
+				setTitles(next);
+			})
+			.catch(() => {});
+		return () => { cancelled = true; };
+	}, [idsKey]);
+	return titles;
+};
+
+const titleFor = (titles, itemId) => titles[String(itemId || '').replace(/-/g, '').toLowerCase()];
+
+const QueueIcon = ({path}) => (
+	<svg className={css.queueIcon} viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" focusable="false">
+		<path d={path} />
+	</svg>
+);
 
 const SpottableButton = Spottable('button');
 
@@ -42,7 +79,12 @@ const SyncPlayDialog = ({open, onClose, playingItemId, onWatch}) => {
 		playQueue,
 		playQueueItem,
 		setRepeatMode,
-		setShuffleMode
+		setShuffleMode,
+		ignoreWait,
+		setIgnoreWait,
+		setPlaylistItem,
+		movePlaylistItem,
+		removeFromPlaylist
 	} = useSyncPlay();
 
 	const [groupName, setGroupName] = useState('');
@@ -140,6 +182,10 @@ const SyncPlayDialog = ({open, onClose, playingItemId, onWatch}) => {
 		setShuffleMode(current === 'Sorted' ? 'Shuffle' : 'Sorted');
 	}, [playQueue?.ShuffleMode, setShuffleMode]);
 
+	const handleToggleIgnoreWait = useCallback(() => setIgnoreWait(!ignoreWait), [ignoreWait, setIgnoreWait]);
+
+	const handleRemoveFromQueue = useCallback((playlistItemId) => removeFromPlaylist([playlistItemId]), [removeFromPlaylist]);
+
 	if (!open) return null;
 
 	return (
@@ -172,6 +218,11 @@ const SyncPlayDialog = ({open, onClose, playingItemId, onWatch}) => {
 							onWatch={handleWatch}
 							onToggleRepeat={handleToggleRepeat}
 							onToggleShuffle={handleToggleShuffle}
+							ignoreWait={ignoreWait}
+							onToggleIgnoreWait={handleToggleIgnoreWait}
+							onPlayQueueItem={setPlaylistItem}
+							onMoveQueueItem={movePlaylistItem}
+							onRemoveQueueItem={handleRemoveFromQueue}
 						/>
 					) : (
 						<LobbyView
@@ -247,7 +298,10 @@ const LobbyView = memo(({groups, groupName, isCreating, isJoining, onInputChange
 	);
 });
 
-const GroupView = memo(({group, isLeaving, onLeave, playQueue, playQueueItem, playingItemId, onWatch, onToggleRepeat, onToggleShuffle}) => {
+const GroupView = memo(({
+	group, isLeaving, onLeave, playQueue, playQueueItem, playingItemId, onWatch, onToggleRepeat, onToggleShuffle,
+	ignoreWait, onToggleIgnoreWait, onPlayQueueItem, onMoveQueueItem, onRemoveQueueItem
+}) => {
 	if (!group) return null;
 	const participants = group.Participants || [];
 	const stateLabel = group.State || $L('Idle');
@@ -288,6 +342,16 @@ const GroupView = memo(({group, isLeaving, onLeave, playQueue, playQueueItem, pl
 				</div>
 			)}
 
+			<div className={css.queueControls}>
+				<SpottableButton
+					className={`${css.controlBtn} ${ignoreWait ? css.controlActive : ''}`}
+					onClick={onToggleIgnoreWait}
+					spotlightId="syncplay-ignore-wait-btn"
+				>
+					{$L('Ignore wait')}: {ignoreWait ? $L('On') : $L('Off')}
+				</SpottableButton>
+			</div>
+
 			{queueLength > 0 && (
 				<div className={css.queueControls}>
 					<SpottableButton
@@ -305,6 +369,16 @@ const GroupView = memo(({group, isLeaving, onLeave, playQueue, playQueueItem, pl
 						{$L('Repeat')}: {REPEAT_LABELS[repeatMode] || $L('Off')}
 					</SpottableButton>
 				</div>
+			)}
+
+			{queueLength > 1 && (
+				<QueueList
+					entries={playQueue.Playlist}
+					currentIndex={queueIndex}
+					onPlay={onPlayQueueItem}
+					onMove={onMoveQueueItem}
+					onRemove={onRemoveQueueItem}
+				/>
 			)}
 
 			<div>
@@ -329,6 +403,69 @@ const GroupView = memo(({group, isLeaving, onLeave, playQueue, playQueueItem, pl
 					{isLeaving ? $L('Leaving...') : $L('Leave group')}
 				</SpottableButton>
 			</div>
+		</div>
+	);
+});
+
+// The group's queue, so anyone in it can jump to an entry, move it or take it out. OK on an
+// entry plays it for everyone, and the arrows and the cross beside it act on that entry alone.
+const QueueList = memo(({entries, currentIndex, onPlay, onMove, onRemove}) => {
+	const titles = useQueueTitles(entries);
+	return (
+		<div>
+			<h4 className={css.sectionTitle}>{$L('Group queue')}</h4>
+			<QueueContainer className={css.queueList} spotlightId="syncplay-queue">
+				{entries.map((entry, index) => (
+					<QueueRow
+						key={entry.PlaylistItemId || index}
+						entry={entry}
+						index={index}
+						isCurrent={index === currentIndex}
+						isFirst={index === 0}
+						isLast={index === entries.length - 1}
+						title={titleFor(titles, entry.ItemId)}
+						onPlay={onPlay}
+						onMove={onMove}
+						onRemove={onRemove}
+					/>
+				))}
+			</QueueContainer>
+		</div>
+	);
+});
+
+const QueueRow = memo(({entry, index, isCurrent, isFirst, isLast, title, onPlay, onMove, onRemove}) => {
+	const id = entry.PlaylistItemId;
+	const handlePlay = useCallback(() => {
+		if (!isCurrent) onPlay(id);
+	}, [isCurrent, onPlay, id]);
+	const handleUp = useCallback(() => onMove(id, index - 1), [onMove, id, index]);
+	const handleDown = useCallback(() => onMove(id, index + 1), [onMove, id, index]);
+	const handleRemove = useCallback(() => onRemove(id), [onRemove, id]);
+
+	return (
+		<div className={css.queueRow}>
+			<SpottableButton
+				className={`${css.queueEntry} ${isCurrent ? css.queueCurrent : ''}`}
+				onClick={handlePlay}
+				aria-label={isCurrent ? `${title || $L('Unknown')}, ${$L('Now Playing')}` : `${$L('Watch now')}: ${title || $L('Unknown')}`}
+			>
+				<span className={css.queueNumber}>{index + 1}</span>
+				<span className={css.queueTitle}>{title || $L('Unknown')}</span>
+			</SpottableButton>
+			{!isFirst && (
+				<SpottableButton className={css.queueAction} onClick={handleUp} aria-label={$L('Move Up')}>
+					<QueueIcon path={MENU_ICON_PATHS.arrowUpward} />
+				</SpottableButton>
+			)}
+			{!isLast && (
+				<SpottableButton className={css.queueAction} onClick={handleDown} aria-label={$L('Move Down')}>
+					<QueueIcon path={MENU_ICON_PATHS.arrowDownward} />
+				</SpottableButton>
+			)}
+			<SpottableButton className={css.queueAction} onClick={handleRemove} aria-label={$L('Remove')}>
+				&times;
+			</SpottableButton>
 		</div>
 	);
 });
