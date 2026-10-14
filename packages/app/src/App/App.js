@@ -896,6 +896,15 @@ const AppContent = (props) => {
 	}, []);
 
 	const handleSelectLibrary = useCallback(async (library) => {
+		// The plugin lets an admin mark a library of any type as a game library, so this has to
+		// come before the collection type decides, or a Live TV typed one opens the guide.
+		if (isGameLibrary(library.Id, library.CollectionType, library.Name)) {
+			// Every /Moonfin/Games call matches on the plugin's id, which is not always the
+			// user-view id this library arrived with.
+			setSelectedGameLibrary({...library, Id: resolveGameLibraryId(library)});
+			navigateTo(PANELS.GAMES);
+			return;
+		}
 		if (isLiveTvLibrary(library)) {
 			if (settings.liveTvSkipGuide) {
 				let channels = null;
@@ -914,13 +923,6 @@ const AppContent = (props) => {
 				}
 			}
 			navigateTo(PANELS.LIVETV);
-			return;
-		}
-		if (isGameLibrary(library.Id, library.CollectionType, library.Name)) {
-			// Every /Moonfin/Games call matches on the plugin's id, which is not always the
-			// user-view id this library arrived with.
-			setSelectedGameLibrary({...library, Id: resolveGameLibraryId(library)});
-			navigateTo(PANELS.GAMES);
 			return;
 		}
 		setSelectedLibrary(library);
