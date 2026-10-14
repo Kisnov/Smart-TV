@@ -1,11 +1,31 @@
 import {useState, useEffect, useLayoutEffect, useReducer, useRef} from 'react';
 import * as jellyfinApi from '../../services/jellyfinApi';
-import {planSeekSheetIndexes, trickplayTile} from '../../utils/trickplaySheets';
+import {embyThumbnailInfo, planSeekSheetIndexes, trickplayTile} from '../../utils/trickplaySheets';
 import {VERTICAL_TRAVEL_TOP_MARGIN, planTrickplayPreview} from '../../utils/trickplayLayout';
 
 import css from './TrickplayPreview.module.less';
 
+// Core asks Emby for its frames at this width.
+const EMBY_FRAME_WIDTH = 320;
+
+// Emby keeps its previews as BIF files and serves them frame by frame, so the manifest here is
+// built from the thumbnail set, one width only.
+const getEmbyThumbnailManifest = async (itemId, mediaSourceId) => {
+	try {
+		const params = [`Width=${EMBY_FRAME_WIDTH}`];
+		if (mediaSourceId) params.push(`MediaSourceId=${encodeURIComponent(mediaSourceId)}`);
+		params.push(`${jellyfinApi.getTokenParam()}=${jellyfinApi.getApiKey()}`);
+		const response = await fetch(`${jellyfinApi.getServerUrl()}/Items/${itemId}/ThumbnailSet?${params.join('&')}`);
+		if (!response.ok) return null;
+		const info = embyThumbnailInfo(await response.json(), EMBY_FRAME_WIDTH);
+		return info ? {[info.Width]: info} : null;
+	} catch {
+		return null;
+	}
+};
+
 export const getTrickplayManifest = async (itemId, mediaSourceId) => {
+    if (jellyfinApi.getServerType() === 'emby') return getEmbyThumbnailManifest(itemId, mediaSourceId);
     try {
         const serverUrl = jellyfinApi.getServerUrl();
         const apiKey = jellyfinApi.getApiKey();
@@ -90,6 +110,12 @@ const pickWidth = (manifest, preferredWidth) => {
 const sheetUrl = (itemId, mediaSourceId, width, imageIndex) =>
 	`${jellyfinApi.getServerUrl()}/Videos/${itemId}/Trickplay/${width}/${imageIndex}.jpg?MediaSourceId=${mediaSourceId}&ApiKey=${jellyfinApi.getApiKey()}`;
 
+// One of Emby's frames, the way Core asks for it.
+const embyFrameUrl = (itemId, mediaSourceId, width, frame) =>
+	`${jellyfinApi.getServerUrl()}/Items/${itemId}/Images/Thumbnail?maxWidth=${width}&tag=${encodeURIComponent(frame.imageTag)}` +
+	`&PositionTicks=${frame.positionTicks}${mediaSourceId ? `&MediaSourceId=${encodeURIComponent(mediaSourceId)}` : ''}` +
+	`&quality=90&${jellyfinApi.getTokenParam()}=${jellyfinApi.getApiKey()}`;
+
 // The sheet's crop scaled so the wanted thumbnail fills a box of the given size.
 const spriteStyle = (url, tile, width, height) => {
 	const scaleX = width / tile.width;
@@ -166,7 +192,9 @@ const TrickplayPreview = ({
 
 	const positionMs = positionTicks / 10000;
 	const durationMs = durationTicks / 10000;
-	const urlFor = (imageIndex) => sheetUrl(itemId, mediaSourceId, widthRef.current, imageIndex);
+	const urlFor = (imageIndex) => (info?.Frames
+		? embyFrameUrl(itemId, mediaSourceId, widthRef.current, info.Frames[imageIndex])
+		: sheetUrl(itemId, mediaSourceId, widthRef.current, imageIndex));
 
 	// Warms the sheets around a position in the direction the viewer is heading.
 	const prefetch = (fromMs, forward) => {
