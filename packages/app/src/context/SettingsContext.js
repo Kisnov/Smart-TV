@@ -89,15 +89,6 @@ const normalizeHomeRowsStyle = (value) => {
 	return value === 'v1' || value === 'v2' ? value : 'v2';
 };
 
-const normalizeDetailScreenStyle = (value) => {
-	if (value === 'classic') return 'v1';
-	if (value === 'modern') return 'v2';
-	if (value === 'spotlight') return 'v3';
-	if (value === 'nouveau') return 'v4';
-	if (value === 'minimalist') return 'v5';
-	return ['v1', 'v2', 'v3', 'v4', 'v5'].indexOf(value) >= 0 ? value : 'v2';
-};
-
 const normalizeGuid = (id) => {
 	if (!id || typeof id !== 'string') return id;
 	const raw = id.replace(/-/g, '');
@@ -120,12 +111,11 @@ const MIN_INTERVAL_MS = 100;
 const secondsToMs = (v) => (typeof v === 'number' ? Math.round(v * 1000) : undefined);
 const msToSeconds = (v) => (typeof v === 'number' ? Math.round(v / 1000) : undefined);
 
-// The start delay slider here runs 0 to 5 seconds, so anything above that is milliseconds.
+// The slider here stops at 5 seconds in half second steps, so a bigger number is milliseconds.
 const MAX_START_DELAY_SECONDS = 5;
 const startDelayFromServer = (v) => {
-	if (typeof v !== 'number' || !isFinite(v) || v < 0) return undefined;
-	if (v <= MAX_START_DELAY_SECONDS) return v;
-	return Math.min(MAX_START_DELAY_SECONDS, v / 1000);
+	if (typeof v !== 'number') return undefined;
+	return v > MAX_START_DELAY_SECONDS ? Math.round(v / 500) / 2 : v;
 };
 
 // A choice this app doesn't offer is left out, so the one already picked stays.
@@ -139,10 +129,8 @@ const posterSizeFromServer = oneOf(['small', 'default', 'large', 'xlarge', 'gran
 
 const hasOwn = (map, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(map, key);
 
-// A choice this app and Core both offer under different names. Core matches the names it
-// reads without regard to case and quietly drops one it doesn't know, so what goes out has
-// to be its own spelling. What comes back may be either spelling, since older builds of this
-// app pushed their own, and a value with no counterpart is left out so the current one stays.
+// Core reads these names without regard to case and ignores ones it doesn't know, so they go out
+// in its spelling. Either spelling reads back, since older builds of this app pushed their own.
 const renamedChoice = (localToServer) => {
 	const toLocal = {};
 	for (const [local, server] of Object.entries(localToServer)) {
@@ -150,23 +138,22 @@ const renamedChoice = (localToServer) => {
 		toLocal[server.toLowerCase()] = local;
 	}
 	return {
-		toServer: v => (hasOwn(localToServer, v) ? localToServer[v] : undefined),
+		toServer: v => (hasOwn(localToServer, v) ? localToServer[v] : v),
 		fromServer: v => (typeof v === 'string' && hasOwn(toLocal, v.toLowerCase()) ? toLocal[v.toLowerCase()] : undefined)
 	};
 };
 
-// Core names the detail screen styles where this app numbers them.
 const detailScreenStyleChoice = renamedChoice({
 	v1: 'classic', v2: 'modern', v3: 'spotlight', v4: 'nouveau', v5: 'minimalist'
 });
+const normalizeDetailScreenStyle = (value) => detailScreenStyleChoice.fromServer(value) || 'v2';
 
 // Core drops the underscores from the built-in theme ids.
 const visualThemeChoice = renamedChoice({
 	moonfin: 'moonfin', neon_pulse: 'neonPulse', glass: 'glass', '8bit_hero': 'eightbitHero'
 });
 
-// Core keeps the focus border as a named color. Theme Default has no name there, so it stays
-// off the server, and Core's 8-Bit Gold still reads back as its color.
+// Core names its focus colors. Its 8-Bit Gold isn't offered here but still reads back as a color.
 const focusColorChoice = renamedChoice({
 	'#ffffff': 'white', '#000000': 'black', '#808080': 'gray', '#003366': 'darkBlue',
 	'#6a0dad': 'purple', '#008080': 'teal', '#000080': 'navy', '#36454f': 'charcoal',
@@ -221,19 +208,9 @@ const VALUE_CONVERSIONS = {
 		toServer: v => CONTENT_TYPE_TO_SERVER[v],
 		fromServer: v => CONTENT_TYPE_FROM_SERVER[v]
 	},
-	// Here this picks libraries or collections. Core uses the same server key for where the
-	// bar draws its titles from (random, recently added or released), so pushing it would
-	// overwrite that choice with a value Core reads as random.
-	mediaBarSourceType: {
-		toServer: () => undefined,
-		fromServer: v => (v === 'library' || v === 'collection' ? v : undefined)
-	},
 	detailScreenStyle: detailScreenStyleChoice,
 	visualTheme: visualThemeChoice,
-	focusBorderColor: {
-		toServer: v => focusColorChoice.toServer(typeof v === 'string' ? v.toLowerCase() : v),
-		fromServer: focusColorChoice.fromServer
-	},
+	focusBorderColor: focusColorChoice,
 	watchedIndicatorBehavior: watchedIndicatorChoice,
 	genresRowItemFilter: genresRowItemFilterChoice,
 	favoritesRowSortBy: homeRowSortChoice,
@@ -260,11 +237,7 @@ const VALUE_CONVERSIONS = {
 		toServer: v => CONTENT_TYPE_TO_SERVER[v],
 		fromServer: v => CONTENT_TYPE_FROM_SERVER[v]
 	},
-	// Older builds of this app pushed tv as it is, so that still reads back.
-	shuffleContentType: {
-		toServer: v => CONTENT_TYPE_TO_SERVER[v],
-		fromServer: v => CONTENT_TYPE_FROM_SERVER[v] || (v === 'tv' ? 'tv' : undefined)
-	},
+	shuffleContentType: renamedChoice(CONTENT_TYPE_TO_SERVER),
 	// The clock is a toggle here and a three way choice on the other clients. Anything that
 	// isn't "never" shows a clock, so the toggle reads as on.
 	showClock: {
@@ -301,9 +274,7 @@ const VALUE_CONVERSIONS = {
 		toServer: secondsToMs,
 		fromServer: msToSeconds
 	},
-	// Seconds here, milliseconds on the other clients. Taken as it came, one second set on
-	// another client made every video here wait over sixteen minutes. A value of a few
-	// units is the seconds an older build of this app pushed.
+	// Seconds here, milliseconds on the other clients.
 	videoStartDelay: {
 		toServer: secondsToMs,
 		fromServer: startDelayFromServer
@@ -326,7 +297,7 @@ const VALUE_CONVERSIONS = {
 
 const SERVER_SPELLED_KEYS = [
 	'visualTheme', 'focusBorderColor', 'watchedIndicatorBehavior', 'genresRowItemFilter',
-	'favoritesRowSortBy', 'collectionsRowSortBy', 'genresRowSortBy'
+	'favoritesRowSortBy', 'collectionsRowSortBy', 'genresRowSortBy', 'shuffleContentType'
 ];
 
 export const SYNCABLE_KEYS = [
@@ -362,8 +333,9 @@ export const SYNCABLE_KEYS = [
 	'musicPlaybackTimeDisplay', 'liveTvChannelSortBy',
 	'autoPlay', 'nextUpBehavior', 'nextUpTimeout', 'nextUpCountdownStyle',
 	'replaceSkipOutroWithNextUp',
-	// Blur isn't synced: Core measures it on a different scale.
-	'mediaBarSourceType', 'mediaBarLibraryIds', 'mediaBarCollectionIds',
+	// Not synced: the blur, which Core measures on another scale, and mediaBarSourceType,
+	// whose key Core uses for a different setting.
+	'mediaBarLibraryIds', 'mediaBarCollectionIds',
 	'mediaBarOverlayColor', 'mediaBarOverlayOpacity',
 	'homeRows', 'homeRowsStyle', 'modernCardsOnMyMediaRow', 'detailScreenStyle', 'detailExpandedTabs', 'fullScreenRows', 'homeRowsPosterSize', 'useSeriesThumbnails',
 	'episodePreviewEnabled', 'previewAudioEnabled',
@@ -705,9 +677,8 @@ export function SettingsProvider({children}) {
 						migrated = true;
 					}
 				}
+				// Sync used to store Core's spelling of these as it came.
 				for (const key of SERVER_SPELLED_KEYS) {
-					// Sync used to store Core's spelling of these as it came, which nothing
-					// here recognizes.
 					const local = VALUE_CONVERSIONS[key].fromServer(stored[key]);
 					if (local !== undefined && local !== stored[key]) {
 						stored[key] = local;
@@ -735,10 +706,6 @@ export function SettingsProvider({children}) {
 				if (typeof stored.videoStartDelay === 'number' && stored.videoStartDelay > MAX_START_DELAY_SECONDS) {
 					// Sync used to store the other clients' milliseconds as seconds.
 					stored.videoStartDelay = startDelayFromServer(stored.videoStartDelay);
-					migrated = true;
-				}
-				if (stored.shuffleContentType === 'tvshows') {
-					stored.shuffleContentType = 'tv';
 					migrated = true;
 				}
 				if (stored.trickPlayEnabled === false && stored.trickPlayMode === undefined) {
