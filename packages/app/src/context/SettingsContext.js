@@ -46,9 +46,6 @@ const SERVER_TO_LOCAL = {
 	mediaBarExcludedGenres: 'excludedGenres',
 	enableMultiServerLibraries: 'unifiedLibraryMode',
 	seasonalSurprise: 'seasonalTheme',
-	detailsScreenBlur: 'backdropBlurDetail',
-	detailsBackdropBlur: 'backdropBlurDetail',
-	browsingBlur: 'backdropBlurHome',
 	use24HourClock: 'clockDisplay',
 	focusColor: 'focusBorderColor',
 	watchedIndicator: 'watchedIndicatorBehavior',
@@ -345,7 +342,7 @@ export const SYNCABLE_KEYS = [
 	'musicPlaybackTimeDisplay', 'liveTvChannelSortBy',
 	'autoPlay', 'nextUpBehavior', 'nextUpTimeout', 'nextUpCountdownStyle',
 	'replaceSkipOutroWithNextUp',
-	'backdropBlurHome', 'backdropBlurDetail',
+	// Blur isn't synced: Core measures it on a different scale.
 	'mediaBarSourceType', 'mediaBarLibraryIds', 'mediaBarCollectionIds',
 	'mediaBarOverlayColor', 'mediaBarOverlayOpacity',
 	'homeRows', 'homeRowsStyle', 'modernCardsOnMyMediaRow', 'detailScreenStyle', 'detailExpandedTabs', 'fullScreenRows', 'homeRowsPosterSize', 'useSeriesThumbnails',

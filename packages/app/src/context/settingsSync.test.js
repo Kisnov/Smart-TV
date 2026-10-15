@@ -438,6 +438,14 @@ describe('choices Core spells differently', () => {
 		expect(profileToLocal({languageOverride: 'ca'}).uiLanguage).toBe('ca');
 	});
 
+	test('keep the blur on this device, since Core uses another scale', () => {
+		expect(pushOne('backdropBlurHome', 40)).toEqual({});
+		expect(pushOne('backdropBlurDetail', 40)).toEqual({});
+		const local = profileToLocal({browsingBlur: '2', detailsScreenBlur: '2', detailsBackdropBlur: 2});
+		expect(local.backdropBlurHome).toBeUndefined();
+		expect(local.backdropBlurDetail).toBeUndefined();
+	});
+
 	test('survive a full push and read back unchanged', () => {
 		const local = {
 			...defaultSettings,
