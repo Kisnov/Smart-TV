@@ -4,6 +4,32 @@
 import {MEDIA_STATUS, REQUEST_STATUS} from './seerrStatus';
 
 /**
+ * Whether the library holds this, in full or in part. Deleted and blocklisted sort above
+ * available, so this can't be a greater-or-equal test.
+ *
+ * @param {number} [status] - a Seerr media status
+ * @returns {boolean}
+ */
+export const isInLibrary = (status) =>
+	status === MEDIA_STATUS.AVAILABLE || status === MEDIA_STATUS.PARTIALLY_AVAILABLE;
+
+/**
+ * Whether a collection film can be requested on this track: unknown to Seerr or deleted, never
+ * blocklisted.
+ *
+ * @param {Object} part - a collection part as Seerr returns it
+ * @param {boolean} [is4k] - which track is being asked about
+ * @returns {boolean}
+ */
+export const isPartRequestable = (part, is4k) => {
+	const info = part?.mediaInfo;
+	if (!info) return true;
+	if (info.status === MEDIA_STATUS.BLOCKLISTED) return false;
+	const status = (is4k ? info.status4k : info.status) || MEDIA_STATUS.UNKNOWN;
+	return status <= MEDIA_STATUS.UNKNOWN || status === MEDIA_STATUS.DELETED;
+};
+
+/**
  * Whether a series is still running. An unknown status counts as ended, so a lookup that
  * found nothing never opens the button on a guess.
  *
@@ -47,7 +73,7 @@ export const unavailableOrRequestedSeasons = (seasonAvailability, activeRequests
 	const taken = new Set();
 	(seasonAvailability || []).forEach((season) => {
 		const status = is4k ? season?.status4k : season?.status;
-		if (status >= MEDIA_STATUS.PARTIALLY_AVAILABLE) taken.add(season.seasonNumber);
+		if (isInLibrary(status)) taken.add(season.seasonNumber);
 	});
 	(activeRequests || []).forEach((request) => {
 		(request?.seasons || []).forEach((season) => taken.add(season.seasonNumber));
