@@ -44,6 +44,7 @@ import {resolveInitialSubtitle} from './initialSubtitle';
 import PlayerControls, {usePlayerButtons} from './PlayerControls';
 import {canBrowseEpisodes} from '../../utils/episodeBrowser';
 import useLiveProgram from './useLiveProgram';
+import useHeldSeekStep from './useHeldSeekStep';
 import useMediaSession from './useMediaSession';
 import {hasTrickplayPreview} from '../../components/TrickplayPreview';
 import {isTrickplayOn} from '../../utils/trickplayLayout';
@@ -730,7 +731,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		const handleAppExit = () => {
 			// always report the stop, even at position 0 (live TV and freshly
 			// opened media start there), or the session lingers on the server
-			playback.reportStopBeacon(positionRef.current);
+			// Only a stop that went out lets the session go, so a failed one gets
+			// another try from the next exit event or the cleanup.
+			if (playback.reportStopBeacon(positionRef.current)) {
+				playback.discardCurrentSession();
+			}
 		};
 
 		const handleRelaunch = (params) => {
@@ -1936,6 +1941,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		}
 
 		await playback.reportStop(positionRef.current);
+		// the next up countdown can load the next one during the stop, leave its player alone
+		if (prevItemIdRef.current !== item.Id) return;
 
 		if (repeatMode === 'one') {
 			restartCurrent();
@@ -2229,6 +2236,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			healthMonitorRef.current?.setPaused(true);
 		}
 	}, [settings.trickPlayPauseWhileScrubbing, settings.trickPlayMode, isInGroup, item.Id, mediaSourceId]);
+
+	const {stepBy: heldSeekStep, stepSeconds: seekStepSeconds} = useHeldSeekStep(settings.seekStep);
 
 	// One scrub step on. A held scrub only moves its target, anything else seeks as it goes.
 	const scrubBy = useCallback((deltaSeconds) => {
@@ -2691,15 +2700,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 	const handleProgressKeyDown = useCallback((e) => {
 		if (!videoRef.current) return;
-		const step = settings.seekStep;
 		showControls();
 
 		if (e.key === 'ArrowLeft' || e.keyCode === 37) {
 			e.preventDefault();
-			scrubBy(-step);
+			scrubBy(heldSeekStep(-1));
 		} else if (e.key === 'ArrowRight' || e.keyCode === 39) {
 			e.preventDefault();
-			scrubBy(step);
+			scrubBy(heldSeekStep(1));
 		} else if (e.key === 'Enter' || e.keyCode === 13) {
 			e.preventDefault();
 			if (resumeHeldScrub()) return;
@@ -2721,7 +2729,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				window.requestAnimationFrame(() => Spotlight.focus('play-pause-btn'));
 			}
 		}
-	}, [settings.seekStep, scrubBy, resumeHeldScrub, settleHeldScrub, showControls, handlePlayPause, isAudioMode]);
+	}, [heldSeekStep, scrubBy, resumeHeldScrub, settleHeldScrub, showControls, handlePlayPause, isAudioMode]);
 
 	const handleProgressBlur = useCallback(() => {
 		settleHeldScrub();
@@ -3116,7 +3124,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					if (isLiveTV) { showControls(); return; }
 					showControls();
 					setFocusRow('progress');
-					scrubBy(key === 'ArrowLeft' || e.keyCode === 37 ? -settings.seekStep : settings.seekStep);
+					scrubBy(heldSeekStep(key === 'ArrowLeft' || e.keyCode === 37 ? -1 : 1));
 					return;
 				}
 				e.preventDefault();
@@ -3327,6 +3335,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				topButtons={topButtons}
 				bottomButtons={bottomButtons}
 				displayTime={displayTime}
+				seekStepSeconds={seekStepSeconds}
 				duration={duration}
 				progressPercent={progressPercent}
 				bufferedPercent={bufferedPercent}
