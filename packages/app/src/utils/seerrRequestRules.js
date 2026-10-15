@@ -4,8 +4,8 @@
 import {MEDIA_STATUS, REQUEST_STATUS} from './seerrStatus';
 
 /**
- * Whether the library holds this, in full or in part. Blocklisted and deleted sort above
- * available, so a greater-or-equal test reads a removed season as one that is still there.
+ * Whether the library holds this, in full or in part. Deleted and blocklisted sort above
+ * available, so this can't be a greater-or-equal test.
  *
  * @param {number} [status] - a Seerr media status
  * @returns {boolean}
@@ -14,9 +14,8 @@ export const isInLibrary = (status) =>
 	status === MEDIA_STATUS.AVAILABLE || status === MEDIA_STATUS.PARTIALLY_AVAILABLE;
 
 /**
- * Whether one film of a collection can still be asked for on this track: Seerr has no record
- * of it, knows nothing about it yet, or it was deleted from the library. A blocklisted film
- * never can.
+ * Whether a collection film can be requested on this track: unknown to Seerr or deleted, never
+ * blocklisted.
  *
  * @param {Object} part - a collection part as Seerr returns it
  * @param {boolean} [is4k] - which track is being asked about

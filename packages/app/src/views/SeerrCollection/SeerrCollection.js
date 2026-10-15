@@ -11,7 +11,7 @@ import seerrApi from '../../services/seerrApi';
 import SeerrStatusChip from '../../components/SeerrStatusChip';
 import SeerrNotificationToast from '../../components/SeerrNotificationToast';
 import {MEDIA_STATUS, isUnlimitedQuota} from '../../utils/seerrStatus';
-import {isPartRequestable} from '../../utils/seerrRequestRules';
+import {isInLibrary, isPartRequestable} from '../../utils/seerrRequestRules';
 import {KEYS} from '../../utils/keys';
 
 import css from './SeerrCollection.module.less';
@@ -295,10 +295,7 @@ const SeerrCollection = ({collectionId, onSelectItem, backHandlerRef, ...rest}) 
 	[collection]);
 
 	const availableCount = useMemo(() =>
-		visibleParts.filter((p) => {
-			const status = p.mediaInfo?.status;
-			return status === MEDIA_STATUS.AVAILABLE || status === MEDIA_STATUS.PARTIALLY_AVAILABLE;
-		}).length,
+		visibleParts.filter((p) => isInLibrary(p.mediaInfo?.status)).length,
 	[visibleParts]);
 
 	const canUse4k = seerrApi.canRequest4kMovies(permissions);
