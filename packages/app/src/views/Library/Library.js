@@ -8,6 +8,7 @@ import {useAuth} from '../../context/AuthContext';
 import {createApiForServer} from '../../services/jellyfinApi';
 import MusicBrowse from '../MusicBrowse';
 import BackdropLayer from '../../components/BackdropLayer';
+import TileGrid from '../../components/TileGrid';
 import {getImageUrl, getPrimaryImageId, formatDuration} from '../../utils/helpers';
 import useQuickReturnGrid from '../../hooks/useQuickReturnGrid';
 import {useSettings} from '../../context/SettingsContext';
@@ -81,6 +82,10 @@ const FOLDER_DETAIL_TYPES = ['Series', 'BoxSet', 'Playlist', 'MusicAlbum', 'Musi
 const GRID_INSET = 174;
 // The least room a row leaves between two cards.
 const MIN_ROW_GAP = 6;
+
+// Opening an item takes the library off screen and it's built again on the way back, so the item
+// that was opened is noted here to come back to.
+let returnTo = null;
 
 const PLAYED_FILTERS = [
 	{key: 'all', label: $L('All')},
@@ -660,7 +665,8 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		const itemIndex = ev.currentTarget?.dataset?.index;
 		if (itemIndex === undefined) return;
 
-		const item = itemsRef.current[parseInt(itemIndex, 10)];
+		const index = parseInt(itemIndex, 10);
+		const item = itemsRef.current[index];
 		if (item) {
 			if (isFolderView && item.IsFolder && !FOLDER_DETAIL_TYPES.includes(item.Type)) {
 				setFolderStack(prev => [...prev, {id: item.Id, name: item.Name, collectionType: item.CollectionType}]);
@@ -669,12 +675,13 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			if (item.Type === 'Photo' && onViewPhoto) {
 				onViewPhoto(item, itemsRef.current);
 			} else {
+				returnTo = {libraryId, itemId: item.Id, index};
 				onSelectItem?.(item);
 			}
 		}
-	}, [isFolderView, onSelectItem, onViewPhoto]);
+	}, [isFolderView, onSelectItem, onViewPhoto, libraryId]);
 
-	const {getScrollTo: getGridScrollTo, quickReturn} = useQuickReturnGrid('library-grid');
+	const {getScrollTo: getGridScrollTo, quickReturn, scrollTo: scrollGridTo} = useQuickReturnGrid('library-grid');
 
 	const handleScrollStop = useCallback(() => {
 		if (apiFetchIndexRef.current < totalCount && !isLoading && !loadingMoreRef.current) {
@@ -750,15 +757,26 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	// The grid takes focus once a list has landed, but not while a panel is up, since that's
 	// the viewer still picking. A pick that closes the panel runs this before the reload has
 	// cleared the old list, so it also waits for the new first page.
+	//
+	// Coming back from an item lands on it, pulling in pages until it turns up, or giving up a page
+	// past where it was.
 	useEffect(() => {
 		if (showSortPanel || showSettingsPanel || apiFetchIndexRef.current === 0) return undefined;
 		if (items.length === 0 || isLoading || initialFocusDoneRef.current) return undefined;
+		const back = returnTo && returnTo.libraryId === libraryId && !groupedActive ? returnTo : null;
+		const index = back ? items.findIndex((item) => item.Id === back.itemId) : -1;
+		if (back && index < 0 && apiFetchIndexRef.current < totalCount && items.length <= back.index + 150) {
+			loadItems(apiFetchIndexRef.current, true);
+			return undefined;
+		}
 		const id = setTimeout(() => {
-			Spotlight.focus(groupedActive ? 'library-group-row-0' : 'library-grid');
+			returnTo = null;
+			if (index >= 0) scrollGridTo({index, focus: true});
+			else Spotlight.focus(groupedActive ? 'library-group-row-0' : 'library-grid');
 			initialFocusDoneRef.current = true;
 		}, 100);
 		return () => clearTimeout(id);
-	}, [items.length, isLoading, groupedActive, showSortPanel, showSettingsPanel]);
+	}, [items, isLoading, groupedActive, showSortPanel, showSettingsPanel, libraryId, totalCount, loadItems, scrollGridTo]);
 
 	// Choosing the sort already in use turns it around rather than doing nothing.
 	const handleSortSelect = useCallback((ev) => {
@@ -985,7 +1003,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		{minWidth: cardWidth + cellPadX * 2, minHeight: cardHeight + cellPadY * 2}
 	), [cardWidth, cardHeight, cellPadX, cellPadY]);
 
-	const renderItem = useCallback(({index, ...rest}) => {
+	const renderCard = useCallback((index) => {
 		const item = items[index];
 		const isNearEnd = index >= items.length - 50;
 		if (isNearEnd && apiFetchIndexRef.current < totalCount && !isLoading && !loadingMoreRef.current) {
@@ -994,10 +1012,8 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 		if (!item) {
 			return (
-				<div {...rest} className={css.itemCard} style={{padding: cellPadding}}>
-					<div className={css.posterPlaceholder} style={{height: posterHeight}}>
-						<div className={css.loadingPlaceholder} />
-					</div>
+				<div className={css.posterPlaceholder} style={{height: posterHeight}}>
+					<div className={css.loadingPlaceholder} />
 				</div>
 			);
 		}
@@ -1020,57 +1036,75 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		const imageUrl = imageId ? getImageUrl(effectiveServerUrl, imageId, imgApiType, {maxHeight: 300, quality: 70}) : null;
 
 		return (
+			<div className={css.itemCardInner}>
+				{imageUrl ? (
+					<img
+						className={css.poster}
+						style={{height: posterHeight}}
+						src={imageUrl}
+						alt={item.Name}
+						loading="lazy"
+					/>
+				) : (
+					<div className={css.posterPlaceholder} style={{height: posterHeight}}>
+						{isFolder ? (
+							<svg viewBox="0 0 24 24" className={css.placeholderIcon}>
+								<path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+							</svg>
+						) : (
+							<svg viewBox="0 0 24 24" className={css.placeholderIcon}>
+								<path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z" />
+							</svg>
+						)}
+					</div>
+				)}
+				{item.UserData?.IsFavorite && (
+					<div className={css.favoriteBadge}>
+						<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
+					</div>
+				)}
+				{item.UserData?.Played && (
+					<div className={css.watchedBadge}>
+						<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
+					</div>
+				)}
+				{showCardText && (
+					<div className={css.cardText}>
+						<div className={css.cardTitle}>{item.Name}</div>
+						{subtitle && <div className={css.cardSubtitle}>{subtitle}</div>}
+					</div>
+				)}
+			</div>
+		);
+	}, [effectiveServerUrl, items, totalCount, isLoading, loadItems, effectiveImageType, posterHeight, isFolderView, showCardText, detailedSubtitles]);
+
+	const renderItem = useCallback(({index, ...rest}) => (
+		items[index] ? (
 			<SpottableDiv
 				{...rest}
 				className={css.itemCard}
 				style={{padding: cellPadding}}
 				onClick={handleItemClick}
 				// eslint-disable-next-line react/jsx-no-bind
-				onFocus={() => setFocusedItem(item)}
+				onFocus={() => setFocusedItem(items[index])}
 				data-index={index}
 			>
-				<div className={css.itemCardInner}>
-					{imageUrl ? (
-						<img
-							className={css.poster}
-							style={{height: posterHeight}}
-							src={imageUrl}
-							alt={item.Name}
-							loading="lazy"
-						/>
-					) : (
-						<div className={css.posterPlaceholder} style={{height: posterHeight}}>
-							{isFolder ? (
-								<svg viewBox="0 0 24 24" className={css.placeholderIcon}>
-									<path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
-								</svg>
-							) : (
-								<svg viewBox="0 0 24 24" className={css.placeholderIcon}>
-									<path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z" />
-								</svg>
-							)}
-						</div>
-					)}
-					{item.UserData?.IsFavorite && (
-						<div className={css.favoriteBadge}>
-							<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
-						</div>
-					)}
-					{item.UserData?.Played && (
-						<div className={css.watchedBadge}>
-							<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
-						</div>
-					)}
-					{showCardText && (
-						<div className={css.cardText}>
-							<div className={css.cardTitle}>{item.Name}</div>
-							{subtitle && <div className={css.cardSubtitle}>{subtitle}</div>}
-						</div>
-					)}
-				</div>
+				{renderCard(index)}
 			</SpottableDiv>
-		);
-	}, [effectiveServerUrl, handleItemClick, items, totalCount, isLoading, loadItems, effectiveImageType, posterHeight, cellPadding, isFolderView, showCardText, detailedSubtitles]);
+		) : (
+			<div {...rest} className={css.itemCard} style={{padding: cellPadding}}>
+				{renderCard(index)}
+			</div>
+		)
+	), [items, renderCard, cellPadding, handleItemClick]);
+
+	const renderTile = useCallback((index, focused, style) => (
+		<div className={focused ? `${css.itemCard} ${css.focused}` : css.itemCard} style={{...style, padding: cellPadding}} data-index={index}>
+			{renderCard(index)}
+		</div>
+	), [renderCard, cellPadding]);
+
+	const handleTileFocus = useCallback((index) => setFocusedItem(itemsRef.current[index] || null), []);
 
 	const currentSort = activeSortOptions.find(o => o.key === sortKey);
 	const sortLabel = currentSort ? currentSort.label : $L('Name');
@@ -1464,20 +1498,35 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 						</div>
 					) : (
 						<div className={css.gridWrapper} {...menuHold}>
-							<GridList
-								className={css.grid}
-								cbScrollTo={getGridScrollTo}
-								dataSize={items.length}
-								itemRenderer={renderItem}
-								itemSize={gridItemSize}
-								direction={gridDirection}
-								horizontalScrollbar="hidden"
-								verticalScrollbar="hidden"
-								spacing={0}
-								onScrollStop={handleScrollStop}
-								onKeyDown={showLetterNav ? handleGridKeyDown : handleGridKeyDownNoLetters}
-								spotlightId="library-grid"
-							/>
+							{gridDirection === 'vertical' ? (
+								<TileGrid
+									className={css.grid}
+									cbScrollTo={getGridScrollTo}
+									dataSize={items.length}
+									itemSize={gridItemSize}
+									renderTile={renderTile}
+									resetKey={items[0]?.Id}
+									onFocusIndex={handleTileFocus}
+									onKeyDown={showLetterNav ? handleGridKeyDown : handleGridKeyDownNoLetters}
+									onClick={handleItemClick}
+									spotlightId="library-grid"
+								/>
+							) : (
+								<GridList
+									className={css.grid}
+									cbScrollTo={getGridScrollTo}
+									dataSize={items.length}
+									itemRenderer={renderItem}
+									itemSize={gridItemSize}
+									direction={gridDirection}
+									horizontalScrollbar="hidden"
+									verticalScrollbar="hidden"
+									spacing={0}
+									onScrollStop={handleScrollStop}
+									onKeyDown={showLetterNav ? handleGridKeyDown : handleGridKeyDownNoLetters}
+									spotlightId="library-grid"
+								/>
+							)}
 						</div>
 					)}
 				</GridContainer>
