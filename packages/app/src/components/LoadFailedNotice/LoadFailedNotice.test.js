@@ -21,6 +21,7 @@ jest.mock('@enact/sandstone/Button', () => {
 
 describe('LoadFailedNotice', () => {
 	beforeEach(() => {
+		Spotlight.focus.mockClear();
 		jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => callback());
 	});
 
@@ -33,6 +34,12 @@ describe('LoadFailedNotice', () => {
 
 		expect(screen.getByText('Could not load this. Check your connection and try again.')).toBeTruthy();
 		expect(Spotlight.focus).toHaveBeenCalledWith('list-retry');
+	});
+
+	test('leaves focus alone while a panel holds it', () => {
+		render(<LoadFailedNotice spotlightId='list-retry' onRetry={() => {}} autoFocus={false} />);
+
+		expect(Spotlight.focus).not.toHaveBeenCalled();
 	});
 
 	test('retries when Retry is pressed', () => {

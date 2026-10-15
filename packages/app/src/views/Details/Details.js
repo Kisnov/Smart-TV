@@ -11,7 +11,7 @@ import {useSyncPlay} from '../../context/SyncPlayContext';
 import * as jellyfinApi from '../../services/jellyfinApi';
 import ModernDetailContent from './ModernDetailContent';
 import DetailSkeleton from './DetailSkeleton';
-import DetailLoadFailed from './DetailLoadFailed';
+import LoadFailedNotice from '../../components/LoadFailedNotice';
 import {formatDuration, getImageUrl, getBackdropId, getLogoUrl} from '../../utils/helpers';
 import {KEYS} from '../../utils/keys';
 import {MATERIAL_ICON_PATHS} from '../Settings/materialIconMap';
@@ -874,8 +874,12 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		);
 	}
 
-	if (!seerrOnly && loadFailed && !item) {
-		return <DetailLoadFailed onRetry={retryLoad} />;
+	if (loadFailed && !item) {
+		return (
+			<div className={css.page}>
+				<LoadFailedNotice spotlightId='details-load-retry' onRetry={retryLoad} />
+			</div>
+		);
 	}
 
 	if (isLoading || !item) {

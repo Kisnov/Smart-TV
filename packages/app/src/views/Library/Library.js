@@ -219,8 +219,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 	const [allItems, setAllItems] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
-	// Whether the first page failed, so an empty grid says so instead of "No items found".
+	// The first page failed, so the empty grid says so rather than "No items found".
 	const [loadFailed, setLoadFailed] = useState(false);
+	const [reloadKey, setReloadKey] = useState(0);
 	const [totalCount, setTotalCount] = useState(0);
 	// What the ratings filter dropped from the fetched pages, so the count shown leaves it out.
 	const [blockedCount, setBlockedCount] = useState(0);
@@ -554,12 +555,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 	loadItemsRef.current = loadItems;
 
-	const retryLoad = useCallback(() => {
-		setIsLoading(true);
-		loadingMoreRef.current = false;
-		apiFetchIndexRef.current = 0;
-		loadItemsRef.current(0, false);
-	}, []);
+	const retryLoad = useCallback(() => setReloadKey((key) => key + 1), []);
 
 	// Grouping covers the whole library, so the rest of it loads in the
 	// background the way scrolling to the end would have.
@@ -646,7 +642,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			initialFocusDoneRef.current = false;
 			loadItemsRef.current(0, false);
 		}
-	}, [library, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, musicContentType, isFolderView, currentFolderId, genreFilter, studioFilter, isMusicBrowseHome, settings.groupItemsIntoCollections]);
+	}, [library, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, musicContentType, isFolderView, currentFolderId, genreFilter, studioFilter, isMusicBrowseHome, settings.groupItemsIntoCollections, reloadKey]);
 
 	// The values the library actually holds, read once per library so opening
 	// the filter panel does not wait on the network.
@@ -1490,7 +1486,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 						</div>
 					) : items.length === 0 ? (
 						loadFailed ? (
-							<LoadFailedNotice spotlightId='library-load-retry' onRetry={retryLoad} />
+							<LoadFailedNotice spotlightId='library-load-retry' onRetry={retryLoad} autoFocus={!showSortPanel && !showSettingsPanel} />
 						) : (
 							<div className={css.empty}>{$L('No items found')}</div>
 						)

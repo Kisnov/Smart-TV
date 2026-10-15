@@ -42,7 +42,7 @@ jest.mock('../../services/userDataSync', () => ({
 }));
 jest.mock('../../hooks/useUserDataSync', () => ({useUserDataVersion: () => 0}));
 
-// Every call the rows behind the item make answers with nothing, so only the item fetch matters.
+// Every other API call resolves to null, so only the item fetch matters.
 const apiWith = (getItemForDetail) => new Proxy({getItemForDetail}, {
 	get: (target, key) => (key in target ? target[key] : async () => null)
 });

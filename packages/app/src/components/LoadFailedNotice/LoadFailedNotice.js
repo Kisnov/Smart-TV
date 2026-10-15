@@ -5,12 +5,14 @@ import Spotlight from '@enact/spotlight';
 
 import css from './LoadFailedNotice.module.less';
 
-// Stands in for an empty list when the list couldn't be fetched, so a failed request doesn't
-// read as there being nothing there. Retry takes focus so OK tries again.
-const LoadFailedNotice = ({spotlightId, onRetry}) => {
+// Stands in for what couldn't be fetched, so a failed request doesn't read as there being nothing
+// there. Retry takes focus unless a panel over the screen holds it.
+const LoadFailedNotice = ({spotlightId, onRetry, autoFocus = true}) => {
 	useEffect(() => {
-		window.requestAnimationFrame(() => Spotlight.focus(spotlightId));
-	}, [spotlightId]);
+		if (!autoFocus) return undefined;
+		const frame = window.requestAnimationFrame(() => Spotlight.focus(spotlightId));
+		return () => window.cancelAnimationFrame(frame);
+	}, [spotlightId, autoFocus]);
 
 	return (
 		<div className={css.notice}>
