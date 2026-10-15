@@ -2151,12 +2151,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		setActiveModal(null);
 		showControls(false);
 		window.requestAnimationFrame(() => {
-			// The button that opened it can be gone by now, such as SyncPlay's once the group is left.
+			// The button that opened it can be gone by now, like SyncPlay's once the group is left.
 			const last = lastFocusedElementRef.current;
 			if (last && document.body.contains(last)) {
 				Spotlight.focus(last);
 			} else {
-				Spotlight.focus('playerControls');
+				Spotlight.focus('play-pause-btn');
 			}
 		});
 	}, [showControls]);

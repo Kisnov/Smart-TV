@@ -1,5 +1,7 @@
 import {act, fireEvent, render, screen} from '@testing-library/react';
 
+import Spotlight from '@enact/spotlight';
+
 import SyncPlayDialog from './SyncPlayDialog';
 
 // The CLI ships a second copy of React, so the components' JSX goes through the copy under test.
@@ -43,6 +45,7 @@ jest.mock('../../services/jellyfinApi', () => ({
 
 let mockSyncPlay;
 jest.mock('../../context/SyncPlayContext', () => ({
+	itemIdKey: (id) => String(id || '').replace(/-/g, '').toLowerCase(),
 	useSyncPlay: () => mockSyncPlay
 }));
 
@@ -65,7 +68,7 @@ const buildSyncPlay = (overrides = {}) => ({
 	setRepeatMode: jest.fn(),
 	setShuffleMode: jest.fn(),
 	ignoreWait: false,
-	setIgnoreWait: jest.fn(),
+	toggleIgnoreWait: jest.fn(),
 	setPlaylistItem: jest.fn(),
 	movePlaylistItem: jest.fn(),
 	removeFromPlaylist: jest.fn(),
@@ -79,6 +82,7 @@ const renderDialog = async () => {
 	return view;
 };
 
+const focusedTargets = () => Spotlight.focus.mock.calls.map(([target]) => target);
 const queueRows = () => Array.from(document.querySelectorAll('.queueRow'));
 const rowButton = (row, label) => Array.from(row.querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === label);
 
@@ -97,7 +101,7 @@ describe('SyncPlayDialog group queue', () => {
 	test('lists every queue entry by name, looked up in one request', async () => {
 		await renderDialog();
 		expect(mockGetItems).toHaveBeenCalledTimes(1);
-		expect(mockGetItems.mock.calls[0][0].Ids).toBe(QUEUE.map((entry) => entry.ItemId).join(','));
+		expect(mockGetItems.mock.calls[0][0].Ids.split(',').sort()).toEqual(QUEUE.map((entry) => entry.ItemId).sort());
 		expect(screen.getByText('Group queue')).toBeTruthy();
 		expect(queueRows().map((row) => row.querySelector('.queueTitle').textContent)).toEqual(['First', 'Second', 'Third']);
 		expect(queueRows()[1].querySelector('.queueCurrent')).not.toBeNull();
@@ -128,6 +132,28 @@ describe('SyncPlayDialog group queue', () => {
 		expect(mockSyncPlay.removeFromPlaylist).toHaveBeenCalledWith(['p1']);
 	});
 
+	test('a reorder keeps the names without asking for them again', async () => {
+		const {rerender} = await renderDialog();
+		mockSyncPlay = buildSyncPlay({playQueue: {Playlist: [QUEUE[1], QUEUE[0], QUEUE[2]], PlayingItemIndex: 0}});
+		rerender(<SyncPlayDialog open onClose={jest.fn()} />);
+		await act(() => Promise.resolve());
+		expect(mockGetItems).toHaveBeenCalledTimes(1);
+		expect(queueRows().map((row) => row.querySelector('.queueTitle').textContent)).toEqual(['Second', 'First', 'Third']);
+	});
+
+	test('focus follows a moved entry and lands on the next one after a removal', async () => {
+		const {rerender} = await renderDialog();
+		fireEvent.click(rowButton(queueRows()[1], 'Move Down'));
+		mockSyncPlay = buildSyncPlay({playQueue: {Playlist: [QUEUE[0], QUEUE[2], QUEUE[1]], PlayingItemIndex: 2}});
+		rerender(<SyncPlayDialog open onClose={jest.fn()} />);
+		expect(focusedTargets()).toContain(rowButton(queueRows()[2], 'Second, Now Playing'));
+
+		fireEvent.click(rowButton(queueRows()[0], 'Remove'));
+		mockSyncPlay = buildSyncPlay({playQueue: {Playlist: [QUEUE[2], QUEUE[1]], PlayingItemIndex: 1}});
+		rerender(<SyncPlayDialog open onClose={jest.fn()} />);
+		expect(focusedTargets()).toContain(rowButton(queueRows()[0], 'Watch now: Third'));
+	});
+
 	test('a single item is not shown as a queue', async () => {
 		mockSyncPlay = buildSyncPlay({playQueue: {Playlist: [QUEUE[0]], PlayingItemIndex: 0}});
 		await renderDialog();
@@ -140,13 +166,12 @@ describe('SyncPlayDialog ignore wait', () => {
 	test('shows the current setting and flips it', async () => {
 		const {unmount} = await renderDialog();
 		fireEvent.click(screen.getByText('Ignore wait: Off'));
-		expect(mockSyncPlay.setIgnoreWait).toHaveBeenCalledWith(true);
+		expect(mockSyncPlay.toggleIgnoreWait).toHaveBeenCalledTimes(1);
 		unmount();
 
 		mockSyncPlay = buildSyncPlay({ignoreWait: true});
 		await renderDialog();
-		fireEvent.click(screen.getByText('Ignore wait: On'));
-		expect(mockSyncPlay.setIgnoreWait).toHaveBeenCalledWith(false);
+		expect(screen.getByText('Ignore wait: On')).toBeTruthy();
 	});
 
 	test('is there before anything has been queued', async () => {

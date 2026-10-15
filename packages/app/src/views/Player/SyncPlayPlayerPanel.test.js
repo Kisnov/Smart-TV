@@ -39,7 +39,7 @@ const buildSyncPlay = (overrides = {}) => ({
 	group: {GroupName: 'Movie night', Participants: ['Ana', 'Pau']},
 	isInGroup: true,
 	ignoreWait: false,
-	setIgnoreWait: jest.fn(),
+	toggleIgnoreWait: jest.fn(),
 	leaveGroup: jest.fn(() => Promise.resolve(true)),
 	...overrides
 });
@@ -65,14 +65,12 @@ describe('SyncPlayPlayerPanel', () => {
 		const row = screen.getByText('Ignore wait');
 		expect(row.getAttribute('data-selected')).toBeNull();
 		fireEvent.click(row);
-		expect(mockSyncPlay.setIgnoreWait).toHaveBeenCalledWith(true);
+		expect(mockSyncPlay.toggleIgnoreWait).toHaveBeenCalledTimes(1);
 		unmount();
 
 		mockSyncPlay = buildSyncPlay({ignoreWait: true});
 		renderPanel();
 		expect(screen.getByText('Ignore wait').getAttribute('data-selected')).toBe('true');
-		fireEvent.click(screen.getByText('Ignore wait'));
-		expect(mockSyncPlay.setIgnoreWait).toHaveBeenCalledWith(false);
 	});
 
 	test('Leave group leaves once, however many times it is pressed', async () => {

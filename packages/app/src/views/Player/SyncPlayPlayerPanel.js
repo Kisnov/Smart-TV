@@ -6,18 +6,15 @@ import TrackOptionRow, {TrackDivider} from '../../components/TrackOptionRow';
 
 import panelCss from './SyncPlayPlayerPanel.module.less';
 
-// The group from inside the player. The full SyncPlay dialog can't sit over a player the group is
-// driving, so this keeps what a member needs mid-film to hand: who is watching, Ignore wait and
-// leaving. It closes on its own once this device is no longer in a group, however that happened.
+// The group from inside the player, where the full dialog can't sit. Closes itself once this
+// device is out of the group.
 const SyncPlayPlayerPanel = ({css, closeModal, stopPropagation}) => {
-	const {group, isInGroup, ignoreWait, setIgnoreWait, leaveGroup} = useSyncPlay();
+	const {group, isInGroup, ignoreWait, toggleIgnoreWait, leaveGroup} = useSyncPlay();
 	const [isLeaving, setIsLeaving] = useState(false);
 
 	useEffect(() => {
 		if (!isInGroup) closeModal();
 	}, [isInGroup, closeModal]);
-
-	const handleToggleIgnoreWait = useCallback(() => setIgnoreWait(!ignoreWait), [ignoreWait, setIgnoreWait]);
 
 	const handleLeave = useCallback(async () => {
 		if (isLeaving) return;
@@ -43,7 +40,7 @@ const SyncPlayPlayerPanel = ({css, closeModal, stopPropagation}) => {
 						label={$L('Ignore wait')}
 						detail={$L("Don't hold the group up while this device buffers")}
 						selected={ignoreWait}
-						onClick={handleToggleIgnoreWait}
+						onClick={toggleIgnoreWait}
 					/>
 					<TrackOptionRow
 						label={$L('Leave group')}

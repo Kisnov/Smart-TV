@@ -7,7 +7,8 @@ import {api} from '../services/jellyfinApi';
 const SyncPlayContext = createContext(null);
 
 // Queue entries carry the GUID with dashes, item DTOs without them.
-const sameItemId = (a, b) => !!a && !!b && String(a).replace(/-/g, '').toLowerCase() === String(b).replace(/-/g, '').toLowerCase();
+export const itemIdKey = (id) => String(id || '').replace(/-/g, '').toLowerCase();
+const sameItemId = (a, b) => !!a && !!b && itemIdKey(a) === itemIdKey(b);
 
 export const useSyncPlay = () => useContext(SyncPlayContext);
 
@@ -22,8 +23,7 @@ export const SyncPlayProvider = ({children}) => {
 	// A fresh object per server play queue, so consumers can tell a new queue
 	// apart from the same item still sitting there.
 	const [playQueueUpdate, setPlayQueueUpdate] = useState(null);
-	// The server keeps this per member and never reports it back, so the switch here follows
-	// what this device last asked for. Every group starts with it off.
+	// The server never reports this back, so it follows what this device last set. Off in a new group.
 	const [ignoreWait, setIgnoreWaitState] = useState(false);
 	const queueSeqRef = useRef(0);
 	const queueItemRef = useRef(null);
@@ -158,10 +158,11 @@ export const SyncPlayProvider = ({children}) => {
 		return success;
 	}, []);
 
-	const handleSetIgnoreWait = useCallback((enabled) => {
+	const toggleIgnoreWait = useCallback(async () => {
+		const enabled = !ignoreWait;
 		setIgnoreWaitState(enabled);
-		syncPlayService.setIgnoreWait(enabled);
-	}, []);
+		if (!(await syncPlayService.setIgnoreWait(enabled))) setIgnoreWaitState(!enabled);
+	}, [ignoreWait]);
 
 	// Where the group is now, from its last queue update or command and the
 	// time since.
@@ -208,7 +209,7 @@ export const SyncPlayProvider = ({children}) => {
 		setRepeatMode: syncPlayService.setRepeatMode,
 		setShuffleMode: syncPlayService.setShuffleMode,
 		ignoreWait,
-		setIgnoreWait: handleSetIgnoreWait
+		toggleIgnoreWait
 	};
 
 	return (

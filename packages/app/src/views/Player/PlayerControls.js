@@ -16,12 +16,13 @@ import {numberedTrackName, sortSubtitleStreams, subtitleTrackDetail, audioTrackD
 import TrackOptionRow, {TrackDivider} from '../../components/TrackOptionRow';
 import EpisodeBrowser from './EpisodeBrowser';
 import SyncPlayPlayerPanel from './SyncPlayPlayerPanel';
+import SyncPlayIcon from '../../components/icons/SyncPlayIcon';
 import {
 	SpottableButton, SpottableDiv,
 	formatTime, getQualityPresets,
 	IconPlay, IconPause, IconRewind, IconForward, IconSubtitle, IconSubtitleOff, IconAudio,
 	IconChapters, IconEpisodes, IconPrevious, IconNext, IconQuality, IconInfo, IconCast, IconZoom,
-	IconShuffle, IconRepeat, IconRepeatOne, IconSleep, IconGuide, IconChannels, IconSyncPlay
+	IconShuffle, IconRepeat, IconRepeatOne, IconSleep, IconGuide, IconChannels
 } from './PlayerConstants';
 import {formatClockTime} from '../../utils/clock';
 import {episodeLine} from '../../utils/liveTvGuide';
@@ -97,8 +98,7 @@ export const usePlayerButtons = ({
 			], {order: osdOrder, hidden: osdHidden});
 		}
 		return arrange([
-			// Only there while this device is in a group, as on Core.
-			...(inSyncPlayGroup ? [{id: 'syncPlay', icon: <IconSyncPlay />, label: $L('SyncPlay'), action: 'syncPlay'}] : []),
+			...(inSyncPlayGroup ? [{id: 'syncPlay', icon: <SyncPlayIcon />, label: $L('SyncPlay'), action: 'syncPlay'}] : []),
 			...(chapters.length > 0 ? [{id: 'chapters', icon: <IconChapters />, label: $L('Chapters'), action: 'chapter'}] : []),
 			// Only an episode has a season to browse, so a movie never gets this button.
 			...(canBrowseEpisodes ? [{id: 'episodes', icon: <IconEpisodes />, label: $L('Episodes'), action: 'episodes'}] : []),

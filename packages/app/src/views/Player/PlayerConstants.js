@@ -1,7 +1,6 @@
 import $L from '@enact/i18n/$L';
 import Spottable from '@enact/spotlight/Spottable';
 import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDecorator';
-import {DETAIL_ICON_PATHS} from '../Details/detailIcons';
 
 export const SpottableButton = Spottable('button');
 export const SpottableDiv = Spottable('div');
@@ -127,8 +126,6 @@ export const IconFavoriteFilled = () => (
 export const IconSleep = () => (
 	<MaterialIcon path="M524-124q-75 0-140.5-28.5t-114-77q-48.5-48.5-77-114T164-484q0-128 78.5-225T446-833q13-3 24 .5t18 10.5q7 7 10 18t0 24q-5 17-7.5 35t-2.5 37q0 108 76 184t184 76q19 0 37.5-2.5T821-459q13-3 23.5.5T862-448q7 7 10.5 17.5T876-407q-27 122-124 202.5T524-124Zm0-60q88 0 158-48.5T786-358q-16 3-32 4.5t-31 1.5q-133 0-226.5-93.5T403-672q0-15 1.5-31t4.5-32q-77 34-125.5 104T235-473q0 120 84.5 204.5T524-184Zm-16-290Z" />
 );
-
-export const IconSyncPlay = () => <MaterialIcon path={DETAIL_ICON_PATHS.group} />;
 
 export const IconChannels = () => (
 	<MaterialIcon path="M200-520q-33 0-56.5-23.5T120-600v-160q0-33 23.5-56.5T200-840h160q33 0 56.5 23.5T440-760v160q0 33-23.5 56.5T360-520H200Zm0 400q-33 0-56.5-23.5T120-200v-160q0-33 23.5-56.5T200-440h160q33 0 56.5 23.5T440-360v160q0 33-23.5 56.5T360-120H200Zm400-400q-33 0-56.5-23.5T520-600v-160q0-33 23.5-56.5T600-840h160q33 0 56.5 23.5T840-760v160q0 33-23.5 56.5T760-520H600Zm0 400q-33 0-56.5-23.5T520-200v-160q0-33 23.5-56.5T600-440h160q33 0 56.5 23.5T840-360v160q0 33-23.5 56.5T760-120H600Z" />
