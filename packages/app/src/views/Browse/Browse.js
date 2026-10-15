@@ -27,7 +27,6 @@ import BookshelfBar from './BookshelfBar';
 import BackdropLayer from '../../components/BackdropLayer';
 import useBrowseData from './useBrowseData';
 import useSeerrRows from './useSeerrRows';
-import {blocksSeerrAdult} from '../../utils/seerrAdultFilter';
 import useExternalRows from './useExternalRows';
 import useMediaPreview from './useMediaPreview';
 import {buildBrowseRows, sameRowList} from './buildBrowseRows';
@@ -83,7 +82,7 @@ const Browse = ({
 		seerrAuthenticated,
 		seerrUserId,
 		homeRows: homeRowsConfig,
-		blockAdult: blocksSeerrAdult(settings)
+		blockAdult: settings.seerrBlockNsfw !== false
 	});
 	const {rows: externalRows, pending: externalPending} = useExternalRows({settings, homeRows: homeRowsConfig, kidsMode});
 	const pendingRows = useMemo(() => [...seerrPending, ...externalPending], [seerrPending, externalPending]);

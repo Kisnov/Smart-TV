@@ -5,7 +5,7 @@ import {getSeerrHomeRowConfigs, fetchSeerrHomeRow, SEERR_SECTION_TO_CONFIG} from
 // The discover rows Seerr provides. They are fetched separately from the library rows because
 // they come from a different server and only exist while Seerr is connected and signed in. The
 // rows still on their way come back as [pending], so they can hold their place.
-const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, blockAdult = true}) => {
+const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, blockAdult}) => {
 	const [seerrRows, setSeerrRows] = useState([]);
 	const [pending, setPending] = useState([]);
 

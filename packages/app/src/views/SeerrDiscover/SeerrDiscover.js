@@ -16,7 +16,7 @@ import {KEYS} from '../../utils/keys';
 import hydrateRequestMediaItems from '../../utils/seerrHydration';
 import {STREAMING_NETWORKS, MOVIE_STUDIOS, SEERR_SHORTCUTS, pickShortcutBackdrops, normalizeMediaItem, normalizeRequestItem} from '../../utils/seerrHomeRows';
 import {libraryIdOf} from '../../utils/seerrTarget';
-import {blocksSeerrAdult, withoutSeerrAdult} from '../../utils/seerrAdultFilter';
+import {withoutSeerrAdult} from '../../utils/seerrAdultFilter';
 import {isScrolledAway} from '../../utils/quickReturn';
 import {focusedCardIndex, cardToRestore} from '../../utils/rowFocusMemory';
 
@@ -412,7 +412,7 @@ const SeerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSelectSt
 	// info header goes with it, the way Home drops its top info area.
 	const useModernRows = settings.homeRowsStyle !== 'v1';
 	const rowSpacing = modernRowSpacing(settings);
-	const blockAdult = blocksSeerrAdult(settings);
+	const blockAdult = settings.seerrBlockNsfw !== false;
 	const [rows, setRows] = useState({});
 	const [rowPages, setRowPages] = useState({});
 	const [rowHasMore, setRowHasMore] = useState({});
@@ -507,8 +507,7 @@ const SeerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSelectSt
 				]);
 
 				const hydratedMyRequests = await hydrateRequestMediaItems(myRequestsData.results || []);
-				// The adult filter goes before the rows are cut to size, so each still fills up.
-				// Paging below keeps going by what the server sent, not by what is left.
+				// Filtered before the cut so each row still fills, while paging below goes by what was sent.
 				const media = (data) => withoutSeerrAdult(data.results || [], blockAdult);
 
 				setRows({

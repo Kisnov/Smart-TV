@@ -220,9 +220,7 @@ const normalizeNetworkItem = (network) => ({
 	_seerrRaw: {networkId: network.id, networkName: network.name}
 });
 
-// blockAdult drops what Seerr's adult filter hides before the row is cut to size, so a row
-// still fills up to its limit.
-export const fetchSeerrHomeRow = async (rowId, {userId, blockAdult = true} = {}) => {
+export const fetchSeerrHomeRow = async (rowId, {userId, blockAdult} = {}) => {
 	const media = (data) => withoutSeerrAdult(data?.results || [], blockAdult);
 	try {
 		switch (rowId) {
@@ -237,10 +235,9 @@ export const fetchSeerrHomeRow = async (rowId, {userId, blockAdult = true} = {})
 			case 'trending':
 				return media(await seerrApi.trending(1)).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
 			case 'recentlyAdded':
-				return media(await seerrApi.getRecentlyAdded(HOME_ROW_LIMIT)).map(normalizeMediaItem);
+				return ((await seerrApi.getRecentlyAdded(HOME_ROW_LIMIT)).results || []).map(normalizeMediaItem);
 			case 'yourWatchlist': {
 				const results = ((await seerrApi.getWatchlist(1)).results || []).slice(0, HOME_ROW_LIMIT);
-				// A watchlist entry only has its title and overview once it has been filled in.
 				return withoutSeerrAdult(await hydrateWatchlistItems(results), blockAdult).map(normalizeMediaItem);
 			}
 			case 'popularMovies':
