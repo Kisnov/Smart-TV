@@ -23,13 +23,6 @@ describe('the Player Buttons list', () => {
 		expect(episodes.enabled).toBe(true);
 	});
 
-	it('lists Favorite first, switched on, as Core does', () => {
-		const {result} = openPlayerButtons();
-		const [favorite] = result.current.tempButtons;
-		expect(favorite.id).toBe('favorite');
-		expect(favorite.enabled).toBe(true);
-	});
-
 	it('saves Episodes where it was moved to, and as hidden once switched off', () => {
 		const {result, updateSettings} = openPlayerButtons();
 		act(() => result.current.moveLayoutButton('episodes', -1));

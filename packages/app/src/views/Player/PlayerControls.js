@@ -96,7 +96,7 @@ export const usePlayerButtons = ({
 			], {order: osdOrder, hidden: osdHidden});
 		}
 		return arrange([
-			...(canFavorite ? [{id: 'favorite', icon: (isFavorite ? <IconFavoriteFilled /> : <IconFavorite />), label: $L('Favorite'), action: 'favorite', active: isFavorite}] : []),
+			...(canFavorite ? [{id: 'favorite', icon: (isFavorite ? <IconFavoriteFilled /> : <IconFavorite />), label: isFavorite ? $L('Remove from Favorites') : $L('Add to Favorites'), action: 'favorite', active: isFavorite}] : []),
 			...(chapters.length > 0 ? [{id: 'chapters', icon: <IconChapters />, label: $L('Chapters'), action: 'chapter'}] : []),
 			// Only an episode has a season to browse, so a movie never gets this button.
 			...(canBrowseEpisodes ? [{id: 'episodes', icon: <IconEpisodes />, label: $L('Episodes'), action: 'episodes'}] : []),

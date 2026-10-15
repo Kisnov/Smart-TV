@@ -45,7 +45,6 @@ export const DETAIL_BUTTONS = [
 // Play, pause, seek and track skip are absent on purpose, the player always keeps those.
 // Playback speed is absent because these TVs hand the rate to their own media pipeline,
 // which drops the audio rather than stretching it, so anything but 1x plays silent.
-// Favorite leads the row as it does in Core's player.
 export const OSD_BUTTONS = [
 	{id: 'favorite', label: 'Favorite'},
 	{id: 'chapters', label: 'Chapters'},
