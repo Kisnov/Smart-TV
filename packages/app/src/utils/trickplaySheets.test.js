@@ -53,7 +53,7 @@ describe('Emby thumbnail sets', () => {
 
 	test('become one frame per sheet, sorted, at the width asked for', () => {
 		const info = embyThumbnailInfo(set([20, 0, 10]), 320);
-		expect(info).toMatchObject({Width: 320, Height: 180, TileWidth: 1, TileHeight: 1, ThumbnailCount: 3, Interval: 10000});
+		expect(info).toMatchObject({Width: 320, Height: 180});
 		expect(info.Frames.map((frame) => frame.positionTicks)).toEqual([0, 10, 20].map((s) => s * TICKS_PER_SECOND));
 		expect(info.Frames.map((frame) => frame.imageTag)).toEqual(['t1', 't2', 't0']);
 	});

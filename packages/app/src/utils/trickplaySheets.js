@@ -1,17 +1,15 @@
 // Where a moment's trickplay thumbnail sits on the server's sprite sheets, and which sheets the
-// next scrub steps will need. `info` is one width's entry from an item's Trickplay manifest, or
-// an Emby thumbnail set turned into one (embyThumbnailInfo).
+// next scrub steps will need. `info` is one width's entry from an item's Trickplay manifest (or embyThumbnailInfo's).
 
 // Scrubbing carries on the way it started, so the run ahead is the longer.
 const STEPS_AHEAD = 6;
 const STEPS_BEHIND = 2;
 
-// Emby has no sprite sheets. Its thumbnail set lists one image per frame, each found by the
-// position it was taken at, and they needn't be evenly spaced. So every frame is a sheet of its
-// own, and a position shows the last frame taken at or before it, as on Core.
+// Emby serves one image per frame, not always evenly spaced, so a position shows the last frame at
+// or before it, as on Core.
 const frameTile = (info, positionMs) => {
 	const frames = info.Frames;
-	if (frames.length === 0 || !isFinite(positionMs)) return null;
+	if (!isFinite(positionMs)) return null;
 	const ticks = positionMs * 10000;
 	let low = 0;
 	let high = frames.length - 1;
@@ -49,15 +47,7 @@ export const embyThumbnailInfo = (thumbnailSet, width) => {
 		else frames.push(frame);
 	});
 	if (frames.length === 0) return null;
-	return {
-		Width: width,
-		Height: Math.round(width / aspectRatio),
-		TileWidth: 1,
-		TileHeight: 1,
-		Interval: frames.length > 1 ? Math.max(1, Math.floor((frames[1].positionTicks - frames[0].positionTicks) / 10000)) : 10000,
-		ThumbnailCount: frames.length,
-		Frames: frames
-	};
+	return {Width: width, Height: Math.round(width / aspectRatio), Frames: frames};
 };
 
 // The sheet and the crop within it for a position, or null past the last thumbnail.
@@ -89,7 +79,7 @@ export const planSeekSheetIndexes = ({info, positionMs, durationMs, stepMs, forw
 	const add = (offsetMs) => {
 		const target = Math.min(lastMs, Math.max(0, positionMs + offsetMs));
 		// A runtime a little past the last thumbnail still wants the last sheet. Emby's frames
-		// already settle on the last one, and aren't spaced evenly enough to work out where it is.
+		// settle on the last one by themselves.
 		const tile = trickplayTile(info, info.Frames ? target : Math.min(target, (info.ThumbnailCount - 1) * info.Interval));
 		if (tile && indexes.indexOf(tile.imageIndex) < 0) indexes.push(tile.imageIndex);
 	};
