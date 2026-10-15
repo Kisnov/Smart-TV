@@ -284,8 +284,8 @@ describe('mergeMissingByReleaseOrder', () => {
 		});
 
 		test('leaves out a part TMDB lists as adult unless the filter is off', async () => {
-			expect((await fetchMissingCollectionItems({boxSet, members, settings: {}})).map((item) => item.Name)).toEqual(['Part Three']);
-			expect((await fetchMissingCollectionItems({boxSet, members, settings: {seerrBlockNsfw: false}})).map((item) => item.Name)).toEqual(['Part Three', 'Part Four']);
+			expect((await fetchMissingCollectionItems({boxSet, members, settings: {}})).map((part) => part.Name)).toEqual(['Part Three']);
+			expect((await fetchMissingCollectionItems({boxSet, members, settings: {seerrBlockNsfw: false}})).map((part) => part.Name)).toEqual(['Part Three', 'Part Four']);
 		});
 	});
 });
