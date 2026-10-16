@@ -107,6 +107,20 @@ describe('SyncPlayDialog group queue', () => {
 		expect(queueRows()[1].querySelector('.queueCurrent')).not.toBeNull();
 	});
 
+	test('puts the series and episode number under an episode, and nothing under a film', async () => {
+		const pilot = {Id: 'aaaaaaaa000000000000000000000001', Name: 'Pilot', Type: 'Episode', SeriesName: 'Lost', ParentIndexNumber: 1, IndexNumber: 1};
+		mockGetItems.mockResolvedValue({Items: [
+			pilot,
+			{Id: 'aaaaaaaa000000000000000000000002', Name: 'Second', Type: 'Movie'},
+			{Id: 'aaaaaaaa000000000000000000000003', Name: 'Special', Type: 'Episode', SeriesName: 'Lost', IndexNumber: 2}
+		]});
+		mockSyncPlay = buildSyncPlay({playQueueItem: pilot});
+		await renderDialog();
+		const lines = queueRows().map((row) => row.querySelector('.queueSubtitle')?.textContent ?? null);
+		expect(lines).toEqual(['Lost · S1:E1', null, 'Lost · E2']);
+		expect(document.querySelector('.nowPlayingSubtitle').textContent).toBe('Lost · S1:E1');
+	});
+
 	test('OK on another entry plays it for the group, OK on the playing one does nothing', async () => {
 		await renderDialog();
 		fireEvent.click(rowButton(queueRows()[1], 'Second, Now Playing'));
