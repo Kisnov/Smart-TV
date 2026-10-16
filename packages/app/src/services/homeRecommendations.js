@@ -4,6 +4,7 @@ import {getActiveParentalFilter} from './parentalControls';
 import {byLastPlayedDesc} from '../utils/libraryScopeRules';
 import seerrApi from './seerrApi';
 import {normalizeMediaItem} from '../utils/seerrHomeRows';
+import {withoutSeerrAdult} from '../utils/seerrAdultFilter';
 
 // How many a row shows, and how many are asked for to fill it. The server scored
 // sources are asked for more because the watched ones get dropped here, but not
@@ -559,7 +560,8 @@ export async function getOnlineRecommendations(settings, seed) {
 	let results = await fetchTmdbRecommendations(settings.tmdbApiKey, String(tmdbId), mediaType);
 	if (!results.length) results = await fetchSeerrRecommendations(String(tmdbId), mediaType);
 
-	return results.filter((item) => item && item.id).slice(0, 15).map(normalizeMediaItem);
+	return withoutSeerrAdult(results, settings.seerrBlockNsfw !== false)
+		.filter((item) => item && item.id).slice(0, 15).map(normalizeMediaItem);
 }
 
 // How many items a query matched, whether or not the server sent a total back.

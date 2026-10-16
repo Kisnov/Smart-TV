@@ -8,7 +8,7 @@ jest.mock('./jellyfinApi', () => ({
 	HOME_ROW_ITEM_FIELDS: 'Id,Name,Type'
 }));
 
-import {canScoreSeedLocally, loadRewatchItems, loadSinceYouWatchedRows, mergeRecommendations, RECOMMENDATION_FETCH_LIMIT, scoreCandidate} from './homeRecommendations';
+import {canScoreSeedLocally, getOnlineRecommendations, loadRewatchItems, loadSinceYouWatchedRows, mergeRecommendations, RECOMMENDATION_FETCH_LIMIT, scoreCandidate} from './homeRecommendations';
 import {
 	getSinceYouWatchedSourceOptions,
 	getRecommendationSystemSourceOptions
@@ -538,3 +538,21 @@ describe('loadRewatchItems collections', () => {
 		expect(items.map((item) => item.Id)).toEqual(['c2', 'c1']);
 	});
 });
+
+describe('getOnlineRecommendations', () => {
+	const seed = {Type: 'Movie', ProviderIds: {Tmdb: '603'}};
+
+	afterEach(() => {
+		delete global.fetch;
+	});
+
+	test('leaves adult titles out of TMDB results unless the NSFW filter is off', async () => {
+		global.fetch = jest.fn(async () => ({ok: true, json: async () => ({results: [
+			{id: 1, title: 'Erotic Nights', media_type: 'movie'},
+			{id: 2, title: 'Toy Story', media_type: 'movie'}
+		]})}));
+		expect((await getOnlineRecommendations({tmdbApiKey: 'key'}, seed)).map((item) => item.Name)).toEqual(['Toy Story']);
+		expect((await getOnlineRecommendations({tmdbApiKey: 'key', seerrBlockNsfw: false}, seed)).map((item) => item.Name)).toEqual(['Erotic Nights', 'Toy Story']);
+	});
+});
+
