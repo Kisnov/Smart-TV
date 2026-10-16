@@ -97,12 +97,12 @@ describe('the button catalogues', () => {
 		});
 	});
 
-	it('offers Favorite in the player buttons list under Core\'s id, leading the row like Core', () => {
-		expect(ids(OSD_BUTTONS)[0]).toBe('favorite');
-		// Someone who arranged the row before it existed finds it at the front, where Core puts it.
+	it('offers SyncPlay and Favorite in the player buttons list under Core\'s ids, leading the row like Core', () => {
+		expect(ids(OSD_BUTTONS).slice(0, 2)).toEqual(['syncPlay', 'favorite']);
+		// Someone who arranged the row before they existed finds them at the front, where Core puts them.
 		const saved = ['chapters', 'subtitles', 'audio', 'castAndCrew', 'quality', 'zoom', 'sleep', 'info'];
-		expect(ids(ordered(OSD_BUTTONS, saved))[0]).toBe('favorite');
-		expect(ids(arrange(OSD_BUTTONS, {hidden: ['favorite']}))).not.toContain('favorite');
+		expect(ids(ordered(OSD_BUTTONS, saved)).slice(0, 2)).toEqual(['syncPlay', 'favorite']);
+		expect(ids(arrange(OSD_BUTTONS, {hidden: ['syncPlay', 'favorite']}))).not.toContain('favorite');
 	});
 
 	it('offers the episode browser in the player buttons list, and it can be arranged and hidden', () => {
@@ -117,7 +117,7 @@ describe('the button catalogues', () => {
 	});
 
 	it('keeps an unplaced button behind its neighbour even when that neighbour is missing from the row', () => {
-		const saved = ['subtitles', 'chapters', 'audio', 'castAndCrew', 'quality', 'zoom', 'sleep', 'info', 'favorite'];
+		const saved = ['subtitles', 'chapters', 'audio', 'castAndCrew', 'quality', 'zoom', 'sleep', 'info', 'syncPlay', 'favorite'];
 		const row = (list) => ids(arrange(list, {order: saved, catalogue: OSD_BUTTONS}));
 		const withoutChapters = OSD_BUTTONS.filter((b) => b.id !== 'chapters');
 		expect(row(OSD_BUTTONS).slice(0, 3)).toEqual(['subtitles', 'chapters', 'episodes']);

@@ -7,7 +7,8 @@ import {api} from '../services/jellyfinApi';
 const SyncPlayContext = createContext(null);
 
 // Queue entries carry the GUID with dashes, item DTOs without them.
-const sameItemId = (a, b) => !!a && !!b && String(a).replace(/-/g, '').toLowerCase() === String(b).replace(/-/g, '').toLowerCase();
+export const itemIdKey = (id) => String(id || '').replace(/-/g, '').toLowerCase();
+const sameItemId = (a, b) => !!a && !!b && itemIdKey(a) === itemIdKey(b);
 
 export const useSyncPlay = () => useContext(SyncPlayContext);
 
@@ -22,6 +23,8 @@ export const SyncPlayProvider = ({children}) => {
 	// A fresh object per server play queue, so consumers can tell a new queue
 	// apart from the same item still sitting there.
 	const [playQueueUpdate, setPlayQueueUpdate] = useState(null);
+	// The server never reports this back, so it follows what this device last set. Off in a new group.
+	const [ignoreWait, setIgnoreWaitState] = useState(false);
 	const queueSeqRef = useRef(0);
 	const queueItemRef = useRef(null);
 	const listenerRef = useRef(null);
@@ -56,11 +59,13 @@ export const SyncPlayProvider = ({children}) => {
 			switch (event) {
 				case 'groupJoined':
 					setGroup(data);
+					setIgnoreWaitState(false);
 					break;
 				case 'groupLeft':
 					setGroup(null);
 					setPlayQueue(null);
 					setPlayQueueUpdate(null);
+					setIgnoreWaitState(false);
 					break;
 				case 'stateUpdate':
 					setGroup(prev => prev ? {...prev, State: data?.State} : null);
@@ -148,9 +153,16 @@ export const SyncPlayProvider = ({children}) => {
 			setGroup(null);
 			setPlayQueue(null);
 			setPlayQueueUpdate(null);
+			setIgnoreWaitState(false);
 		}
 		return success;
 	}, []);
+
+	const toggleIgnoreWait = useCallback(async () => {
+		const enabled = !ignoreWait;
+		setIgnoreWaitState(enabled);
+		if (!(await syncPlayService.setIgnoreWait(enabled))) setIgnoreWaitState(!enabled);
+	}, [ignoreWait]);
 
 	// Where the group is now, from its last queue update or command and the
 	// time since.
@@ -196,7 +208,8 @@ export const SyncPlayProvider = ({children}) => {
 		previousItem: syncPlayService.previousItem,
 		setRepeatMode: syncPlayService.setRepeatMode,
 		setShuffleMode: syncPlayService.setShuffleMode,
-		setIgnoreWait: syncPlayService.setIgnoreWait
+		ignoreWait,
+		toggleIgnoreWait
 	};
 
 	return (

@@ -319,7 +319,7 @@ export const setShuffleMode = (mode) =>
 	request('POST', 'SetShuffleMode', {Mode: mode}).catch(() => {});
 
 export const setIgnoreWait = (ignoreWait) =>
-	request('POST', 'SetIgnoreWait', {IgnoreWait: ignoreWait}).catch(() => {});
+	request('POST', 'SetIgnoreWait', {IgnoreWait: ignoreWait}).then(() => true, () => false);
 
 const onSocketOpen = () => {
 	if (pingInterval) clearInterval(pingInterval);
