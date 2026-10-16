@@ -38,7 +38,7 @@ import {AchievementsProvider, useAchievements} from '../context/AchievementsCont
 import {achievementIconPath} from '../views/Settings/achievements/achievementIcons';
 import {threadIsPhoto} from '../utils/achievementsModel';
 import {ServerMessagesProvider, useServerMessages} from '../context/ServerMessagesContext';
-import {SyncPlayProvider, useSyncPlay} from '../context/SyncPlayContext';
+import {SyncPlayProvider, followsQueueUpdate, useSyncPlay} from '../context/SyncPlayContext';
 import {useVersionCheck} from '../hooks/useVersionCheck';
 import UpdateNotification from '../components/UpdateNotification';
 import {ItemMenuProvider} from '../components/ItemContextMenu';
@@ -994,7 +994,7 @@ const AppContent = (props) => {
 		const update = syncPlayQueueUpdate;
 		if (!update || update === handledSyncPlayQueueRef.current) return;
 		handledSyncPlayQueueRef.current = update;
-		if (!update.startsPlayback && playingItem?.Id === update.item.Id) return;
+		if (!followsQueueUpdate(update, playingItem?.Id)) return;
 		playSyncPlayItem(update.item);
 	}, [syncPlayQueueUpdate, playingItem, playSyncPlayItem]);
 

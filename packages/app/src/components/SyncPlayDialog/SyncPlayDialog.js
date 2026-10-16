@@ -26,10 +26,18 @@ const QueueContainer = SpotlightContainerDecorator({
 	enterTo: 'last-focused'
 }, 'div');
 
-// Queue entries carry only an item id, so the names come from one lookup, keyed on the set of
+// An episode's name alone often says little, so the series and its number go under it.
+const episodeLine = (item) => {
+	if (item?.Type !== 'Episode') return '';
+	const season = item.ParentIndexNumber != null ? `S${item.ParentIndexNumber}:` : '';
+	const number = item.IndexNumber != null ? `${season}E${item.IndexNumber}` : '';
+	return [item.SeriesName, number].filter(Boolean).join(' · ');
+};
+
+// Queue entries carry only an item id, so the items come from one lookup, keyed on the set of
 // ids so a reorder doesn't ask again.
-const useQueueTitles = (entries) => {
-	const [titles, setTitles] = useState({});
+const useQueueItems = (entries) => {
+	const [items, setItems] = useState({});
 	const idsKey = entries.map((entry) => entry.ItemId).filter(Boolean).sort().join(',');
 	useEffect(() => {
 		if (!idsKey) return;
@@ -39,14 +47,14 @@ const useQueueTitles = (entries) => {
 				if (cancelled) return;
 				const next = {};
 				(result?.Items || []).forEach((item) => {
-					if (item?.Id) next[itemIdKey(item.Id)] = item.Name;
+					if (item?.Id) next[itemIdKey(item.Id)] = item;
 				});
-				setTitles((prev) => ({...prev, ...next}));
+				setItems((prev) => ({...prev, ...next}));
 			})
 			.catch(() => {});
 		return () => { cancelled = true; };
 	}, [idsKey]);
-	return titles;
+	return items;
 };
 
 const QueueIcon = ({path}) => (
@@ -305,6 +313,7 @@ const GroupView = memo(({
 	const shuffleMode = playQueue?.ShuffleMode || 'Sorted';
 	const queueLength = playQueue?.Playlist?.length || 0;
 	const queueIndex = playQueue?.PlayingItemIndex ?? -1;
+	const nowPlayingLine = episodeLine(playQueueItem);
 
 	return (
 		<div className={css.groupView}>
@@ -319,7 +328,10 @@ const GroupView = memo(({
 				<div className={css.nowPlaying}>
 					<h4 className={css.sectionTitle}>{$L('Now Playing')}</h4>
 					<div className={css.nowPlayingInfo}>
-						<span className={css.nowPlayingTitle}>{playQueueItem.Name || $L('Unknown')}</span>
+						<div className={css.nowPlayingText}>
+							<span className={css.nowPlayingTitle}>{playQueueItem.Name || $L('Unknown')}</span>
+							{nowPlayingLine && <span className={css.nowPlayingSubtitle}>{nowPlayingLine}</span>}
+						</div>
 						{queueLength > 1 && (
 							<span className={css.nowPlayingMeta}>
 								{queueIndex + 1} of {queueLength}
@@ -408,7 +420,7 @@ const GroupView = memo(({
 const REFOCUS_WINDOW_MS = 5000;
 
 const QueueList = memo(({entries, currentIndex, onPlay, onMove, onRemove}) => {
-	const titles = useQueueTitles(entries);
+	const items = useQueueItems(entries);
 	const refocusRef = useRef(null);
 
 	useEffect(() => {
@@ -445,7 +457,8 @@ const QueueList = memo(({entries, currentIndex, onPlay, onMove, onRemove}) => {
 						isCurrent={index === currentIndex}
 						isFirst={index === 0}
 						isLast={index === entries.length - 1}
-						title={titles[itemIdKey(entry.ItemId)]}
+						title={items[itemIdKey(entry.ItemId)]?.Name}
+						subtitle={episodeLine(items[itemIdKey(entry.ItemId)])}
 						onPlay={onPlay}
 						onMove={handleMove}
 						onRemove={handleRemove}
@@ -456,7 +469,7 @@ const QueueList = memo(({entries, currentIndex, onPlay, onMove, onRemove}) => {
 	);
 });
 
-const QueueRow = memo(({entry, index, isCurrent, isFirst, isLast, title, onPlay, onMove, onRemove}) => {
+const QueueRow = memo(({entry, index, isCurrent, isFirst, isLast, title, subtitle, onPlay, onMove, onRemove}) => {
 	const id = entry.PlaylistItemId;
 	const name = title || $L('Unknown');
 	const handlePlay = useCallback(() => {
@@ -475,7 +488,10 @@ const QueueRow = memo(({entry, index, isCurrent, isFirst, isLast, title, onPlay,
 				aria-label={isCurrent ? `${name}, ${$L('Now Playing')}` : `${$L('Watch now')}: ${name}`}
 			>
 				<span className={css.queueNumber}>{index + 1}</span>
-				<span className={css.queueTitle}>{name}</span>
+				<span className={css.queueText}>
+					<span className={css.queueTitle}>{name}</span>
+					{subtitle && <span className={css.queueSubtitle}>{subtitle}</span>}
+				</span>
 			</SpottableButton>
 			{!isFirst && (
 				<SpottableButton className={css.queueAction} data-action="up" onClick={handleUp} aria-label={$L('Move Up')}>

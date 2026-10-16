@@ -1,6 +1,6 @@
 import {act, renderHook} from '@testing-library/react';
 
-import {SyncPlayProvider, useSyncPlay} from './SyncPlayContext';
+import {SyncPlayProvider, followsQueueUpdate, useSyncPlay} from './SyncPlayContext';
 
 // The CLI ships a second copy of React, so the components' JSX goes through the copy under test.
 jest.mock('react/jsx-dev-runtime', () => {
@@ -60,5 +60,27 @@ describe('Ignore wait', () => {
 		await act(() => result.current.toggleIgnoreWait());
 		act(() => mockEmit('groupJoined', {GroupId: 'g2'}));
 		expect(result.current.ignoreWait).toBe(false);
+	});
+});
+
+describe('followsQueueUpdate', () => {
+	const update = (startsPlayback) => ({item: {Id: 'aaaaaaaa-0000-0000-0000-000000000001'}, startsPlayback});
+
+	test('plays a new item whatever this device is doing', () => {
+		expect(followsQueueUpdate(update(true), null)).toBe(true);
+		expect(followsQueueUpdate(update(true), 'aaaaaaaa000000000000000000000001')).toBe(true);
+	});
+
+	test('a reorder or a removal leaves this device alone when nothing is playing', () => {
+		expect(followsQueueUpdate(update(false), null)).toBe(false);
+		expect(followsQueueUpdate(update(false), undefined)).toBe(false);
+	});
+
+	test('nor when the player already shows that item, however its id is spelled', () => {
+		expect(followsQueueUpdate(update(false), 'AAAAAAAA000000000000000000000001')).toBe(false);
+	});
+
+	test('but moves a player that shows something else', () => {
+		expect(followsQueueUpdate(update(false), 'bbbbbbbb000000000000000000000002')).toBe(true);
 	});
 });

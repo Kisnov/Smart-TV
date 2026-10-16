@@ -10,6 +10,11 @@ const SyncPlayContext = createContext(null);
 export const itemIdKey = (id) => String(id || '').replace(/-/g, '').toLowerCase();
 const sameItemId = (a, b) => !!a && !!b && itemIdKey(a) === itemIdKey(b);
 
+// A reorder, a removal or a repeat/shuffle change only moves a player showing something else.
+// With nothing playing, this device stays where it is, as on Core.
+export const followsQueueUpdate = (update, playingItemId) =>
+	update.startsPlayback || (Boolean(playingItemId) && !sameItemId(playingItemId, update.item.Id));
+
 export const useSyncPlay = () => useContext(SyncPlayContext);
 
 export const SyncPlayProvider = ({children}) => {
