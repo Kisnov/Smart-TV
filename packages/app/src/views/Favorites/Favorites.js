@@ -11,6 +11,7 @@ import * as connectionPool from '../../services/connectionPool';
 import {withoutBlockedItems} from '../../services/parentalControls';
 import BackdropLayer from '../../components/BackdropLayer';
 import DetailsTabBar from '../../components/DetailsTabBar';
+import LoadFailedNotice from '../../components/LoadFailedNotice';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import {getBackdropId, getImageUrl} from '../../utils/helpers';
 import {showsWatchedCheck} from '../../utils/playedState';
@@ -82,6 +83,10 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 
 	const [allItems, setAllItems] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
+	// The first page failed, so the empty grid says so rather than "No favorites found".
+	const [loadFailed, setLoadFailed] = useState(false);
+	const [reloadKey, setReloadKey] = useState(0);
+	const loadGenerationRef = useRef(0);
 	const [totalCount, setTotalCount] = useState(0);
 	const [sortKey, setSortKey] = useStorage('favorites_sortKey', 'SortName');
 	const [typeFilterKey, setTypeFilterKey] = useState('all');
@@ -123,6 +128,8 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 		countsByKey,
 		totalCount: tabsTotalCount,
 		isLoading: tabsLoading,
+		loadFailed: tabsLoadFailed,
+		retry: retryTabs,
 		loadMore
 	} = useFavoriteTabs({
 		api,
@@ -189,6 +196,8 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 	const loadItems = useCallback(async (startIndex = 0, append = false) => {
 		if (append && loadingMoreRef.current) return;
 		if (append) loadingMoreRef.current = true;
+		if (!append) setLoadFailed(false);
+		const generation = append ? loadGenerationRef.current : ++loadGenerationRef.current;
 
 		try {
 			if (unifiedMode) {
@@ -223,6 +232,7 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 			}
 		} catch (err) {
 			console.error('Failed to load favorites:', err);
+			if (!append && generation === loadGenerationRef.current) setLoadFailed(true);
 		} finally {
 			setIsLoading(false);
 			loadingMoreRef.current = false;
@@ -237,7 +247,9 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 		apiFetchIndexRef.current = 0;
 		initialFocusDoneRef.current = false;
 		loadItems(0, false);
-	}, [viewStyleLoaded, isHome, sortKey, typeFilterKey, loadItems]);
+	}, [viewStyleLoaded, isHome, sortKey, typeFilterKey, loadItems, reloadKey]);
+
+	const retryLoad = useCallback(() => setReloadKey((key) => key + 1), []);
 
 	useEffect(() => {
 		if (displayItems.length > 0 && !displayLoading && !initialFocusDoneRef.current) {
@@ -513,7 +525,15 @@ const Favorites = ({onSelectItem, onSelectPerson, onHome, backHandlerRef}) => {
 							<LoadingSpinner />
 						</div>
 					) : displayItems.length === 0 ? (
-						<div className={css.empty}>{emptyText}</div>
+						(isHome ? tabsLoadFailed : loadFailed) ? (
+							<LoadFailedNotice
+								spotlightId='favorites-load-retry'
+								onRetry={isHome ? retryTabs : retryLoad}
+								autoFocus={!showSortPanel && !showSettingsPanel}
+							/>
+						) : (
+							<div className={css.empty}>{emptyText}</div>
+						)
 					) : (
 						<div className={css.gridWrapper} {...menuHold}>
 							<VirtualGridList
