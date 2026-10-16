@@ -60,7 +60,8 @@ import LiveFailedCard from './LiveFailedCard';
 import LoadingAnimationLayer from '../../components/LoadingAnimation';
 import useSleepTimer from './useSleepTimer';
 import useSyncPlayCommands from './useSyncPlayCommands';
-import useSegmentPopups from './useSegmentPopups';
+import useSegmentPopups, {isSkipPromptFocused} from './useSegmentPopups';
+import useChannelKeys from './useChannelKeys';
 import {isPreroll, nextInQueue, shouldAutoAdvance} from '../../utils/cinemaMode';
 import {driftMs, needsSeek, seekLanded, correctionOptions, DRIFT_CHECK_MS, GROUP_SEEK_SETTLE_TIMEOUT_MS} from '../../utils/syncDrift';
 import {createReadyGate} from '../../utils/syncReady';
@@ -72,6 +73,8 @@ import {
 } from './PlayerConstants';
 import {
 	toSubtitleLanguage,
+	subtitleDownloadLanguages,
+	searchRemoteSubtitlesIn,
 	mapSubtitleStreamsFromMediaSource,
 	mapRemoteSubtitleOptions,
 	pollForSubtitleAppearance,
@@ -187,9 +190,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	subtitleOffsetRef.current = subtitleOffset;
 	const [controlsVisible, setControlsVisible] = useState(false);
 	const [activeModal, setActiveModal] = useState(null);
-	// Read by the time update, which runs from an interval or a media event and so sees no fresh state.
-	const episodesOpenRef = useRef(false);
-	episodesOpenRef.current = activeModal === 'episodes';
+	// Read by the time update, whose handler only catches up with state after a render.
+	const activeModalRef = useRef(null);
+	activeModalRef.current = activeModal;
 	// Seeded from the advanced playback menu, which picks a cap before playback starts.
 	const [selectedQuality, setSelectedQuality] = useState(initialQuality || null);
 	const [remoteSubtitleResults, setRemoteSubtitleResults] = useState([]);
@@ -1041,8 +1044,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					};
 				} else if (autoAudio) {
 					setSelectedAudioIndex(autoAudio.index);
-					// Only switch via the audioTracks API when it isn't the file's native default
-					pendingAudioRef.current = !audioNegotiated && autoAudio.index !== defaultAudio?.index
+					// Direct play always sets the chosen track, since the TV can start on another one
+					// whatever the file flags as default.
+					pendingAudioRef.current = !audioNegotiated
+						&& (result.playMethod === playback.PlayMethod.DirectPlay || autoAudio.index !== defaultAudio?.index)
 						? {streamIndex: autoAudio.index, audioStreams: result.audioStreams || []}
 						: null;
 				}
@@ -1649,14 +1654,23 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					if (video.audioTracks?.length > 1) {
 						const matchIndex = matchAudioTrack(video.audioTracks, pending.audioStreams, pending.streamIndex);
 						if (matchIndex >= 0) {
-							for (let i = 0; i < video.audioTracks.length; i++) {
-								video.audioTracks[i].enabled = (i === matchIndex);
+							const playingIndex = Array.prototype.findIndex.call(video.audioTracks, (track) => track.enabled);
+							const switched = playingIndex !== matchIndex;
+							if (switched) {
+								for (let i = 0; i < video.audioTracks.length; i++) {
+									video.audioTracks[i].enabled = (i === matchIndex);
+								}
 							}
-							console.log('[Player] Applied initial audio track via audioTracks API, index:', pending.streamIndex, 'matchIndex:', matchIndex);
+							serverLogger.playback('Audio: initial track set', {
+								jellyfinIndex: pending.streamIndex,
+								matchIndex,
+								playingIndex,
+								switched
+							});
 						}
 						pendingAudioRef.current = null;
-					} else if (video.audioTracks?.length > 0) {
-						// Single audio track, nothing to switch
+					} else if (!video.audioTracks || video.audioTracks.length > 0) {
+						// No track list or a single track, nothing to switch
 						pendingAudioRef.current = null;
 					}
 				}
@@ -1773,7 +1787,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		onPlayNext(episode, options);
 	}, [onPlayNext, item.Id]);
 
-	const {carouselOpenRef, openCarousel, markChannelPlaying, carouselProps} = useChannelCarousel({
+	const {carouselOpenRef, openCarousel, stepChannel, markChannelPlaying, carouselProps} = useChannelCarousel({
 		item, isLiveTV, liveTvChannels, sortBy: settings.liveTvChannelSortBy,
 		error, controlsVisible, showControls, hideControls, setFocusRow,
 		onSwitchChannel: onPlayNextWithCleanup
@@ -1785,8 +1799,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (!groupSeekTo(endTicks)) seekToTicks(endTicks);
 	}, [seekToTicks, groupSeekTo]);
 
+	// Left and Down from the skip prompt, and a skip taken by hand, land on the playback bar.
+	const focusSeekbar = useCallback(() => {
+		setFocusRow('progress');
+		window.requestAnimationFrame(() => Spotlight.focus('progress-bar'));
+	}, []);
+
 	const {
-		skipSegment, showSkipCredits, showNextEpisode, nextEpisodeCountdown,
+		skipSegment, skipPromptShown, suppressSeekPrompts, showSkipCredits, showNextEpisode, nextEpisodeCountdown,
 		handleSkipSegment, handlePlayNextNow,
 		askStillWatching, handleStillWatchingContinue, handleStillWatchingStop, cancelNextEpisodeCountdown,
 		checkSegments, handlePopupKeyDown, resetPopups, noteViewerActivity
@@ -1794,6 +1814,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		mediaSegments, nextEpisode, settings, runTimeRef,
 		activeModal, controlsVisible, hideControls, showControls,
 		onSeekToSegmentEnd,
+		onFocusSeekbar: focusSeekbar,
 		onPlayNext: onPlayNextWithCleanup,
 		onPausePlayback: () => {
 			videoRef.current?.pause();
@@ -1853,9 +1874,16 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (videoRef.current) {
 			const rawTime = videoRef.current.currentTime;
 			const time = rawTime;
-			// Nothing on screen reads the time while the episode panel is up, and each update redraws the
-			// whole player, which is what makes that panel drag. The first tick after it closes catches up.
-			if (!episodesOpenRef.current) setCurrentTime(time);
+			// Each update redraws the whole player, which is what makes an open picker or the episode
+			// panel drag on the weaker sets. A modal hides the OSD and the OSD only shows whole seconds,
+			// so the time only moves when it would show, and the first tick after a modal closes catches
+			// up. Lyrics and the offset overlay follow it closely, so they still get every tick.
+			const modal = activeModalRef.current;
+			if (isAudioMode || modal === 'subtitleOffset') {
+				setCurrentTime(time);
+			} else if (!modal) {
+				setCurrentTime((shown) => (Math.floor(shown) === Math.floor(time) ? shown : time));
+			}
 			const ticks = Math.floor(time * 10000000);
 			if (ticks !== positionRef.current) {
 				stalledRef.current = false;
@@ -1899,7 +1927,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 			checkSegments(ticks);
 		}
-	}, [checkSegments, subtitleTrackEvents, subtitleOffset, settleGroupSeek]);
+	}, [checkSegments, subtitleTrackEvents, subtitleOffset, settleGroupSeek, isAudioMode]);
 
 	const handleWaiting = useCallback(() => {
 		setIsBuffering(true);
@@ -2194,13 +2222,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		noteViewerActivity();
 		if (held.ticks != null) {
 			noteSeek();
+			suppressSeekPrompts();
 			seekToTicks(held.ticks);
 		}
 		setIsSeeking(false);
 		videoRef.current?.play()?.catch?.(() => {});
 		healthMonitorRef.current?.setPaused(false);
 		return true;
-	}, [noteViewerActivity, seekToTicks, noteSeek]);
+	}, [noteViewerActivity, seekToTicks, noteSeek, suppressSeekPrompts]);
 
 	// Moving off the bar lands a held scrub where it is and stays paused, and play then carries on
 	// from there.
@@ -2208,9 +2237,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		const held = scrubHoldRef.current;
 		if (!held.active || held.ticks == null) return;
 		noteSeek();
+		suppressSeekPrompts();
 		seekToTicks(held.ticks);
 		scrubHoldRef.current = {...held, ticks: null};
-	}, [seekToTicks, noteSeek]);
+	}, [seekToTicks, noteSeek, suppressSeekPrompts]);
 
 	// A skip or a chapter jump lands somewhere the scrub knows nothing about, so a held scrub is
 	// dropped and playback carries on as it was.
@@ -2245,6 +2275,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const scrubBy = useCallback((deltaSeconds) => {
 		if (!videoRef.current) return;
 		noteViewerActivity();
+		suppressSeekPrompts();
 		beginScrub();
 		setIsSeeking(true);
 		const held = scrubHoldRef.current;
@@ -2262,7 +2293,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		const ticks = Math.max(0, Math.min(maxTicks, base + Math.floor(deltaSeconds * 10000000)));
 		scrubHoldRef.current = {...held, ticks};
 		setSeekPosition(ticks);
-	}, [noteViewerActivity, beginScrub, seekByOffset, duration, noteSeek]);
+	}, [noteViewerActivity, suppressSeekPrompts, beginScrub, seekByOffset, duration, noteSeek]);
 
 	const handlePlayPause = useCallback(() => {
 		if (resumeHeldScrub()) {
@@ -2297,21 +2328,30 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		}
 	}, [isPaused, settings.unpauseRewind, isInGroup, showControls, noteViewerActivity, resumeHeldScrub, liveRecovery]);
 
+	// A pointer click on the picture plays or pauses and brings the controls up. Clicks on a control, an
+	// open picker or the still watching question bubble up here as well, so they only bring the controls up.
+	const handleSurfaceClick = useCallback((e) => {
+		showControls();
+		if (!activeModal && !askStillWatching && !e.target.closest?.('.spottable')) handlePlayPause();
+	}, [showControls, activeModal, askStillWatching, handlePlayPause]);
+
 	const handleRewind = useCallback(() => {
 		if (!videoRef.current) return;
 		noteViewerActivity();
 		dropScrub();
 		noteSeek();
+		suppressSeekPrompts();
 		seekByOffset(-skipBackSeconds(settings));
-	}, [settings, seekByOffset, noteViewerActivity, dropScrub, noteSeek]);
+	}, [settings, seekByOffset, noteViewerActivity, dropScrub, noteSeek, suppressSeekPrompts]);
 
 	const handleForward = useCallback(() => {
 		if (!videoRef.current) return;
 		noteViewerActivity();
 		dropScrub();
 		noteSeek();
+		suppressSeekPrompts();
 		seekByOffset(skipForwardSeconds(settings));
-	}, [settings, seekByOffset, noteViewerActivity, dropScrub, noteSeek]);
+	}, [settings, seekByOffset, noteViewerActivity, dropScrub, noteSeek, suppressSeekPrompts]);
 
 	const playFromSystem = useCallback(() => { if (isPaused) handlePlayPause(); }, [isPaused, handlePlayPause]);
 	const pauseFromSystem = useCallback(() => { if (!isPaused) handlePlayPause(); }, [isPaused, handlePlayPause]);
@@ -2486,15 +2526,18 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		const selectedSubtitle = subtitleStreams.find((s) => s.index === selectedSubtitleIndex);
 		const selectedAudio = audioStreams.find((s) => s.index === selectedAudioIndex);
-		const language = toSubtitleLanguage(
-			selectedSubtitle?.language,
-			selectedAudio?.language,
-			subtitleStreams[0]?.language,
-			audioStreams[0]?.language
+		const languages = subtitleDownloadLanguages(
+			settings.subtitleDownloadLanguages,
+			toSubtitleLanguage(
+				selectedSubtitle?.language,
+				selectedAudio?.language,
+				subtitleStreams[0]?.language,
+				audioStreams[0]?.language
+			)
 		);
 
 		try {
-			const results = await jellyfinApi.searchRemoteSubtitles(item.Id, language);
+			const results = await searchRemoteSubtitlesIn(jellyfinApi, item.Id, languages);
 			setRemoteSubtitleResults(mapRemoteSubtitleOptions(results));
 			window.requestAnimationFrame(() => {
 				const firstResult = document.querySelector('[data-modal="subtitleDownload"] button');
@@ -2506,7 +2549,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		} finally {
 			setIsSearchingRemoteSubtitles(false);
 		}
-	}, [item, subtitleStreams, selectedSubtitleIndex, audioStreams, selectedAudioIndex, openModal]);
+	}, [item, subtitleStreams, selectedSubtitleIndex, audioStreams, selectedAudioIndex, openModal, settings.subtitleDownloadLanguages]);
 
 	const handleSelectRemoteSubtitle = useCallback(async (e) => {
 		const index = parseInt(e.currentTarget.dataset.index, 10);
@@ -2670,13 +2713,24 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		closeModal();
 	}, [closeModal]);
 
+	const seekToChapter = useCallback((ticks) => {
+		dropScrub();
+		suppressSeekPrompts();
+		if (!groupSeekTo(ticks)) seekToTicks(ticks);
+	}, [seekToTicks, groupSeekTo, dropScrub, suppressSeekPrompts]);
+
 	const handleSelectChapter = useCallback((e) => {
 		const ticks = parseInt(e.currentTarget.dataset.ticks, 10);
 		if (isNaN(ticks) || ticks < 0) return;
-		dropScrub();
-		if (!groupSeekTo(ticks)) seekToTicks(ticks);
+		seekToChapter(ticks);
 		closeModal();
-	}, [closeModal, seekToTicks, groupSeekTo, dropScrub]);
+	}, [closeModal, seekToChapter]);
+
+	const handleChannelKey = useChannelKeys({
+		item, videoQueueRef, chapters, positionRef, isLiveTV, isAudioMode,
+		stepChannel, showControls, seekToChapter, noteViewerActivity,
+		onPlayItem: onPlayNextWithCleanup, onPlayNextNow: handlePlayNextNow, onNextTrack: handleNextTrack, onPrevTrack: handlePrevTrack
+	});
 
 	// Picks an episode from the browser. An episode part way through carries on from where it
 	// stopped and an unstarted one begins at the top, both of which the player already does for
@@ -2699,8 +2753,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		const percent = (e.clientX - rect.left) / rect.width;
 		const newTime = percent * duration;
 		const newTicks = Math.floor(newTime * 10000000);
-		if (newTicks && !groupSeekTo(newTicks)) seekToTicks(newTicks);
-	}, [duration, seekToTicks, groupSeekTo]);
+		if (!newTicks) return;
+		suppressSeekPrompts();
+		if (!groupSeekTo(newTicks)) seekToTicks(newTicks);
+	}, [duration, seekToTicks, groupSeekTo, suppressSeekPrompts]);
 
 	const handleProgressKeyDown = useCallback((e) => {
 		if (!videoRef.current) return;
@@ -3026,6 +3082,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			const key = e.key || e.keyCode;
 			// The channel carousel takes every key while it's up.
 			if (carouselOpenRef.current) return;
+			// The pointer timing out isn't the viewer asking for the controls. It's left alone rather than
+			// consumed, since Spotlight needs it to leave pointer mode.
+			if (e.keyCode === KEYS.POINTER_HIDE) return;
 
 			if (handlePopupKeyDown(e)) return;
 
@@ -3072,6 +3131,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				handleBack();
 				return;
 			}
+			if (e.keyCode === KEYS.CHANNEL_UP || e.keyCode === KEYS.CHANNEL_DOWN) {
+				e.preventDefault();
+				e.stopPropagation();
+				if (!activeModal) handleChannelKey(e.keyCode === KEYS.CHANNEL_UP ? 1 : -1);
+				return;
+			}
 
 			// Up during live playback opens the channel carousel, over the OSD or not.
 			if (isLiveTV && !activeModal && (key === 'ArrowUp' || e.keyCode === 38)) {
@@ -3106,7 +3171,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 			// Left/Right when controls hidden -> show controls and focus on seekbar
 			if (!controlsVisible && !activeModal) {
-				if ((key === 'Enter' || e.keyCode === 13) && (skipSegment || showSkipCredits || showNextEpisode)) {
+				if ((key === 'Enter' || e.keyCode === 13) && (isSkipPromptFocused() || showSkipCredits || showNextEpisode)) {
 					return;
 				}
 				if (key === 'Enter' || e.keyCode === 13) {
@@ -3211,6 +3276,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (!controlsVisible) return;
 
 		window.requestAnimationFrame(() => {
+			// The skip prompt keeps the remote when the controls come up around it.
+			if (isSkipPromptFocused()) return;
 			if (focusRow === 'progress') {
 				Spotlight.focus('progress-bar');
 			} else if (focusRow === 'bottom') {
@@ -3220,7 +3287,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	}, [focusRow, controlsVisible]);
 
 	return (
-		<div className={css.container} onClick={!isLoading && !error ? showControls : undefined}>
+		<div className={css.container} onClick={!isLoading && !error ? handleSurfaceClick : undefined}>
 			<div
 				ref={containerRef}
 				className={css.videoPlayer}
@@ -3304,14 +3371,16 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				</NextEpisodeContainer>
 			)}
 
-			{!isLoading && !error && skipSegment && !isAudioMode && !isLiveTV && !activeModal && !controlsVisible && (
+			{!isLoading && !error && skipPromptShown && !isAudioMode && !isLiveTV && !activeModal && (
 				<SkipSegmentOverlay
+					key={skipSegment.start}
 					type={skipSegment.type}
 					remainingSeconds={skipSegment.remainingSeconds}
 					progress={skipSegment.progress}
 					countdownStyle={settings.nextUpCountdownStyle ?? 'both'}
 					onSkip={handleSkipSegment}
 					spotlightId="skip-segment-btn"
+					controlsVisible={controlsVisible}
 				/>
 			)}
 

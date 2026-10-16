@@ -811,6 +811,19 @@ export const SETTINGS_SCHEMA = [
 				rows: [
 					{kind: KIND.SECTION, id: 'subtitlesGeneral', label: () => $L('General')},
 					{kind: KIND.OPTION, key: 'subtitleMode', label: () => $L('Subtitle Mode'), options: getSubtitleModeOptions, fallback: () => $L('Flagged'), icon: 'subtitles'},
+					{
+						kind: KIND.NAV,
+						id: 'subtitleDownloadLanguages',
+						label: () => $L('Subtitle Download Languages'),
+						desc: (ctx) => {
+							const picked = ctx.settings.subtitleDownloadLanguages || [];
+							if (picked.length === 0) return $L('Auto');
+							const options = getSubtitleLanguageOptions();
+							return picked.map((code) => options.find((option) => option.value === code)?.label || code).join(', ');
+						},
+						icon: 'download',
+						action: (ctx) => ctx.actions.openSubtitleDownloadLanguages()
+					},
 					{kind: KIND.SECTION, id: 'subtitleStream', label: () => $L('Subtitle Stream'), when: whenSubtitlesOn},
 					{kind: KIND.OPTION, key: 'subtitleLanguage', label: () => $L('Default Subtitle Language'), options: getSubtitleLanguageOptions, fallback: () => $L('None'), icon: 'language', when: whenSubtitlesOn, padded: true},
 					{kind: KIND.OPTION, key: 'fallbackSubtitleLanguage', label: () => $L('Fallback Subtitle Language'), options: getSubtitleLanguageOptions, fallback: () => $L('None'), icon: 'language', when: whenSubtitlesOn, padded: true},

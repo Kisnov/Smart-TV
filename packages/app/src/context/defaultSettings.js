@@ -38,6 +38,9 @@ export const defaultSettings = {
 	preferDefaultAudioTrack: false,
 	preferAudioDescription: false,
 	fallbackSubtitleLanguage: '',
+	// Languages a subtitle download searches. Empty searches the one the
+	// player guesses. Kept on this device, not synced.
+	subtitleDownloadLanguages: [],
 	preferSdhSubtitles: false,
 	preferTextSubtitles: false,
 	preferExternalSubtitles: false,

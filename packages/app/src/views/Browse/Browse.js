@@ -15,6 +15,7 @@ import SeerrTileRow from '../../components/SeerrTileRow';
 import LibraryButtonRow from '../../components/LibraryButtonRow';
 import {SkeletonShimmer, skeletonTitleWidths} from '../../components/Skeleton';
 import {getImageUrl, getBackdropId} from '../../utils/helpers';
+import {channelForProgram, isLiveTvProgram} from '../../utils/liveTvLibrary';
 import {focusedCardIndex, cardToRestore, focusedRowIndex, rowToRestore} from '../../utils/rowFocusMemory';
 import {radiusToCss, shadowToCss, toCssColor} from '../../theme/themeSpec';
 import DetailSection from './DetailSection';
@@ -480,6 +481,8 @@ const Browse = ({
 			onSelectLibrary?.(item);
 		} else if (item.Type === 'Recording') {
 			onPlayRecording?.(item);
+		} else if (isLiveTvProgram(item)) {
+			onSelectItem?.(channelForProgram(item));
 		} else {
 			onSelectItem?.(item);
 		}
@@ -535,6 +538,19 @@ const Browse = ({
 			handleSelectItem(item);
 		}
 	}, [handleSelectSeerrItem, handleSelectItem]);
+
+	// The rows ignore a changed callback, so one drawn while Home sat hidden behind Details kept a
+	// handler that cant navigate. These always call the current one.
+	const latestSelectRef = useRef(null);
+	useLayoutEffect(() => {
+		latestSelectRef.current = {item: handleSelectItem, genre: handleSelectGenreItem, seerr: handleSelectSeerrItem, external: handleSelectExternalItem};
+	}, [handleSelectItem, handleSelectGenreItem, handleSelectSeerrItem, handleSelectExternalItem]);
+	const rowSelect = useMemo(() => ({
+		item: (picked) => latestSelectRef.current.item(picked),
+		genre: (picked) => latestSelectRef.current.genre(picked),
+		seerr: (picked) => latestSelectRef.current.seerr(picked),
+		external: (picked) => latestSelectRef.current.external(picked)
+	}), []);
 
 	const handleNavigateDownFromFeatured = useCallback(() => {
 		setBrowseMode('rows');
@@ -746,7 +762,7 @@ const Browse = ({
 									rowId={row.id}
 									title={row.title}
 									items={row.items}
-									onSelectItem={handleSelectItem}
+									onSelectItem={rowSelect.item}
 									onFocus={handleRowFocus}
 									onFocusItem={handleFocusItem}
 									rowIndex={index}
@@ -764,7 +780,7 @@ const Browse = ({
 									title={row.title}
 									items={row.items}
 									cardType={row.type}
-									onSelectItem={handleSelectSeerrItem}
+									onSelectItem={rowSelect.seerr}
 									onFocus={handleRowFocus}
 									onFocusItem={handleFocusItem}
 									rowIndex={index}
@@ -774,10 +790,10 @@ const Browse = ({
 								/>
 							);
 						}
-						let selectHandler = handleSelectItem;
-						if (row.isSeerrRow || row.isOnlineRecoRow) selectHandler = handleSelectSeerrItem;
-						else if (row.isExternalRow) selectHandler = handleSelectExternalItem;
-						else if (row.isGenreRow) selectHandler = handleSelectGenreItem;
+						let selectHandler = rowSelect.item;
+						if (row.isSeerrRow || row.isOnlineRecoRow) selectHandler = rowSelect.seerr;
+						else if (row.isExternalRow) selectHandler = rowSelect.external;
+						else if (row.isGenreRow) selectHandler = rowSelect.genre;
 						// Per library rows share one override under the id that gates them.
 						// Overrides are a classic rows feature, the modern layout keeps its
 						// own arrangement untouched.

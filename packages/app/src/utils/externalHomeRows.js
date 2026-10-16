@@ -3,6 +3,7 @@ import seerrApi from '../services/seerrApi';
 import {fetchCustomRow, constructSourceUrl} from '../services/externalRowsApi';
 import {fetchWithTimeout} from './fetchTimeout';
 import {seasonalTitle} from './seasonalTitles';
+import {uiLocale} from './uiLocale';
 
 const HOME_ROW_LIMIT = 20;
 const VALIDATE_TIMEOUT_MS = 45000;
@@ -266,7 +267,7 @@ const formatCalendarDate = (dateStr) => {
 	if (!dateStr) return '';
 	const d = new Date(dateStr);
 	if (Number.isNaN(d.getTime())) return '';
-	return d.toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+	return d.toLocaleDateString(uiLocale(), {month: 'short', day: 'numeric'});
 };
 
 const arrGet = async (url) => {
@@ -429,10 +430,10 @@ export const fetchCalendarRows = async (settings, {radarrEnabled = false, sonarr
 // fetch of a large list can take the server a while, so this waits longer than a home
 // row. It doesn't force a refresh either, so a retry gets the copy the server cached
 // after an earlier attempt gave up.
-export const validateCustomRow = async (row) => {
+export const validateCustomRow = async (row, options = {}) => {
 	const items = await fetchCustomRow(
 		{source: row.source, type: row.type, params: row.params},
-		{timeoutMs: VALIDATE_TIMEOUT_MS}
+		{timeoutMs: VALIDATE_TIMEOUT_MS, ...options}
 	);
 	if (items.length > 0) return {ok: true};
 	return {error: $L('That list returned no items. Check the URL: {url}').replace('{url}', constructSourceUrl(row.source, row.type, row.params))};

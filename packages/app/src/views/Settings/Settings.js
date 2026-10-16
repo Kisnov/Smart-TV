@@ -27,7 +27,8 @@ import {checkForUpdatesDetailed} from '../../services/versionChecker';
 import QrLinkView from './QrLinkView';
 import {formatPlaybackTimeSlot} from '../../utils/playbackTimeLabels';
 import {getSubtitleOverlayStyle, getSubtitleTextStyle} from '../../utils/subtitleConstants';
-import {getImageTypeOptions, getLabel} from './settingsOptions';
+import {getImageTypeOptions, getLabel, getSubtitleLanguageOptions} from './settingsOptions';
+import {MAX_SUBTITLE_DOWNLOAD_LANGUAGES} from '../Player/remoteSubtitleUtils';
 import {SCHEMA_BY_KEY, SETTINGS_SCHEMA, resolve, spotlightIdOf} from './settingsSchema';
 import {MIN_QUERY_LENGTH, buildSettingsIndex, matchSettings, resultSpotlightId} from './settingsSearch';
 import {PLUGIN_SECTION_RENDER_STEP} from './homeSectionsModel';
@@ -56,7 +57,7 @@ import {getBlockedRatings, setBlockedRatings} from '../../services/parentalContr
 import useParentalFilter from '../../hooks/useParentalFilter';
 import {SeerrHomeRowsView, ImdbListsView} from './HomeRowToggleViews';
 import {ExternalTmdbListsView, ExternalCalendarsView, ExternalCustomRowsView, SeasonalRowView} from './ExternalRowViews';
-import {RatingSourcesView, ExcludedGenresView, PinCodeView, BlockedRatingsView, RowImageTypesView} from './PickerViews';
+import {RatingSourcesView, ExcludedGenresView, PinCodeView, BlockedRatingsView, RowImageTypesView, SubtitleDownloadLanguagesView} from './PickerViews';
 import {KidsModeSetView, KidsModeExitView} from './KidsModeViews';
 import HomeRowsView from './HomeRowsView';
 import ButtonLayoutView from './ButtonLayoutView';
@@ -252,6 +253,8 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 				Spotlight.focus('library-order-view');
 			} else if (cv.view === 'blockedRatings') {
 				Spotlight.focus('blocked-ratings-view');
+			} else if (cv.view === 'subtitleDownloadLanguages') {
+				Spotlight.focus('subtitle-download-languages-view');
 			} else if (cv.view === 'qrLink') {
 				Spotlight.focus('qr-link-close');
 			} else if (cv.view === 'rowImageTypes') {
@@ -461,6 +464,19 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			? current.filter((value) => value !== rating)
 			: [...current, rating]);
 	}, []);
+
+	const openSubtitleDownloadLanguages = useCallback(() => {
+		pushView({view: 'subtitleDownloadLanguages', returnFocusTo: 'setting-subtitleDownloadLanguages'});
+	}, [pushView]);
+
+	const toggleSubtitleDownloadLanguage = useCallback((language) => {
+		const picked = settings.subtitleDownloadLanguages || [];
+		if (picked.includes(language)) {
+			updateSetting('subtitleDownloadLanguages', picked.filter((value) => value !== language));
+		} else if (picked.length < MAX_SUBTITLE_DOWNLOAD_LANGUAGES) {
+			updateSetting('subtitleDownloadLanguages', [...picked, language]);
+		}
+	}, [settings.subtitleDownloadLanguages, updateSetting]);
 
 	const openRatingSources = useCallback(() => {
 		const sources = Array.isArray(settings.mdblistRatingSources) ? [...settings.mdblistRatingSources] : [];
@@ -843,7 +859,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		await Promise.all(enabledRows.map(async (row) => {
 			try {
 				// forceRefresh also asks the plugin to rebuild its own cache.
-				await fetchCustomRow(row, {forceRefresh: true});
+				await fetchCustomRow(row, {forceRefresh: true, language: settings.uiLanguage});
 				refreshed += 1;
 			} catch (e) {
 				void e;
@@ -855,7 +871,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 				.replace('{done}', String(refreshed))
 				.replace('{total}', String(enabledRows.length))
 		);
-	}, [settings.customHomeRows, customRowsRefreshing]);
+	}, [settings.customHomeRows, settings.uiLanguage, customRowsRefreshing]);
 
 	const resetCustomRowForm = useCallback(() => {
 		setCustomRowUrl('');
@@ -893,7 +909,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		};
 		if (detected.source === 'letterboxd') row.showUserRatings = customRowShowUserRatings;
 		setCustomRowSaving(true);
-		const result = await validateCustomRow(row);
+		const result = await validateCustomRow(row, {language: settings.uiLanguage});
 		setCustomRowSaving(false);
 		if (result.error) {
 			setCustomRowError(result.error);
@@ -906,7 +922,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		resetCustomRowForm();
 	}, [customRowMode, customRowUrl, customRowSourceKey, customRowParamA, customRowParamB,
 		customRowName, customRowSortBy, customRowSortOrder, customRowShowUserRatings,
-		editingCustomRowId, settings.customHomeRows, updateSetting, resetCustomRowForm]);
+		editingCustomRowId, settings.customHomeRows, settings.uiLanguage, updateSetting, resetCustomRowForm]);
 
 	// Loads a stored row into the manual form so its ids and sorting can change
 	// without removing and re-adding it.
@@ -985,6 +1001,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			openLibraries,
 			openLibraryOrder,
 			openParentalControls,
+			openSubtitleDownloadLanguages,
 			openQrLink,
 			openRatingSources,
 			openRowImageTypes,
@@ -1014,7 +1031,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		settings, capabilities, seerr, achievements, seerrLabel, isSeerr, serverUrl, ratingsResetArmed, resetRatingsSettings, toggleExperimentalTruehd, updateSetting, refreshPlugin,
 		serverVersion, availableThemes, activeThemeId, openThemes, openThemeStore, openHomeRows,
 		openDetailButtons, openOsdButtons, openDetailMetadata, openDetailSections, openDiagnostics,
-		openPinCode, openKidsMode, openLibraries, openLibraryOrder, openParentalControls, openQrLink, openRatingSources, openRowImageTypes, openExcludedGenres, openMediaBarLibraries,
+		openPinCode, openKidsMode, openLibraries, openLibraryOrder, openParentalControls, openSubtitleDownloadLanguages, openQrLink, openRatingSources, openRowImageTypes, openExcludedGenres, openMediaBarLibraries,
 		openMediaBarCollections, openScreensaverLibraries, openScreensaverCollections, openScreensaverGenres,
 		openImdbLists, openSeasonalRow, openExternalTmdbLists, openExternalCalendars,
 		openExternalCustomRows, openSeerrHomeRows, openScreen, onRunSetupWizard, canProbeDevice
@@ -1428,6 +1445,14 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			)}
 			{viewName === 'qrLink' && (
 				<QrLinkView title={baseView.label} url={baseView.url} onClose={popView} />
+			)}
+			{viewName === 'subtitleDownloadLanguages' && (
+				<SubtitleDownloadLanguagesView
+					options={getSubtitleLanguageOptions().filter((option) => option.value)}
+					picked={settings.subtitleDownloadLanguages || []}
+					max={MAX_SUBTITLE_DOWNLOAD_LANGUAGES}
+					onToggleLanguage={toggleSubtitleDownloadLanguage}
+				/>
 			)}
 			{viewName === 'blockedRatings' && (
 				<BlockedRatingsView
