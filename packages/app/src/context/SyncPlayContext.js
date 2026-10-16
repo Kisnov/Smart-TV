@@ -173,6 +173,18 @@ export const SyncPlayProvider = ({children}) => {
 	// time since.
 	const getGroupPositionTicks = useCallback(() => syncPlayService.getGroupPositionTicks(), []);
 
+	// Moving on inside a group is the group's to do, as on Core. The next or previous entry goes
+	// by its own request, which the server ignores once the group has already moved on.
+	const moveGroupTo = useCallback((itemId) => {
+		const entries = playQueue?.Playlist || [];
+		const index = playQueue?.PlayingItemIndex ?? -1;
+		const entry = entries.find((e) => sameItemId(e.ItemId, itemId));
+		if (!entry) syncPlayService.setNewQueue([itemId]);
+		else if (index >= 0 && entry === entries[index + 1]) syncPlayService.nextItem();
+		else if (index > 0 && entry === entries[index - 1]) syncPlayService.previousItem();
+		else syncPlayService.setPlaylistItem(entry.PlaylistItemId);
+	}, [playQueue]);
+
 	const openDialog = useCallback(() => {
 		if (settings.syncplayEnabled === false) return;
 		setIsDialogOpen(true);
@@ -194,6 +206,7 @@ export const SyncPlayProvider = ({children}) => {
 		playQueueUpdate,
 		refreshGroups,
 		getGroupPositionTicks,
+		moveGroupTo,
 		getGroup: syncPlayService.getGroup,
 		createGroup: handleCreateGroup,
 		joinGroup: handleJoinGroup,
