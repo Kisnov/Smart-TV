@@ -17,6 +17,8 @@ import {MATERIAL_ICON_PATHS} from '../Settings/materialIconMap';
 import {fetchPrerolls} from '../../utils/cinemaMode';
 import {
 	toSubtitleLanguage,
+	subtitleDownloadLanguages,
+	searchRemoteSubtitlesIn,
 	mapRemoteSubtitleOptions,
 	pollForSubtitleAppearance,
 	remoteSubtitleSearchError,
@@ -326,7 +328,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		onPlay?.(entry, false, {[audio ? 'audioPlaylist' : 'videoQueue']: queue});
 	}, [onPlay]);
 
-	const handlePlay = useCallback(async () => {
+	const handlePlay = useCallback(async (targetItem, tracksOverride) => {
 		if (!item) return;
 
 		const playbackOptions = buildPlaybackOptions();
@@ -360,7 +362,12 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 				onPlay?.(albumTracks[0], false, {audioPlaylist: albumTracks});
 			}
 		} else if (item.Type === 'Playlist') {
-			if (playlistItems.length > 0) playListFrom(playlistItems, playlistItems[0]);
+			const tracks = tracksOverride || (Array.isArray(targetItem) ? targetItem : playlistItems);
+			const matched = (targetItem && !Array.isArray(targetItem) && targetItem.Id)
+				? tracks.find((t) => (targetItem.PlaylistItemId ? t.PlaylistItemId === targetItem.PlaylistItemId : t.Id === targetItem.Id))
+				: null;
+			const first = matched || tracks[0];
+			if (tracks.length > 0 && first) playListFrom(tracks, first);
 		} else {
 			// A SyncPlay group queues the pressed item for everyone, so intros stay out of it.
 			const prerolls = isSyncPlayInGroup
@@ -549,20 +556,19 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 			const audios = ms?.MediaStreams?.filter(s => s.Type === 'Audio') || [];
 			const currentSub = selectedSubtitleIndex >= 0 ? subs[selectedSubtitleIndex] : null;
 			const currentAudio = audios[selectedAudioIndex];
-			const language = toSubtitleLanguage(
-				currentSub?.Language,
-				currentAudio?.Language,
-				subs[0]?.Language
+			const languages = subtitleDownloadLanguages(
+				settings.subtitleDownloadLanguages,
+				toSubtitleLanguage(currentSub?.Language, currentAudio?.Language, subs[0]?.Language)
 			);
-			const results = await effectiveApi.searchRemoteSubtitles(item.Id, language);
-			setRemoteSubtitleResults(mapRemoteSubtitleOptions(Array.isArray(results) ? results : results?.SearchResults || []));
+			const results = await searchRemoteSubtitlesIn(effectiveApi, item.Id, languages);
+			setRemoteSubtitleResults(mapRemoteSubtitleOptions(results));
 		} catch (err) {
 			setRemoteSubtitleResults([]);
 			setRemoteSubtitleError(remoteSubtitleSearchError(err));
 		} finally {
 			setIsSearchingRemoteSubtitles(false);
 		}
-	}, [item, selectedVersionIndex, selectedSubtitleIndex, selectedAudioIndex, effectiveApi, openModal]);
+	}, [item, selectedVersionIndex, selectedSubtitleIndex, selectedAudioIndex, effectiveApi, openModal, settings.subtitleDownloadLanguages]);
 
 	const handleSelectRemoteSubtitle = useCallback(async (e) => {
 		const index = parseInt(e.currentTarget.dataset.index, 10);
@@ -660,8 +666,9 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 
 	// A track row's press: an album's songs, a playlist from that row on, or a collection's
 	// play order.
-	const playTrack = useCallback((track) => {
-		playListFrom(item.Type === 'MusicAlbum' ? albumTracks : playlistItems, track);
+	const playTrack = useCallback((track, tracksOverride) => {
+		const list = tracksOverride || (item.Type === 'MusicAlbum' ? albumTracks : playlistItems);
+		playListFrom(list, track);
 	}, [item, albumTracks, playlistItems, playListFrom]);
 
 	const handleTrackPlay = useCallback((ev) => {
@@ -717,14 +724,18 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	}, [openPerson, item]);
 
 	// Opening the row's item moved into the long press menu, so a press plays from that row.
-	const handlePlaylistItemSelect = useCallback((ev) => {
-		const plItem = playlistItems.find(t => t.Id === ev.currentTarget.dataset.playlistItemId);
-		if (plItem) playTrack(plItem);
+	const handlePlaylistItemSelect = useCallback((ev, trackOverride, listOverride) => {
+		const targetId = ev?.currentTarget?.dataset?.playlistItemId;
+		const list = listOverride || playlistItems;
+		const plItem = trackOverride || list.find(t => t.Id === targetId);
+		if (plItem) playTrack(plItem, list);
 	}, [playlistItems, playTrack]);
 
-	const handlePlaylistShuffle = useCallback(() => {
-		if (playlistItems.length < 2) return;
-		const shuffled = shuffleArray(playlistItems);
+	const handlePlaylistShuffle = useCallback((tracksOverride) => {
+		// The shared Shuffle button calls this with its click event rather than a list.
+		const tracks = Array.isArray(tracksOverride) ? tracksOverride : playlistItems;
+		if (tracks.length < 2) return;
+		const shuffled = shuffleArray(tracks);
 		playListFrom(shuffled, shuffled[0]);
 	}, [playlistItems, playListFrom]);
 
@@ -1122,7 +1133,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					hasMultipleAudio={hasMultipleAudio}
 					handlePlay={handlePlay}
 					handleResume={handleResume}
-					handleShuffle={handleShuffle}
+					handleShuffle={isPlaylist ? handlePlaylistShuffle : handleShuffle}
 					hasTrailer={hasTrailer}
 					handleTrailer={trailer.handleTrailer}
 					handleToggleWatched={handleToggleWatched}
@@ -1223,6 +1234,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					playlistMenu={playlistMenu}
 					onItemKeyDown={handlePlaylistItemKeyDown}
 					onFocusRow={handleButtonRowFocus}
+					spotlightBackRef={spotlightBackRef}
 				/>
 			</DetailScrollPage>
 		);
