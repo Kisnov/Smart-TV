@@ -66,6 +66,9 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 	// the server holds, which is what the buttons are properly built from.
 	const [isSeed, setIsSeed] = useState(() => Boolean(seedToShow(initialItem, itemId)));
 	const [isBlocked, setIsBlocked] = useState(false);
+	const [loadFailed, setLoadFailed] = useState(false);
+	// Retry bumps this to run the load again.
+	const [loadAttempt, setLoadAttempt] = useState(0);
 	const [seasons, setSeasons] = useState([]);
 	const [episodes, setEpisodes] = useState([]);
 	const [seriesEpisodes, setSeriesEpisodes] = useState([]);
@@ -130,6 +133,7 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		setArtistAlbums([]);
 		setPlaylistItems([]);
 		setIsBlocked(false);
+		setLoadFailed(false);
 
 		// A Seerr title has no id the server would recognise, so asking for one would only 404
 		// and leave the screen spinning.
@@ -161,6 +165,8 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 				setIsSeed(true);
 				setIsLoading(false);
 			} else {
+				// The page may still hold the item it showed before, which a failed load would leave up.
+				setItem(null);
 				setIsSeed(false);
 				setIsLoading(true);
 			}
@@ -170,8 +176,10 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 				data = await effectiveApi.getItemForDetail(itemId);
 			} catch (err) {
 				console.error('[Details] Error loading item', err);
+				if (cancelled) return;
 				setIsSeed(false);
 				setIsLoading(false);
+				setLoadFailed(true);
 				return;
 			}
 
@@ -441,7 +449,9 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		};
 		loadItem();
 		return () => { cancelled = true; };
-	}, [effectiveApi, itemId, tagWithServerInfo, skip]);
+	}, [effectiveApi, itemId, tagWithServerInfo, skip, loadAttempt]);
+
+	const retryLoad = useCallback(() => setLoadAttempt((attempt) => attempt + 1), []);
 
 	useEffect(() => {
 		if (!item || !episodes.length) return undefined;
@@ -559,6 +569,8 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 		isSeed,
 		isLoading,
 		isBlocked,
+		loadFailed,
+		retryLoad,
 		cast,
 		missingCollectionItems,
 		similarSource,

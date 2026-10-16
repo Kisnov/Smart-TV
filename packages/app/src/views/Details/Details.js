@@ -11,6 +11,7 @@ import {useSyncPlay} from '../../context/SyncPlayContext';
 import * as jellyfinApi from '../../services/jellyfinApi';
 import ModernDetailContent from './ModernDetailContent';
 import DetailSkeleton from './DetailSkeleton';
+import LoadFailedNotice from '../../components/LoadFailedNotice';
 import {formatDuration, getImageUrl, getBackdropId, getLogoUrl} from '../../utils/helpers';
 import {KEYS} from '../../utils/keys';
 import {MATERIAL_ICON_PATHS} from '../Settings/materialIconMap';
@@ -148,7 +149,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		skip: seerrOnly
 	});
 	const {
-		setItem, isLoading: libraryLoading, isBlocked: blockedByRating, isSeed, seasons, episodes, seriesEpisodes, similar, extras, cast, nextUp, nextEpisode,
+		setItem, isLoading: libraryLoading, isBlocked: blockedByRating, loadFailed, retryLoad, isSeed, seasons, episodes, seriesEpisodes, similar, extras, cast, nextUp, nextEpisode,
 		collectionItems, missingCollectionItems, parentCollections, similarSource, similarLoaded, playListsLoaded, loadMoreCollectionItems, removeFromCollection, albumTracks, artistAlbums,
 		playlistItems, setPlaylistItems, episodeRatings, refreshItem,
 		selectedVersionIndex, setSelectedVersionIndex,
@@ -880,6 +881,14 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					</svg>
 					<div className={css.blockedText}>{$L("This isn't available")}</div>
 				</div>
+			</div>
+		);
+	}
+
+	if (loadFailed && !item) {
+		return (
+			<div className={css.page}>
+				<LoadFailedNotice spotlightId='details-load-retry' onRetry={retryLoad} />
 			</div>
 		);
 	}

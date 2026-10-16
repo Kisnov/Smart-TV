@@ -6,6 +6,7 @@ import Hls from 'hls.js';
 import * as playback from '../../services/playback';
 import {getImageUrl, getLogoUrl} from '../../utils/helpers';
 import {api as jellyfinApi, createApiForServer, getServerUrl} from '../../services/jellyfinApi';
+import {getApiForItem} from '../../services/connectionPool';
 import AudioMode from './audio/AudioMode';
 import useAudioTransport from './audio/useAudioTransport';
 import useLyrics from './audio/useLyrics';
@@ -206,7 +207,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const {showBuffering, noteSeek} = useBufferingAnimation({
 		isBuffering,
 		isSeeking,
-		hasPreview: isTrickplayOn(settings) && hasTrickplayPreview(item.Id, mediaSourceId)
+		hasPreview: isTrickplayOn(settings) && hasTrickplayPreview(item, mediaSourceId)
 	});
 	const [hasTriedTranscode, setHasTriedTranscode] = useState(false);
 	const [focusRow, setFocusRow] = useState('bottom');
@@ -457,7 +458,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		shuffleMode, repeatMode, selectedQuality,
 		selectedSubtitleIndex, canDownloadRemoteSubtitles: !isAudioMode && Boolean(item?.Id), hasCastMembers, zoomModeLabel, zoomModeKey: zoomMode,
 		sleepMinutes,
-		canBrowseEpisodes: canBrowseEpisodes({item, isLiveTV, isAudioMode})
+		canBrowseEpisodes: canBrowseEpisodes({item, isLiveTV, isAudioMode}),
+		// A cinema mode intro is not something the viewer chose to watch.
+		canFavorite: Boolean(item?.Id) && !isPreroll(item),
+		isFavorite,
+		inSyncPlayGroup: isInGroup
 	});
 
 	useEffect(() => {
@@ -2254,7 +2259,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// commits it. The viewer can turn that off, and without a preview playback carries on.
 	const beginScrub = useCallback(() => {
 		if (scrubHoldRef.current.active || settings.trickPlayPauseWhileScrubbing === false ||
-			settings.trickPlayMode === 'disabled' || isInGroup || !hasTrickplayPreview(item.Id, mediaSourceId)) return;
+			settings.trickPlayMode === 'disabled' || isInGroup || !hasTrickplayPreview(item, mediaSourceId)) return;
 		const video = videoRef.current;
 		const wasPlaying = Boolean(video && !video.paused);
 		scrubHoldRef.current = {active: true, wasPlaying, ticks: null};
@@ -2262,7 +2267,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			video.pause();
 			healthMonitorRef.current?.setPaused(true);
 		}
-	}, [settings.trickPlayPauseWhileScrubbing, settings.trickPlayMode, isInGroup, item.Id, mediaSourceId]);
+	}, [settings.trickPlayPauseWhileScrubbing, settings.trickPlayMode, isInGroup, item, mediaSourceId]);
 
 	const {stepBy: heldSeekStep, stepSeconds: seekStepSeconds} = useHeldSeekStep(settings.seekStep);
 
@@ -2385,10 +2390,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		setActiveModal(null);
 		showControls(false);
 		window.requestAnimationFrame(() => {
-		  if (lastFocusedElementRef.current) {
-				Spotlight.focus(lastFocusedElementRef.current);
-			}else{
-			  Spotlight.focus('playerControls');
+			// The button that opened it can be gone by now, like SyncPlay's once the group is left.
+			const last = lastFocusedElementRef.current;
+			if (last && document.body.contains(last)) {
+				Spotlight.focus(last);
+			} else {
+				Spotlight.focus('play-pause-btn');
 			}
 		});
 	}, [showControls]);
@@ -2794,9 +2801,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		const newState = !isFavorite;
 		setIsFavorite(newState);
 		try {
-			const serverUrl = item._serverUrl || getServerUrl();
-			const serverApi = serverUrl ? createApiForServer(serverUrl) : jellyfinApi;
-			await serverApi.setFavorite(item.Id, newState);
+			await (getApiForItem(item) || jellyfinApi).setFavorite(item.Id, newState);
 		} catch (err) {
 			console.error('[Player] Failed to toggle favorite:', err);
 			setIsFavorite(!newState);
@@ -2856,6 +2861,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			case 'cast': handleOpenCast(); break;
 			case 'zoom': handleToggleZoom(); break;
 			case 'sleep': openModal('sleep'); break;
+			case 'syncPlay': openModal('syncPlay'); break;
 			case 'info': openModal('info'); break;
 			case 'channels': openCarousel(); break;
 			case 'guide': handleOpenGuide(); break;
