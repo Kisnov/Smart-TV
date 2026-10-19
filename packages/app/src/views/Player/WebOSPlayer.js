@@ -2002,7 +2002,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		const startFailure = playbackStartTimedOutRef.current && !isPaused;
 		// A channel that fails to open reads as paused too, so only the viewer's own pause holds a live error back.
 		const paused = isPaused || (!isLiveTV && videoRef.current?.paused);
-		if (paused && !startFailure) {
+		// A file the set refuses reads as paused as well, so a pause before the first frame holds nothing back.
+		if (paused && !startFailure && renderedRef.current) {
 			console.log('[Player] Ignoring error while paused');
 			return;
 		}
