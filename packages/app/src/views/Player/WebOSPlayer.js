@@ -1888,9 +1888,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				setCurrentTime((shown) => (Math.floor(shown) === Math.floor(time) ? shown : time));
 			}
 			const ticks = Math.floor(time * 10000000);
+			// A start stuck at 0 still fires timeupdate, so only a moving position counts as progress.
 			if (ticks !== positionRef.current) {
 				stalledRef.current = false;
 				renderedRef.current = true;
+				healthMonitorRef.current?.recordProgress();
 			}
 			skipGovernorRef.current.observe({
 				nowMs: Date.now(),
@@ -1911,10 +1913,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				setAssTime(assRendererRef.current, time - subtitleOffset);
 			}
 
-			if (healthMonitorRef.current) {
-				healthMonitorRef.current.recordProgress();
-				healthMonitorRef.current.recordFrames(videoRef.current);
-			}
+			healthMonitorRef.current?.recordFrames(videoRef.current);
 
 			if (subtitleTrackEvents && subtitleTrackEvents.length > 0) {
 				const lookupTicks = ticks - (subtitleOffset * 10000000);
