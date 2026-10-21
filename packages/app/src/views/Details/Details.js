@@ -388,13 +388,25 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		onPlay?.(item, true, buildPlaybackOptions());
 	}, [item, onPlay, buildPlaybackOptions]);
 
+	// Plays the item on screen the way a card's Play does, carrying on from where it was left.
+	const playItemOnScreen = useCallback(() => {
+		if (item?.UserData?.PlaybackPositionTicks > 0) handleResume();
+		else handlePlay();
+	}, [item, handleResume, handlePlay]);
+
+	// Picked again from its own season's list, the episode on screen plays rather than opening its
+	// page a second time.
+	const openOrPlay = useCallback((target) => {
+		if (target?.Id && target.Id === item?.Id) playItemOnScreen();
+		else onSelectItem?.(target);
+	}, [item, playItemOnScreen, onSelectItem]);
+
 	// Play from a card's menu lands here and starts the way the Play button would, once the record
 	// and the lists it picks from are in, which keeps the next episode pick and the track choices.
 	useEffect(() => {
 		if (!autoPlay || isSeed || !playListsLoaded || !item) return;
 		onAutoPlayed?.();
-		if (item.UserData?.PlaybackPositionTicks > 0) handleResume();
-		else handlePlay();
+		playItemOnScreen();
 	}, [autoPlay, isSeed, playListsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const handleShuffle = useCallback(async () => {
@@ -641,10 +653,8 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	const handleEpisodeSelect = useCallback((ev) => {
 		const episodeId = ev.currentTarget.dataset.episodeId;
 		const episode = episodes.find(ep => ep.Id === episodeId);
-		if (episode) {
-			onSelectItem?.(episode);
-		}
-	}, [episodes, onSelectItem]);
+		if (episode) openOrPlay(episode);
+	}, [episodes, openOrPlay]);
 
 	// Nouveau's episode cards play from the artwork and open from the block beneath it, so playing
 	// one needs its own way in rather than the Play button, which belongs to the item on screen.
@@ -1154,7 +1164,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					handleExtraSelect={handleExtraSelect}
 					playTrack={playTrack}
 					playlistMenu={playlistMenu}
-					onSelectItem={onSelectItem}
+					onSelectItem={openOrPlay}
 					onSelectPerson={openPerson}
 					onSelectStudio={onSelectStudio}
 					similarSource={similarSource}
@@ -1396,7 +1406,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 				onChapterSelect={handleChapterSelect}
 				onExtraSelect={handleExtraSelect}
 				onCastSelect={handleCastSelect}
-				onSelectItem={onSelectItem}
+				onSelectItem={openOrPlay}
 			/>
 		</DetailScrollPage>
 	);
