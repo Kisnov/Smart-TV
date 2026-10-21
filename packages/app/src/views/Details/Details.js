@@ -394,10 +394,9 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		else handlePlay();
 	}, [item, handleResume, handlePlay]);
 
-	// Picked again from its own season's list, the episode on screen plays rather than opening its
-	// page a second time.
+	// The episode on screen plays when picked from its own list rather than opening again.
 	const openOrPlay = useCallback((target) => {
-		if (target?.Id && target.Id === item?.Id) playItemOnScreen();
+		if (item?.Type === 'Episode' && target?.Id === item.Id) playItemOnScreen();
 		else onSelectItem?.(target);
 	}, [item, playItemOnScreen, onSelectItem]);
 
@@ -653,7 +652,9 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	const handleEpisodeSelect = useCallback((ev) => {
 		const episodeId = ev.currentTarget.dataset.episodeId;
 		const episode = episodes.find(ep => ep.Id === episodeId);
-		if (episode) openOrPlay(episode);
+		if (episode) {
+			openOrPlay(episode);
+		}
 	}, [episodes, openOrPlay]);
 
 	// Nouveau's episode cards play from the artwork and open from the block beneath it, so playing
