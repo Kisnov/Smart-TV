@@ -9,6 +9,7 @@ import {createRoot, hydrateRoot} from 'react-dom/client';
 import App, {localeStringsReady} from './App';
 import {isTizen} from './platform';
 import {registerKeys, ESSENTIAL_KEY_NAMES, dropStaleArrowRepeats} from './utils/keys';
+import {guardLostFocus} from './utils/lostFocus';
 
 const enforceTizenViewport = () => {
 	if (typeof document === 'undefined' || !isTizen()) return;
@@ -94,6 +95,7 @@ const appElement = (<App />);
 
 if (typeof window !== 'undefined') {
 	dropStaleArrowRepeats();
+	guardLostFocus();
 	// The locale strings arrive in their own chunk, so hold the first render until
 	// they land. Otherwise the app paints English and swaps a frame later.
 	localeStringsReady.then(() => {
