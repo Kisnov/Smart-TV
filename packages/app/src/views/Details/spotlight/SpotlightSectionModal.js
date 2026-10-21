@@ -51,14 +51,16 @@ const SpotlightSectionModal = ({card, serverUrl, actions, seerr, onNearEnd}) => 
 
 	// The remote lands on the first cell rather than the panel, so a press moves through the
 	// content straight away. A section that draws no focusable cell of its own leaves the id
-	// unclaimed, and the container's own entry rule picks something up instead.
+	// unclaimed, and the container's own entry rule picks something up instead. Keyed on the id, as
+	// the card is rebuilt whenever the screen renders.
+	const cardId = card?.id;
 	useEffect(() => {
-		if (!card) return undefined;
+		if (!cardId) return undefined;
 		const timer = setTimeout(() => {
 			if (!Spotlight.focus(FIRST_CELL_ID)) Spotlight.focus('spotlight-modal');
 		}, 100);
 		return () => clearTimeout(timer);
-	}, [card]);
+	}, [cardId]);
 
 	const contentRef = useRef(null);
 	const scrollToRef = useRef(null);
