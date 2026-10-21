@@ -107,13 +107,14 @@ const SpotlightSectionModal = ({card, serverUrl, actions, seerr, onNearEnd}) => 
 		if (!viewport) return;
 		const heading = section.firstElementChild;
 		const grid = section.lastElementChild;
+		// Read now, as the key can be released before the frames below run.
+		const animate = !repeatingRef.current;
 
 		window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
 			const contentTop = content.getBoundingClientRect().top;
 			const view = viewport.getBoundingClientRect();
 			const cellBox = cell.getBoundingClientRect();
 			const scrolled = viewport.scrollTop;
-			const animate = !repeatingRef.current;
 
 			// The top row carries its heading with it, whichever way focus arrived.
 			if (heading !== grid && cellBox.top - grid.getBoundingClientRect().top <= 8) {
