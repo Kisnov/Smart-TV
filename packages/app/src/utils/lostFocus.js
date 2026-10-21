@@ -16,6 +16,12 @@ const NAVBAR_ID = 'navbar';
 
 const ARROWS = [KEYS.UP, KEYS.DOWN, KEYS.LEFT, KEYS.RIGHT];
 
+// A screen that unmounts with focus in it is usually handing over to one still loading, such
+// as details opened from a Seerr row, which focuses itself once it has drawn. Until then a press
+// is held back rather than sent to the sidebar. After this long the screen is taken to have
+// nothing to focus, and Spotlight has the press so the sidebar can still be reached.
+const LOADING_GRACE_MS = 3000;
+
 // What last held focus, with the containers around it from the innermost out, since those are
 // gone from the node's ancestors once it has been unmounted.
 let last = null;
@@ -52,7 +58,8 @@ const remember = (ev) => {
 // Noted for the diagnostics log only. Older engines fire nothing when the focused node is
 // removed, so the press that finds focus missing is logged as well.
 const noteLoss = (ev) => {
-	if (ev.relatedTarget || !last || ev.target !== last.node) return;
+	// Focus going nowhere comes with no related target, or with the document on some engines.
+	if (ev.relatedTarget?.nodeType === 1 || !last || ev.target !== last.node) return;
 	setTimeout(() => {
 		if (hasFocus() || !last || last.node !== ev.target) return;
 		last.lostAt = Date.now();
@@ -91,9 +98,13 @@ export const recoverLostFocus = (ev) => {
 		lostForMs: last.lostAt ? Date.now() - last.lostAt : null
 	};
 	const restoredTo = restore();
-	serverLogger.info(serverLogger.LOG_CATEGORIES.NAVIGATION, restoredTo ? 'Focus put back after it fell out of the page' : 'Focus missing and nowhere to put it back', {...lost, restoredTo});
-	if (!restoredTo) return false;
-	// The press only brings focus back, so nothing moves twice on one key.
+	const holding = !restoredTo && lost.lostForMs !== null && lost.lostForMs < LOADING_GRACE_MS;
+	let message = 'Focus put back after it fell out of the page';
+	if (holding) message = 'Focus missing, press held back while the screen loads';
+	else if (!restoredTo) message = 'Focus missing and nowhere to put it back';
+	serverLogger.info(serverLogger.LOG_CATEGORIES.NAVIGATION, message, {...lost, restoredTo});
+	if (!restoredTo && !holding) return false;
+	// The press only brings focus back, or waits, so nothing moves twice on one key.
 	ev.preventDefault();
 	ev.stopPropagation();
 	return true;

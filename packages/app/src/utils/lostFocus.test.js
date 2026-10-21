@@ -113,6 +113,39 @@ describe('putting focus back when it falls out of the page', () => {
 		expect(document.activeElement).toBe(document.body);
 	});
 
+	describe('when the whole screen went with the focus', () => {
+		// The screen and everything around the card is gone, and the next one has nothing to focus yet.
+		const loseScreen = () => {
+			secondRowCard.focus();
+			secondRowCard.blur();
+			jest.advanceTimersByTime(0);
+			document.body.replaceChildren(container('navbar', navCard));
+		};
+
+		beforeEach(() => {
+			jest.useFakeTimers();
+		});
+
+		afterEach(() => {
+			jest.useRealTimers();
+		});
+
+		test('holds the press back while the next screen loads rather than opening the sidebar', () => {
+			loseScreen();
+			jest.advanceTimersByTime(900);
+			const event = press(KEYS.DOWN);
+			expect(event.defaultPrevented).toBe(true);
+			expect(document.activeElement).toBe(document.body);
+			expect(serverLogger.info).toHaveBeenLastCalledWith('Navigation', 'Focus missing, press held back while the screen loads', expect.objectContaining({restoredTo: null}));
+		});
+
+		test('lets Spotlight have the press once the screen has had time to draw', () => {
+			loseScreen();
+			jest.advanceTimersByTime(3500);
+			expect(press(KEYS.DOWN).defaultPrevented).toBe(false);
+		});
+	});
+
 	test('notes each recovery in the diagnostics log', () => {
 		secondRowCard.focus();
 		secondRowCard.remove();
