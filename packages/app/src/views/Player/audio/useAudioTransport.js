@@ -1,4 +1,4 @@
-import {useCallback, useMemo} from 'react';
+import {useCallback, useMemo, useState} from 'react';
 import * as playback from '../../../services/playback';
 import useAudioQueue from './useAudioQueue';
 import {focusAudioRow} from './audioFocus';
@@ -19,7 +19,8 @@ const useAudioTransport = ({
 	restartCurrent,
 	seekTo,
 	getPositionSeconds,
-	setFocusRow
+	setFocusRow,
+	hasLyrics
 }) => {
 	const queue = useAudioQueue(audioPlaylist, item?.Id);
 
@@ -73,6 +74,16 @@ const useAudioTransport = ({
 		focusAudioRow('panel');
 	}, [setFocusRow]);
 
+	// Lyrics lead whenever the track has them, and Up Next stands in otherwise.
+	const [audioTab, setAudioTab] = useState('lyrics');
+	const audioPanel = audioTab === 'lyrics' && hasLyrics ? 'lyrics' : 'queue';
+
+	// Select on the toggle already showing walks into its panel, and Select on the other one swaps it in.
+	const handleSelectAudioPanel = useCallback((panel) => {
+		if (panel === audioPanel) handleEnterAudioPanel();
+		else setAudioTab(panel);
+	}, [audioPanel, handleEnterAudioPanel]);
+
 	return {
 		shuffleMode: queue.shuffleMode,
 		repeatMode: queue.repeatMode,
@@ -89,7 +100,8 @@ const useAudioTransport = ({
 		handlePrevTrack,
 		handleSelectQueueTrack,
 		handleSeekToLyric: seekTo,
-		handleEnterAudioPanel
+		audioPanel,
+		handleSelectAudioPanel
 	};
 };
 

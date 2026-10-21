@@ -1,15 +1,12 @@
 import Spotlight from '@enact/spotlight';
 
-// The audio player's vertical focus chain. The queue and lyrics panel is
-// deliberately not part of it: select on the tabs enters the panel and left or
-// back leaves it again, which keeps the panel's own up and down free for its rows.
-// The transport row keeps the shared player's "bottom" name so the existing
-// controls stay focusable without a special case.
-const CHAIN = ['favorite', 'tabs', 'progress', 'bottom'];
+// The audio player's vertical focus chain. Up from the seekbar walks into the
+// queue or lyrics panel, and once inside, the panel's rows own up and down, so
+// only left or back leaves it again. The dock row keeps the shared player's
+// "bottom" name so the existing controls stay focusable without a special case.
+const CHAIN = ['panel', 'progress', 'bottom'];
 
 export const AUDIO_FOCUS_IDS = {
-	favorite: 'audio-favorite-btn',
-	tabs: 'audio-tabs',
 	panel: 'audio-panel',
 	progress: 'progress-bar',
 	bottom: 'play-pause-btn'
@@ -30,8 +27,8 @@ export const focusAudioRow = (row) => {
 };
 
 export const exitAudioPanel = (setFocusRow) => {
-	setFocusRow('tabs');
-	focusAudioRow('tabs');
+	setFocusRow('progress');
+	focusAudioRow('progress');
 };
 
 // Walks the chain for both players. Returns true when the key was the audio

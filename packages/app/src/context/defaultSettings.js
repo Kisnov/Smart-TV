@@ -52,6 +52,7 @@ export const defaultSettings = {
 	mediaSegmentAutoHide: 'off',
 	cinemaModeEpisodesEnabled: false,
 	xboxNativePlayer: true,
+	xboxPassthrough: false,
 	trickPlayMode: 'single',
 	trickPlayPreviewScale: 30,
 	trickPlayVerticalPosition: 0,
@@ -225,6 +226,8 @@ export const defaultSettings = {
 	cardFocusZoom: true,
 	useDetailedSubHeadings: true,
 	showMediaDetailsOnLibraryPage: true,
+	libraryStyle: 'classic',
+	musicLibraryStyle: 'immersive',
 	hideBackdropsInLibraries: false,
 	useSeriesThumbnails: false,
 	// The server keys, as the other clients store them, so they sync as they are.

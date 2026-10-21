@@ -5,7 +5,7 @@
 	position: relative;
 	padding: 48px 24px;
 	box-sizing: border-box;
-	text-align: center;
+	text-align: left;
 	// Fades the lines in and out at the edges instead of clipping them flat
 	-webkit-mask-image: linear-gradient(to bottom, transparent 0%, #fff 12%, #fff 88%, transparent 100%);
 	mask-image: linear-gradient(to bottom, transparent 0%, #fff 12%, #fff 88%, transparent 100%);
@@ -26,11 +26,15 @@
 // would relayout every line below it on each frame, and it would also shift the
 // offsets the scroll follow is measuring against mid animation.
 .line {
-	margin: 0 0 10px 0;
-	font-size: 18px;
+	margin: 0 0 20px 0;
+	font-size: 36px;
 	font-weight: 600;
-	line-height: 1.35;
+	line-height: 1.45;
 	color: rgba(var(--theme-on-surface-rgb, 255, 255, 255), 0.38);
+	// Lines grow from their left edge, so the wrap width leaves room on the right
+	// for the active line's scale.
+	max-width: 75%;
+	transform-origin: left center;
 	transition: color 0.22s ease-out, transform 0.22s ease-out;
 }
 
@@ -54,7 +58,7 @@
 	padding: 6px 12px;
 	border-radius: 10px;
 	border: 2px solid transparent;
-	font-size: 18px;
+	font-size: 36px;
 	font-weight: 500;
 	color: rgba(var(--theme-on-surface-rgb, 255, 255, 255), 0.7);
 	cursor: pointer;

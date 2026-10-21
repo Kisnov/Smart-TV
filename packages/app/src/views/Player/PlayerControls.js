@@ -11,6 +11,7 @@ import SubtitleOffsetOverlay from './SubtitleOffsetOverlay';
 import SubtitleSettingsOverlay from './SubtitleSettingsOverlay';
 import {formatBitrate, getAudioChannels, getAudioCodec, getHdrType, getVideoCodec} from '../../utils/mediaStreamFacts';
 import {getPlatform} from '../../platform';
+import {getHostAudioOutput} from '../../services/video';
 import {ModalContainer} from '../../utils/spotlightContainers';
 import {numberedTrackName, sortSubtitleStreams, subtitleTrackDetail, audioTrackDetail} from '../../utils/trackLabels';
 import TrackOptionRow, {TrackDivider} from '../../components/TrackOptionRow';
@@ -20,7 +21,8 @@ import {
 	formatTime, getQualityPresets,
 	IconPlay, IconPause, IconRewind, IconForward, IconSubtitle, IconSubtitleOff, IconAudio,
 	IconChapters, IconEpisodes, IconPrevious, IconNext, IconQuality, IconInfo, IconCast, IconZoom,
-	IconShuffle, IconRepeat, IconRepeatOne, IconSleep, IconGuide, IconChannels
+	IconShuffle, IconRepeat, IconRepeatOne, IconSleep, IconGuide, IconChannels,
+	IconFavorite, IconFavoriteFilled, IconPlaylistAdd, IconLyrics, IconQueueMusic
 } from './PlayerConstants';
 import {formatClockTime} from '../../utils/clock';
 import {episodeLine} from '../../utils/liveTvGuide';
@@ -31,12 +33,14 @@ import {arrange, OSD_BUTTONS, OSD_ORDER_KEY, OSD_HIDDEN_KEY} from '../../utils/b
 import {formatPlaybackTimeSlot, formatPlaybackTrailingTime} from '../../utils/playbackTimeLabels';
 import { useSettings } from '../../context/SettingsContext';
 
+import audioCss from './audio/AudioMode.module.less';
+
 export const usePlayerButtons = ({
 	isPaused, audioStreams, subtitleStreams, chapters,
 	nextEpisode, isAudioMode, isLiveTV, hasNextTrack, hasPrevTrack,
 	shuffleMode, repeatMode, selectedQuality,
 	selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey,
-	sleepMinutes, canBrowseEpisodes = false
+	sleepMinutes, canBrowseEpisodes = false, isFavorite, hasLyrics, audioPanel
 }) => {
 	const {settings} = useSettings();
 	const topButtons = useMemo(() => {
@@ -78,8 +82,14 @@ export const usePlayerButtons = ({
 	const osdHidden = settings[OSD_HIDDEN_KEY];
 
 	const bottomButtons = useMemo(() => {
+		// In audio mode these flank the transport, with the track actions on the left and the panel toggles on the right.
 		if (isAudioMode) {
-			return [];
+			return [
+				{id: 'favorite', icon: isFavorite ? <IconFavoriteFilled /> : <IconFavorite />, label: $L('Favorite'), action: 'favorite', active: isFavorite, side: 'start'},
+				{id: 'addToPlaylist', icon: <IconPlaylistAdd />, label: $L('Add to Playlist'), action: 'addToPlaylist', side: 'start'},
+				...(hasLyrics ? [{id: 'lyrics', icon: <IconLyrics />, label: $L('Lyrics'), action: 'lyrics', active: audioPanel === 'lyrics', selected: audioPanel === 'lyrics'}] : []),
+				{id: 'queue', icon: <IconQueueMusic />, label: $L('Up Next'), action: 'queue', active: audioPanel === 'queue', selected: audioPanel === 'queue'}
+			];
 		}
 		// Declaration order is where a button the user never placed ends up, so keep it stable.
 		// The live row's order comes from moonfin-core's live player.
@@ -109,7 +119,7 @@ export const usePlayerButtons = ({
 			{id: 'sleep', icon: <IconSleep />, label: $L('Sleep timer'), action: 'sleep', active: sleepMinutes != null},
 			{id: 'info', icon: <IconInfo />, label: $L('Playback Information'), action: 'info'}
 		], {order: osdOrder, hidden: osdHidden, catalogue: OSD_BUTTONS});
-	}, [audioStreams.length, chapters.length, canBrowseEpisodes, subtitleStreams.length, isAudioMode, isLiveTV, selectedQuality, selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey, sleepMinutes, osdOrder, osdHidden]);
+	}, [audioStreams.length, chapters.length, canBrowseEpisodes, subtitleStreams.length, isAudioMode, isLiveTV, selectedQuality, selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey, sleepMinutes, osdOrder, osdHidden, isFavorite, hasLyrics, audioPanel]);
 
 	return {topButtons, bottomButtons};
 };
@@ -202,6 +212,19 @@ const PlayerControls = ({
 	const [logoLoadFailed, setLogoLoadFailed] = useState(false);
 	const [croppedLogoUrl, setCroppedLogoUrl] = useState(null);
 	const [logoAspectRatio, setLogoAspectRatio] = useState(null);
+	const [audioOutput, setAudioOutput] = useState(null);
+
+	// Read each time the panel opens, since a track change can change it
+	useEffect(() => {
+		if (activeModal !== 'info') return undefined;
+		let current = true;
+		getHostAudioOutput().then((output) => {
+			if (current) setAudioOutput(output);
+		});
+		return () => {
+			current = false;
+		};
+	}, [activeModal]);
 
 	// A tag that resolved but whose image 404s (stale cache, server hiccup) should
 	// still fall back to text instead of leaving a broken image in the corner.
@@ -252,7 +275,7 @@ const PlayerControls = ({
 	const renderControlButton = (btn, row, defaultSpotlightId) => (
 		<div key={btn.id} className={css.controlBtnWrapper}>
 			<SpottableButton
-				className={`${css.controlBtn} ${isLiveTV ? css.liveBtn : ''} ${btn.disabled ? css.controlBtnDisabled : ''} ${btn.active ? css.controlBtnActive : ''}`}
+				className={`${css.controlBtn} ${isLiveTV ? css.liveBtn : ''} ${btn.disabled ? css.controlBtnDisabled : ''} ${btn.active ? css.controlBtnActive : ''} ${btn.selected ? audioCss.toggleOn : ''}`}
 				data-action={btn.action}
 				onClick={btn.disabled ? undefined : handleControlButtonClick}
 				aria-label={btn.label}
@@ -442,9 +465,17 @@ const PlayerControls = ({
 						</div>
 					)}
 
-					{isAudioMode && topButtons.length > 0 && (
-						<div className={css.audioTransportButtons}>
-							{topButtons.map((btn) => renderControlButton(btn, 'bottom', btn.id === 'playPause' ? 'play-pause-btn' : undefined))}
+					{isAudioMode && (
+						<div className={audioCss.dock}>
+							<div className={audioCss.dockSide}>
+								{bottomButtons.filter((btn) => btn.side === 'start').map((btn) => renderControlButton(btn, 'bottom'))}
+							</div>
+							<div className={audioCss.dockCenter}>
+								{topButtons.map((btn) => renderControlButton(btn, 'bottom', btn.id === 'playPause' ? 'play-pause-btn' : undefined))}
+							</div>
+							<div className={`${audioCss.dockSide} ${audioCss.dockEnd}`}>
+								{bottomButtons.filter((btn) => btn.side !== 'start').map((btn) => renderControlButton(btn, 'bottom'))}
+							</div>
 						</div>
 					)}
 				</div>
@@ -814,6 +845,18 @@ const PlayerControls = ({
 											<span className={css.infoLabel}>{$L('Channels')}</span>
 											<span className={css.infoValue}>{getAudioChannels(audioStream)}</span>
 										</div>
+										{audioOutput?.decoder && (
+											<div className={css.infoRow}>
+												<span className={css.infoLabel}>{$L('Decoder')}</span>
+												<span className={css.infoValue}>{audioOutput.decoder}</span>
+											</div>
+										)}
+										{audioOutput?.format && (
+											<div className={css.infoRow}>
+												<span className={css.infoLabel}>{$L('Sent to Console')}</span>
+												<span className={css.infoValue}>{audioOutput.format}</span>
+											</div>
+										)}
 										{audioStream.BitRate && (
 											<div className={css.infoRow}>
 												<span className={css.infoLabel}>{$L('Audio Bitrate')}</span>
