@@ -10,7 +10,6 @@ import css from '../../../components/ClearDataDialog/ClearDataDialog.module.less
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -67,7 +66,7 @@ const ConfirmSpendDialog = ({open, title, body, onCancel, onConfirm}) => {
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={css.dialog} spotlightId="confirm-spend-dialog">
+			<DialogContainer className={css.dialog} spotlightId="confirm-spend-dialog" spotlightRestrict="self-only">
 				<h2 className={css.title}>{title}</h2>
 				<p className={css.message}>{body}</p>
 				<div className={css.buttons}>

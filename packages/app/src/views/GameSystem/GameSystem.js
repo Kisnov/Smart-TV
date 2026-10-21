@@ -20,7 +20,7 @@ import css from './GameSystem.module.less';
 const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
 const ToolbarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
-const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
+const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused'}, 'div');
 
 // The alphabet strip opens with an All button, which holds no letter.
 const ALL_LETTER = '';

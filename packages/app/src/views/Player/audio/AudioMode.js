@@ -13,7 +13,7 @@ import LyricsPanel from './LyricsPanel';
 
 import css from './AudioMode.module.less';
 
-const PanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
+const PanelContainer = SpotlightContainerDecorator({enterTo: 'last-focused'}, 'div');
 
 // Art and track details sit on the left, with lyrics or Up Next filling the
 // right. The seekbar and the control dock come from PlayerControls.
