@@ -978,6 +978,14 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.CUSTOM, render: 'seerrPanel'},
 					{
 						kind: KIND.TOGGLE,
+						key: 'seerrBlockNsfw',
+						label: () => $L('NSFW Filter'),
+						desc: () => $L('Hide adult content in results'),
+						icon: 'visibility_off_outlined',
+						when: whenSeerr
+					},
+					{
+						kind: KIND.TOGGLE,
 						key: 'seerrShowMissingCollectionItems',
 						label: () => $L('Show Missing Collection Items'),
 						desc: () => $L('Include missing items on Collection pages'),

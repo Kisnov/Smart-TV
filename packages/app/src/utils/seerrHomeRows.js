@@ -3,6 +3,7 @@ import seerrApi from '../services/seerrApi';
 import {seerrGenreBackdrop} from './seerrGenreArt';
 import hydrateRequestMediaItems, {hydrateWatchlistItems} from './seerrHydration';
 import {libraryIdOf} from './seerrTarget';
+import {withoutSeerrAdult} from './seerrAdultFilter';
 
 const HOME_ROW_LIMIT = 20;
 
@@ -219,33 +220,34 @@ const normalizeNetworkItem = (network) => ({
 	_seerrRaw: {networkId: network.id, networkName: network.name}
 });
 
-export const fetchSeerrHomeRow = async (rowId, {userId} = {}) => {
+export const fetchSeerrHomeRow = async (rowId, {userId, blockAdult} = {}) => {
+	const media = (data) => withoutSeerrAdult(data?.results || [], blockAdult);
 	try {
 		switch (rowId) {
 			case 'shortcuts': {
 				// Artwork is the only thing the read adds, so a failure still
 				// leaves a usable row.
 				const trending = await seerrApi.trending(1).catch(() => ({results: []}));
-				const results = (trending.results || []).slice().sort(() => Math.random() - 0.5);
+				const results = media(trending).slice().sort(() => Math.random() - 0.5);
 				const backdrops = pickShortcutBackdrops(SEERR_SHORTCUTS, results);
 				return SEERR_SHORTCUTS.map((shortcut) => normalizeShortcutItem(shortcut, backdrops[shortcut.key]));
 			}
 			case 'trending':
-				return ((await seerrApi.trending(1)).results || []).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
+				return media(await seerrApi.trending(1)).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
 			case 'recentlyAdded':
 				return ((await seerrApi.getRecentlyAdded(HOME_ROW_LIMIT)).results || []).map(normalizeMediaItem);
 			case 'yourWatchlist': {
 				const results = ((await seerrApi.getWatchlist(1)).results || []).slice(0, HOME_ROW_LIMIT);
-				return (await hydrateWatchlistItems(results)).map(normalizeMediaItem);
+				return withoutSeerrAdult(await hydrateWatchlistItems(results), blockAdult).map(normalizeMediaItem);
 			}
 			case 'popularMovies':
-				return ((await seerrApi.trendingMovies(1)).results || []).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
+				return media(await seerrApi.trendingMovies(1)).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
 			case 'popularTv':
-				return ((await seerrApi.trendingTv(1)).results || []).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
+				return media(await seerrApi.trendingTv(1)).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
 			case 'upcomingMovies':
-				return ((await seerrApi.upcomingMovies(1)).results || []).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
+				return media(await seerrApi.upcomingMovies(1)).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
 			case 'upcomingTv':
-				return ((await seerrApi.upcomingTv(1)).results || []).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
+				return media(await seerrApi.upcomingTv(1)).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
 			case 'genreMovies':
 				return ((await seerrApi.getGenreSliderMovies()) || []).map((g) => normalizeGenreItem(g, 'movie'));
 			case 'genreTv':
@@ -263,7 +265,7 @@ export const fetchSeerrHomeRow = async (rowId, {userId} = {}) => {
 				if (!resolvedUserId) return [];
 				const data = await seerrApi.getMyRequests(resolvedUserId, HOME_ROW_LIMIT);
 				const hydrated = await hydrateRequestMediaItems(data.results || []);
-				return hydrated.filter((r) => r?.media?.tmdbId).map(normalizeRequestItem);
+				return withoutSeerrAdult(hydrated.filter((r) => r?.media?.tmdbId), blockAdult, (r) => r.media).map(normalizeRequestItem);
 			}
 			default:
 				return [];

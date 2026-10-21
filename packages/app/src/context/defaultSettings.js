@@ -299,6 +299,9 @@ export const defaultSettings = {
 	forceTruehdPassthrough: false,
 	showSeerrButton: true,
 	seerrShowMissingCollectionItems: true,
+	// Seerr's adult filter. Kept on this device only: Core sends this key from a setting its own
+	// switch never writes, so syncing it would turn the filter off here.
+	seerrBlockNsfw: true,
 	showSeerrAvailabilityBadges: true,
 	// Off until asked for. An admin who wants it on for everyone can set it in the
 	// plugin's default settings.
