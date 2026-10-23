@@ -323,6 +323,11 @@ export const getFolderViewModeOptions = () => [
 	{ value: 'off', label: $L('Always Off') }
 ];
 
+export const getContinueWatchingDefaultActionOptions = () => [
+	{ value: 'details', label: $L('Go to Details') },
+	{ value: 'play', label: $L('Play immediately') }
+];
+
 export const getNextUpMaxDaysOptions = () => [
 	{ value: 0, label: $L('No limit') },
 	{ value: 30, label: $L('30 days') },
@@ -489,6 +494,22 @@ export const getMaxAudioChannelsOptions = () => [
 	{ value: 6, label: $L('5.1') },
 	{ value: 7, label: $L('6.1') },
 	{ value: 8, label: $L('7.1') }
+];
+
+// Codec names stay as they are in every language.
+export const getTranscodeAudioCodecOptions = () => [
+	{ value: 'aac', label: 'AAC' },
+	{ value: 'ac3', label: 'AC3' },
+	{ value: 'eac3', label: 'EAC3' },
+	{ value: 'dts', label: 'DTS' },
+	{ value: 'truehd', label: 'TrueHD' },
+	{ value: 'flac', label: 'FLAC' },
+	{ value: 'alac', label: 'ALAC' },
+	{ value: 'mp3', label: 'MP3' },
+	{ value: 'mp2', label: 'MP2' },
+	{ value: 'opus', label: 'Opus' },
+	{ value: 'vorbis', label: 'Vorbis' },
+	{ value: 'pcm', label: 'PCM' }
 ];
 
 export const getRatingSourceOptions = () => [

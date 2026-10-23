@@ -1,10 +1,12 @@
 import {useState, useEffect, useCallback, useRef} from 'react';
 import {buildQueryString} from '../../utils/urlCompat';
 import {stopPlaybackForTrailer} from '../../utils/trailerPlayback';
-import {claimSharedVideo, ownsSharedVideo, releaseSharedVideo} from '../../utils/sharedVideoOwner';
+import {claimSharedVideo, isMusicPlaying, ownsSharedVideo, releaseSharedVideo} from '../../utils/sharedVideoOwner';
 import {coverVideoInBox} from '../../utils/videoCover';
+import {volumeLevel} from '../../utils/volumeLevel';
 import {createApiForServer, getApiKey, getServerUrl as getDefaultServerUrl} from '../../services/jellyfinApi';
 import serverLogger from '../../services/serverLogger';
+import {afterHomeReady} from '../../utils/homeReady';
 import css from './Browse.module.less';
 
 const TRAILER_REVEAL_MS = 3000;
@@ -20,12 +22,13 @@ const LOCAL_TRAILER_STREAM_PARAMS = {
 // Shared trailer preview engine for the home banners. Resolves a local or
 // youtube trailer for the current item, plays a muted preview into a container
 // the caller renders, and reveals it after a short delay.
-export default function useTrailerPreview({currentItem, isVisible, enabled, preferMuted, showCaptions = false, captionLanguage = '', api, getItemServerUrl, onEnded}) {
+export default function useTrailerPreview({currentItem, isVisible, enabled, preferMuted, volume, showCaptions = false, captionLanguage = '', api, getItemServerUrl, onEnded}) {
 	const [trailerActive, setTrailerActive] = useState(false);
 	// Set from the playing event, a few seconds before trailerActive reveals the video, so the
 	// banners can hold their carousel while the trailer is already audible.
 	const [trailerHolding, setTrailerHolding] = useState(false);
 	const [screensaverActive, setScreensaverActive] = useState(false);
+	const [homeReady, setHomeReady] = useState(false);
 
 	// Mirrored so a new handler each render cant restart the trailer, since
 	// startTrailerPreview sits in the main effect's dependencies.
@@ -191,7 +194,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		video.controls = false;
 
 		video.muted = preferMuted;
-		video.volume = preferMuted ? 0 : 1;
+		video.volume = preferMuted ? 0 : volumeLevel(volume);
 		video.autoplay = true;
 		video.classList.remove(css.trailerVisible);
 
@@ -227,6 +230,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 					streamUrl: stream ? stream.url : null,
 					captionsUrl: stream ? stream.captionsUrl : null,
 					audioLanguage: stream ? stream.audioLanguage : '',
+					videoOnly: stream ? stream.videoOnly : null,
 					segments: results[0],
 					startTime: getTrailerStartTime(results[0])
 				};
@@ -260,7 +264,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 			if (attempts[index].id && !attempts[index].muxedOnly && nativeManifestSkipped()) {
 				attempts[index].muxedOnly = true;
 			}
-			const {client, streamUrl, captionsUrl, audioLanguage, segments, startTime} = await resolveStream(attempts[index]);
+			const {client, streamUrl, captionsUrl, audioLanguage, videoOnly, segments, startTime} = await resolveStream(attempts[index]);
 			if (isStale()) return;
 			if (!streamUrl) {
 				tryAttempt(index + 1);
@@ -269,7 +273,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 			const isManifest = isManifestUrl(streamUrl);
 			const nativeManifest = playsManifestNatively(streamUrl);
 			let kind = 'local trailer';
-			if (attempts[index].id) kind = isManifest ? `YouTube manifest on ${nativeManifest ? "the TV's player" : 'hls.js'}` : 'YouTube 360p file';
+			if (attempts[index].id) kind = isManifest ? `YouTube ${videoOnly ? 'picture only ' : ''}manifest on ${nativeManifest ? "the TV's player" : 'hls.js'}` : 'YouTube 360p file';
 			serverLogger.playback(`Trailer preview: ${kind}${client ? ` from ${client}` : ''}`);
 			sponsorSegmentsRef.current = segments;
 			// A manifest the TV cant play gives way to YouTube's small muxed file.
@@ -378,7 +382,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 			releaseStream();
 			const Hls = needsHlsJs(streamUrl) ? (await import('hls.js')).default : null;
 			if (isStale()) return;
-			releaseStreamRef.current = attachTrailerStream(video, streamUrl, {Hls, audioLanguage, startTime: resumeAt > 0 ? resumeAt : startTime, onError: () => fail('failed to play')});
+			releaseStreamRef.current = attachTrailerStream(video, streamUrl, {Hls, audioLanguage, videoOnly, startTime: resumeAt > 0 ? resumeAt : startTime, onError: () => fail('failed to play')});
 			const playPromise = video.play();
 			if (playPromise) {
 				playPromise.catch(() => {
@@ -401,10 +405,20 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		};
 
 		tryAttempt(0);
-	}, [stopTrailer, stopWatch, preferMuted, showCaptions, captionLanguage, removeCaptionTrack, releaseStream]);
+	}, [stopTrailer, stopWatch, preferMuted, volume, showCaptions, captionLanguage, removeCaptionTrack, releaseStream]);
 
 	useEffect(() => {
-		if (!enabled || !isVisible || !currentItem || screensaverActive) {
+		let live = true;
+		afterHomeReady().then(() => {
+			if (live) setHomeReady(true);
+		});
+		return () => {
+			live = false;
+		};
+	}, []);
+
+	useEffect(() => {
+		if (!enabled || !homeReady || !isVisible || !currentItem || screensaverActive || isMusicPlaying()) {
 			stopTrailer();
 			return;
 		}
@@ -460,7 +474,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 			cancelled = true;
 			stopTrailer();
 		};
-	}, [currentItem, isVisible, screensaverActive, enabled, getLocalTrailerStreamUrlForItem, getRemoteTrailersForItem, startTrailerPreview, stopTrailer]);
+	}, [currentItem, isVisible, screensaverActive, enabled, homeReady, getLocalTrailerStreamUrlForItem, getRemoteTrailersForItem, startTrailerPreview, stopTrailer]);
 
 	useEffect(() => {
 		const handleScreensaver = (e) => setScreensaverActive(!!e.detail?.active);

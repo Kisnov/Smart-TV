@@ -5,7 +5,7 @@ import {getFromStorage} from './storage';
 import {selectCompatibleAlternateAudio} from '../utils/alternateAudio';
 import {serverLogger} from './serverLogger';
 import {TEXT_SUBTITLE_CODECS, isAssSubtitleCodec, isPgsSubtitleCodec, isBurnInSubtitleCodec, isInBandSubtitleTrack} from '../utils/subtitleCodecs';
-import {applyProfileTuning} from '../utils/deviceProfileTuning';
+import {applyProfileTuning, transcodesAudioCodec} from '../utils/deviceProfileTuning';
 import {findNextInSeason, findNextSeason, firstPlayableEpisode} from '../utils/nextEpisode';
 import {videoRangeTypeOf} from '../utils/videoRange';
 import {getVolumeState, lastVolumeState} from './systemVolume';
@@ -429,9 +429,10 @@ const extractChapters = (mediaSource) => {
 	}));
 };
 
-// Derive max streaming bitrate from device capabilities.
+// Derive max streaming bitrate from device capabilities, unless the platform names its own.
 // Per LG AV format docs: 8K=100Mbps, UHD=50Mbps on webOS 3, UHD=60Mbps on webOS 4+.
 const getAutoMaxBitrate = (capabilities) => {
+	if (capabilities.autoMaxBitrate) return capabilities.autoMaxBitrate;
 	if (capabilities.uhd8K) return 100_000_000;
 	if (capabilities.webosVersion === 3 && capabilities.uhd) return 50_000_000;
 	if (capabilities.uhd) return 60_000_000;
@@ -466,13 +467,14 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 	const api = options.item ? getApiForItem(options.item) : jellyfinApi.api;
 	const creds = options.item ? getServerCredentials(options.item) : null;
 
+	const isLiveTV = options.isLiveTV || options.item?.Type === 'TvChannel';
+
 	let deviceProfile = applyProfileTuning(
 		options.deviceProfile || await getDeviceProfile(serverType, profileOptions, api),
 		storedSettings,
-		capabilities
+		capabilities,
+		{isLiveTV}
 	);
-
-	const isLiveTV = options.isLiveTV || options.item?.Type === 'TvChannel';
 
 	// What the first request for an item allowed holds for every later one while
 	// it plays, so a track switch, a reopen or a fallback never brings back what
@@ -628,14 +630,18 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 
 	let mediaSource = selectMediaSource(playbackInfo.MediaSources, capabilities, options, passthroughSettings);
 
-	// Auto-select a compatible audio stream to avoid unnecessary transcoding
+	// Auto-select a compatible audio stream to avoid unnecessary transcoding. A codec the user
+	// sends to the server for conversion counts as unplayable, since with no track named the
+	// server can direct play it without ever checking the audio.
 	let audioStreamIndex = options.audioStreamIndex;
+	const playableAudio = (s) => isAudioStreamPlayable(s, capabilities, passthroughSettings)
+		&& !transcodesAudioCodec(storedSettings, s?.Codec);
 	if (audioStreamIndex == null && mediaSource.DefaultAudioStreamIndex != null) {
 		const defaultAudioStream = mediaSource.MediaStreams?.find(
 			s => s.Type === 'Audio' && s.Index === mediaSource.DefaultAudioStreamIndex
 		);
 		const defaultCodec = (defaultAudioStream?.Codec || '').toLowerCase();
-		const defaultPlayable = isAudioStreamPlayable(defaultAudioStream, capabilities, passthroughSettings);
+		const defaultPlayable = playableAudio(defaultAudioStream);
 
 		if (defaultAudioStream && !defaultPlayable) {
 			// The default audio cant be played, but the file may carry a compatible
@@ -643,8 +649,7 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 			// Prefer that so the server keeps direct-playing the video instead of
 			// transcoding, which just hangs on Dolby Vision files on webOS.
 			const altStream = selectCompatibleAlternateAudio(
-				mediaSource.MediaStreams, defaultAudioStream,
-				(s) => isAudioStreamPlayable(s, capabilities, passthroughSettings));
+				mediaSource.MediaStreams, defaultAudioStream, playableAudio);
 
 			if (altStream) {
 				console.log(`[playback] Default audio (${defaultCodec}) unplayable \u2014 selecting compatible track ${altStream.Index} (${altStream.Codec}) to keep direct play`);
@@ -1564,6 +1569,17 @@ export const updateCurrentSession = (updates) => {
 };
 
 export const isDirectPlay = () => currentSession?.playMethod === PlayMethod.DirectPlay;
+
+// What the server says it's doing with a running transcode, or nothing when it doesn't answer in time.
+export const getTranscodingInfo = async () => {
+	if (currentSession?.playMethod !== PlayMethod.Transcode) return null;
+	try {
+		const sessions = await apiForSession(currentSession).getOwnSessions();
+		return (Array.isArray(sessions) && sessions[0]?.TranscodingInfo) || null;
+	} catch {
+		return null;
+	}
+};
 
 
 

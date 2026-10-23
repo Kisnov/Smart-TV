@@ -15,6 +15,7 @@ import {formatDuration, getImageUrl, getBackdropId, getLogoUrl} from '../../util
 import {KEYS} from '../../utils/keys';
 import {MATERIAL_ICON_PATHS} from '../Settings/materialIconMap';
 import {fetchPrerolls} from '../../utils/cinemaMode';
+import {bookReader} from '../../utils/books';
 import {
 	toSubtitleLanguage,
 	subtitleDownloadLanguages,
@@ -209,7 +210,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		item,
 		effectiveApi,
 		onPlay,
-		trailerMuted: settings.featuredTrailerMuted,
+		trailerVolume: settings.trailerVolume,
 		seerrOnly,
 		backRef: trailerBackRef
 	});
@@ -388,13 +389,24 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		onPlay?.(item, true, buildPlaybackOptions());
 	}, [item, onPlay, buildPlaybackOptions]);
 
+	// Plays the item on screen the way a card's Play does, carrying on from where it was left.
+	const playItemOnScreen = useCallback(() => {
+		if (item?.UserData?.PlaybackPositionTicks > 0) handleResume();
+		else handlePlay();
+	}, [item, handleResume, handlePlay]);
+
+	// The episode on screen plays when picked from its own list rather than opening again.
+	const openOrPlay = useCallback((target) => {
+		if (item?.Type === 'Episode' && target?.Id === item.Id) playItemOnScreen();
+		else onSelectItem?.(target);
+	}, [item, playItemOnScreen, onSelectItem]);
+
 	// Play from a card's menu lands here and starts the way the Play button would, once the record
 	// and the lists it picks from are in, which keeps the next episode pick and the track choices.
 	useEffect(() => {
 		if (!autoPlay || isSeed || !playListsLoaded || !item) return;
 		onAutoPlayed?.();
-		if (item.UserData?.PlaybackPositionTicks > 0) handleResume();
-		else handlePlay();
+		playItemOnScreen();
 	}, [autoPlay, isSeed, playListsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const handleShuffle = useCallback(async () => {
@@ -642,9 +654,9 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		const episodeId = ev.currentTarget.dataset.episodeId;
 		const episode = episodes.find(ep => ep.Id === episodeId);
 		if (episode) {
-			onSelectItem?.(episode);
+			openOrPlay(episode);
 		}
-	}, [episodes, onSelectItem]);
+	}, [episodes, openOrPlay]);
 
 	// Nouveau's episode cards play from the artwork and open from the block beneath it, so playing
 	// one needs its own way in rather than the Play button, which belongs to the item on screen.
@@ -907,7 +919,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	const isPlaylist = item.Type === 'Playlist';
 	const isAudioTrack = item.Type === 'Audio';
 	const isBook = item.Type === 'Book';
-	const isReadableBook = isBook && item.Path?.toLowerCase().endsWith('.cbz');
+	const isReadableBook = isBook && !!bookReader(item);
 	const isRatable = isRatableItemType(item.Type);
 	const ratingStyle = normalizeRatingStyle(settings.personalRatingStyle);
 
@@ -1000,7 +1012,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 	const birthPlace = isPerson && showsSection('birthplace') && item.ProductionLocations?.length > 0 ? item.ProductionLocations[0] : '';
 
 	const backdrop = (
-		<DetailBackdrop backdropUrl={backdropUrl} isPerson={isPerson} blur={settings.backdropBlurDetail} />
+		<DetailBackdrop backdropUrl={settings.detailsBackdropEnabled !== false ? backdropUrl : null} isPerson={isPerson} blur={settings.backdropBlurDetail} />
 	);
 
 	const trailerLayer = (
@@ -1008,7 +1020,6 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 			videoId={trailer.trailerOverlay}
 			streamUrl={trailer.trailerStreamUrl}
 			videoRef={trailer.trailerVideoRef}
-			muted={settings.featuredTrailerMuted}
 			onClose={trailer.handleCloseTrailer}
 		/>
 	);
@@ -1154,7 +1165,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					handleExtraSelect={handleExtraSelect}
 					playTrack={playTrack}
 					playlistMenu={playlistMenu}
-					onSelectItem={onSelectItem}
+					onSelectItem={openOrPlay}
 					onSelectPerson={openPerson}
 					onSelectStudio={onSelectStudio}
 					similarSource={similarSource}
@@ -1396,7 +1407,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 				onChapterSelect={handleChapterSelect}
 				onExtraSelect={handleExtraSelect}
 				onCastSelect={handleCastSelect}
-				onSelectItem={onSelectItem}
+				onSelectItem={openOrPlay}
 			/>
 		</DetailScrollPage>
 	);

@@ -5,12 +5,15 @@ import $L from '@enact/i18n/$L';
 import Hls from 'hls.js';
 import * as playback from '../../services/playback';
 import {getImageUrl, getLogoUrl} from '../../utils/helpers';
+import {transcodesAudioCodec} from '../../utils/deviceProfileTuning';
 import {api as jellyfinApi, createApiForServer, getServerUrl} from '../../services/jellyfinApi';
 import {getApiForItem} from '../../services/connectionPool';
+import {isVega} from '../../platform';
 import AudioMode from './audio/AudioMode';
 import useAudioTransport from './audio/useAudioTransport';
 import useLyrics from './audio/useLyrics';
-import {handleAudioFocusKey, exitAudioPanel, nextAudioFocusRow, AUDIO_FOCUS_IDS} from './audio/audioFocus';
+import useSkipFailedTrack from './audio/useSkipFailedTrack';
+import {handleAudioFocusKey, exitAudioPanel, nextAudioFocusRow, focusAudioRow, forgetDockFocus} from './audio/audioFocus';
 import {detectPlatformVersion, getH264FallbackProfile} from '../../services/deviceProfile';
 import {initPgsRenderer, initPgsInBandRenderer, disposePgsRenderer} from '../../utils/pgsRenderer';
 import {supportsAssRenderer, initAssCanvasRenderer, disposeAssRenderer, setAssTime, clearAssCanvas} from '../../utils/assRenderer';
@@ -32,7 +35,7 @@ import {
 	getHostAudioOutput,
 	chooseHostReader
 } from '../../services/video';
-import {KEYS, isBackKey} from '../../utils/keys';
+import {KEYS, isBackKey, isMediaKey} from '../../utils/keys';
 import {useSettings} from '../../context/SettingsContext';
 import {useSyncPlay} from '../../context/SyncPlayContext';
 import * as syncPlayService from '../../services/syncPlay';
@@ -113,32 +116,7 @@ const getWebOSFullscreenRect = () => {
 // request puts the whole group through a round of buffering.
 const GROUP_SEEK_DEBOUNCE_MS = 600;
 
-// Both of these go to PlayerControls as props, so they sit out here and keep one
-// identity instead of being rebuilt on every render.
-const renderInfoPlaybackRows = ({css: c, mediaSource, playMethod}) => {
-	if (playMethod !== 'Transcode') return null;
-	const match = (mediaSource?.TranscodingUrl || '').match(/TranscodeReasons=([^&]+)/);
-	const reason = match
-		? decodeURIComponent(match[1]).split(',').map(r => r.replace(/([A-Z])/g, ' $1').trim()).join(', ')
-		: $L('Unknown');
-	return (
-		<div className={`${c.infoRow} ${c.infoWarning}`}>
-			<span className={c.infoLabel}>{$L('Transcode Reason')}</span>
-			<span className={c.infoValue}>{reason}</span>
-		</div>
-	);
-};
-
-const renderInfoVideoExtra = ({css: c, videoStream}) => (
-	videoStream?.BitDepth ? (
-		<div className={c.infoRow}>
-			<span className={c.infoLabel}>{$L('Bit Depth')}</span>
-			<span className={c.infoValue}>{videoStream.BitDepth}-bit</span>
-		</div>
-	) : null
-);
-
-const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialSubtitleIndex, initialStartPositionTicks, initialQuality, forceTranscode, onEnded, onBack, onGuide, onPlayNext, onSelectPerson, audioPlaylist, videoQueue, liveTvChannels, onPausedChange}) => {
+const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialSubtitleIndex, initialStartPositionTicks, initialQuality, forceTranscode, onEnded, onBack, onGuide, onPlayNext, onSelectPerson, audioPlaylist, videoQueue, liveTvChannels, onPausedChange, background, onBackground}) => {
 	const {settings, updateSetting} = useSettings();
 	const {isInGroup, lastCommand} = useSyncPlay();
 	const syncPlayCommandRef = useRef(false);
@@ -352,7 +330,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const {
 		shuffleMode, repeatMode, hasNextTrack, hasPrevTrack,
 		handleToggleShuffle, handleToggleRepeat, setShuffleMode, setRepeatMode, handleNextTrack, handlePrevTrack,
-		handleSelectQueueTrack, handleSeekToLyric, audioPanel, handleSelectAudioPanel, getNextStep
+		handleSelectQueueTrack, handleSeekToLyric, audioPanel, handleSelectAudioPanel, queueTracks, getNextStep
 	} = useAudioTransport({
 		item, audioPlaylist, isAudioMode, onPlayNext, positionRef,
 		restartCurrent, seekTo, getPositionSeconds, setFocusRow,
@@ -886,6 +864,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				prevItemIdRef.current = item.Id;
 			}
 			setIsLoading(true);
+			// A video taking over from music opens on its own screen, not the music player's.
+			setIsAudioMode((wasAudio) => wasAudio && (item?.MediaType === 'Audio' || item?.Type === 'Audio'));
 			setError(null);
 			scrubHoldRef.current = {active: false, wasPlaying: false, ticks: null};
 			setMediaSegments(null);
@@ -964,11 +944,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				// whole file and switches locally. The index stays on the options so a
 				// later renegotiation keeps it.
 				let audioNegotiated = false;
+				// A track in a codec the user has the server convert can't be switched to
+				// locally either, and the server only reads the track along with its source.
 				if (initialAudioIndex == null && autoAudio && !isLiveTV
-					&& result.playMethod !== playback.PlayMethod.DirectPlay
+					&& (result.playMethod !== playback.PlayMethod.DirectPlay || transcodesAudioCodec(settings, autoAudio.codec))
 					&& autoAudio.index !== result.selectedAudioStreamIndex) {
 					try {
 						playbackInfoOptions.audioStreamIndex = autoAudio.index;
+						playbackInfoOptions.mediaSourceId = playbackInfoOptions.mediaSourceId || result.mediaSourceId;
 						result = await playback.getPlaybackInfo(item.Id, playbackInfoOptions);
 						audioNegotiated = true;
 					} catch (err) {
@@ -1147,7 +1130,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				setSubtitle(displaySubtitle);
 				setLogoUrl(isLiveTV ? null : getLogoUrl(item?._serverUrl || getServerUrl(), item, {maxWidth: 800, quality: 90}));
 				setIsAudioMode(shouldUseAudioMode);
-				setFocusRow('bottom');
+				// The next track keeps the music player's focus wherever the remote left it.
+				setFocusRow((row) => (shouldUseAudioMode && (row === 'panel' || row === 'progress') ? row : 'bottom'));
 				setIsFavorite(!!item.UserData?.IsFavorite);
 
 				// Audio mode: always show controls, skip video-only features
@@ -1513,8 +1497,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				console.log('[Player] Appending media fragment #t=' + resumeSec + ' for resume (' + resumeTicks + ' ticks)');
 			}
 
-			// forceHlsJsRef overrides native when HEVC decoding already failed
-			const nativeHlsOk = !forceHlsJsRef.current
+			// forceHlsJsRef overrides native when HEVC decoding already failed. The Fire TV
+			// WebView's own HLS player holds on to what it has played, so a high bitrate
+			// remux runs the device out of memory.
+			const nativeHlsOk = !forceHlsJsRef.current && !(isVega() && !isLiveTV)
 				&& !!(video.canPlayType('application/x-mpegURL').replace(/no/, ''));
 			const useHlsJs = isHls && !nativeHlsOk && Hls.isSupported();
 			console.log('[Player] Source type:', { isHls, mimeType, autoplay: video.autoplay, platformVersion: platformVersionRef.current, nativeHlsOk, useHlsJs, forceHlsJs: forceHlsJsRef.current });
@@ -1528,8 +1514,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				const hls = new Hls({
 					enableWorker: false,
 					lowLatencyMode: false,
-					maxBufferLength: 30,
+					maxBufferLength: isVega() ? 10 : 30,
 					maxMaxBufferLength: 60,
+					backBufferLength: isVega() ? 10 : Infinity,
 					startFragPrefetch: true,
 					maxBufferHole: 0.5,
 					nudgeMaxRetry: 5,
@@ -2210,6 +2197,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		onBack?.();
 	}, [teardownPlayback, onBack]);
 
+	useSkipFailedTrack({error, background, item, hasNextTrack, handleNextTrack, handleBack});
+
 	const handleOpenGuide = useCallback(async () => {
 		await teardownPlayback();
 		(onGuide || onBack)?.();
@@ -2375,6 +2364,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 	const openModal = useCallback((modal) => {
 	  lastFocusedElementRef.current = document.activeElement;
+		// The controls stay up under a dialog, so closing it gives focus back to the button that opened it.
+		clearTimeout(controlsTimeoutRef.current);
 		setActiveModal(modal);
 		window.requestAnimationFrame(() => {
 			const modalId = `${modal}-modal`;
@@ -2613,7 +2604,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		transcodeRetryCountRef.current = 0;
 
 		try {
-			if (playMethod !== playback.PlayMethod.Transcode && videoRef.current?.audioTracks?.length > 1) {
+			const target = (audioStreams || []).find((s) => s.index === index);
+			if (playMethod !== playback.PlayMethod.Transcode && videoRef.current?.audioTracks?.length > 1
+				&& !transcodesAudioCodec(settings, target?.codec)) {
 				const audioTrackList = videoRef.current.audioTracks;
 				const matchIndex = matchAudioTrack(audioTrackList, audioStreams, index);
 
@@ -2661,7 +2654,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		} catch (err) {
 			console.error('[Player] Failed to change audio:', err);
 		}
-	}, [item, playMethod, closeModal, audioStreams]);
+	}, [item, playMethod, closeModal, audioStreams, settings]);
 
 	// Track selection - using data attributes to avoid arrow functions in JSX
 	const handleSelectAudio = useCallback((e) => {
@@ -2783,15 +2776,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			const next = isAudioMode ? nextAudioFocusRow('progress', 'up') : 'bottom';
 			setFocusRow(next);
 			setIsSeeking(false);
-			window.requestAnimationFrame(() => Spotlight.focus(isAudioMode ? AUDIO_FOCUS_IDS[next] : 'play-pause-btn'));
+			if (isAudioMode) focusAudioRow(next);
+			else window.requestAnimationFrame(() => Spotlight.focus('play-pause-btn'));
 		} else if (e.key === 'ArrowDown' || e.keyCode === 40) {
 			e.preventDefault();
 			settleHeldScrub();
 			setFocusRow('bottom');
 			setIsSeeking(false);
-			if (isAudioMode) {
-				window.requestAnimationFrame(() => Spotlight.focus('play-pause-btn'));
-			}
+			if (isAudioMode) focusAudioRow('bottom');
 		}
 	}, [heldSeekStep, scrubBy, resumeHeldScrub, settleHeldScrub, showControls, handlePlayPause, isAudioMode]);
 
@@ -3085,6 +3077,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 	useEffect(() => {
 		const handleKeyDown = (e) => {
+			// Music playing behind the other screens leaves the remote to them, all but its media keys.
+			if (background && !isMediaKey(e)) return;
 			const key = e.key || e.keyCode;
 			// The channel carousel takes every key while it's up.
 			if (carouselOpenRef.current) return;
@@ -3163,6 +3157,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				// Back leaves the queue or lyrics panel before it leaves the player
 				if (isAudioMode && focusRow === 'panel') {
 					exitAudioPanel(setFocusRow);
+					return;
+				}
+				// Back keeps the music going on the screen underneath, with the mini player up.
+				if (isAudioMode && onBackground) {
+					forgetDockFocus();
+					onBackground();
 					return;
 				}
 				if (controlsVisible) {
@@ -3279,22 +3279,30 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		return Math.max(progressPercent, Math.min(100, percent));
 	}, [displayTime, duration, progressPercent]);
 
+	// The loading screen unmounts the controls, so the next load has to put focus back too.
 	useEffect(() => {
-		if (!controlsVisible) return;
+		if (!controlsVisible || background || (isLoading && !isAudioMode)) return;
 
 		window.requestAnimationFrame(() => {
 			// The skip prompt keeps the remote when the controls come up around it.
 			if (isSkipPromptFocused()) return;
+			// The music player moves its own focus and stays up between tracks, so this
+			// only picks up focus that went missing, like a lyrics toggle a track took away.
+			if (isAudioMode) {
+				if (document.activeElement === document.body) focusAudioRow(focusRow);
+				return;
+			}
 			if (focusRow === 'progress') {
 				Spotlight.focus('progress-bar');
 			} else if (focusRow === 'bottom') {
 				Spotlight.focus('play-pause-btn');
 			}
 		});
-	}, [focusRow, controlsVisible]);
+	}, [focusRow, controlsVisible, isLoading, background, isAudioMode, lyrics.lines.length]);
 
 	return (
-		<div className={css.container} onClick={!isLoading && !error ? handleSurfaceClick : undefined}>
+		// Hidden rather than unmounted in the background, since taking the video element out of the page would pause it.
+		<div className={css.container} style={background ? {display: 'none'} : undefined} onClick={!isLoading && !error ? handleSurfaceClick : undefined}>
 			<div
 				ref={containerRef}
 				className={css.videoPlayer}
@@ -3303,7 +3311,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 			<canvas ref={assCanvasRef} className={css.assCanvas} />
 
-			{isLoading && <LoadingAnimationLayer dimmed label={$L('Loading Stream...')} />}
+			{/* The music player stays up while the next track loads, so focus and the queue stay put. */}
+			{isLoading && !isAudioMode && <LoadingAnimationLayer dimmed label={$L('Loading Stream...')} />}
 
 			{error && !isLiveTV && (
 				<div className={css.error}>
@@ -3315,7 +3324,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 			{error && isLiveTV && !carouselProps && <LiveFailedCard channelName={item.Name} onRetry={handleRetryChannel} />}
 
-			{!isLoading && !error && isAudioMode && (
+			{!error && isAudioMode && (
 				<AudioMode
 					item={item}
 					title={title}
@@ -3323,7 +3332,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					serverUrl={getServerUrl()}
 					focusRow={focusRow}
 					panel={audioPanel}
-					audioPlaylist={audioPlaylist}
+					audioPlaylist={queueTracks}
 					onSelectTrack={handleSelectQueueTrack}
 					lyrics={lyrics}
 					onSeekToLine={handleSeekToLyric}
@@ -3397,7 +3406,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				/>
 			)}
 
-			{!isLoading && !error && <PlayerControls
+			{(!isLoading || isAudioMode) && !error && <PlayerControls
 				isHdrContent={isHdrContent}
 				css={css}
 				controlsVisible={controlsVisible}
@@ -3457,8 +3466,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				handleSubtitleOffsetChange={handleSubtitleOffsetChange}
 				closeModal={closeModal}
 				stopPropagation={stopPropagation}
-				renderInfoPlaybackRows={renderInfoPlaybackRows}
-				renderInfoVideoExtra={renderInfoVideoExtra}
+				transcodeForced={settings.preferTranscode}
+				videoRef={videoRef}
 			/>}
 		</div>
 	);

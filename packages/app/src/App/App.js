@@ -1,4 +1,4 @@
-import {useState, useCallback, useEffect, useMemo, lazy, Suspense, useRef} from 'react';
+import {useState, useCallback, useEffect, useLayoutEffect, useMemo, lazy, Suspense, useRef} from 'react';
 import {isKidsMode, blockedPanels, allowedPanel} from '../utils/kidsMode';
 import {
 	hashPin, pinMatches, lockoutRemaining, registerFailedAttempt, clearedLockout, tooManyAttempts,
@@ -56,6 +56,10 @@ import NoConnection from '../components/NoConnection/NoConnection';
 import SyncPlayDialog from '../components/SyncPlayDialog';
 import PhotoViewer from '../components/PhotoViewer';
 import ComicViewer from '../components/ComicViewer';
+import EpubReader from '../components/EpubReader';
+import PdfReader from '../components/PdfReader';
+import AdminMessageDialog from '../components/AdminMessageDialog';
+import {bookReader, isBookItem, supportsNewerBookFormats} from '../utils/books';
 import SettingsPanel from '../components/SettingsPanel';
 import ShuffleOverlay from '../components/ShuffleOverlay';
 import SpottableInput from '../components/SpottableInput/SpottableInput';
@@ -72,6 +76,8 @@ import {resolveOverlayColor} from '../theme/overlayColors';
 import Login from '../views/Login';
 import Browse from '../views/Browse';
 import {isGameLibrary, refreshGameLibraries, resolveGameLibraryId} from '../utils/gameLibrary';
+import {afterHomeReady} from '../utils/homeReady';
+import {setMusicPlaying} from '../utils/sharedVideoOwner';
 
 const Details = lazy(() => import('../views/Details'));
 const Library = lazy(() => import('../views/Library'));
@@ -100,6 +106,7 @@ import css from './App.module.less';
 
 const MAX_HISTORY_LENGTH = 10;
 const SpottableButton = Spottable('button');
+const BOOK_READERS = {comic: ComicViewer, epub: EpubReader, pdf: PdfReader};
 
 const isAudioItem = (item) => item?.MediaType === 'Audio' || item?.Type === 'Audio';
 
@@ -257,6 +264,23 @@ const AppContent = (props) => {
 	const [playbackOptions, setPlaybackOptions] = useState(null);
 	const [isResume, setIsResume] = useState(false);
 	const [isPlayerPaused, setIsPlayerPaused] = useState(false);
+	// Backing out of the music player keeps the same player playing, drawn hidden behind the screens.
+	const [musicInBackground, setMusicInBackground] = useState(false);
+	const backgroundMusic = musicInBackground && Boolean(playingItem) && panelIndex !== PANELS.PLAYER;
+	const navMusic = useMemo(
+		() => (backgroundMusic ? {item: playingItem, paused: isPlayerPaused} : null),
+		[backgroundMusic, playingItem, isPlayerPaused]
+	);
+	// A layout effect, so Home's trailers see it before their own effects decide to start.
+	useLayoutEffect(() => setMusicPlaying(backgroundMusic), [backgroundMusic]);
+	// A change of signed in user that didn't stop the music first, like an added account or an
+	// expired session, stops it here. So does opening sign in, which has no mini player to stop it.
+	const musicUserRef = useRef(null);
+	useEffect(() => {
+		const signingIn = panelIndex === PANELS.LOGIN || panelIndex === PANELS.ADD_SERVER || panelIndex === PANELS.ADD_USER;
+		if (!backgroundMusic) musicUserRef.current = user?.Id;
+		else if (signingIn || user?.Id !== musicUserRef.current) remoteControl.runPlayerCommand('stop');
+	}, [backgroundMusic, user?.Id, panelIndex]);
 	const [trailerPreviewActive, setTrailerPreviewActive] = useState(false);
 	const [panelHistory, setPanelHistory] = useState([]);
 	const [seerrBrowse, setSeerrBrowse] = useState(null);
@@ -287,7 +311,9 @@ const AppContent = (props) => {
 	const prevUserIdRef = useRef(null);
 	const [photoViewerItem, setPhotoViewerItem] = useState(null);
 	const [photoViewerItems, setPhotoViewerItems] = useState([]);
-	const [comicViewerItem, setComicViewerItem] = useState(null);
+	const [reading, setReading] = useState(null);
+	const BookReader = reading ? BOOK_READERS[reading.reader.kind] : null;
+	const [unreadableBook, setUnreadableBook] = useState(null);
 	const {updateInfo, formattedNotes, dismiss: dismissUpdate} = useVersionCheck(
 		isAuthenticated && settings.updateNotificationsEnabled !== false ? 3000 : null
 	);
@@ -316,7 +342,7 @@ const AppContent = (props) => {
 		!showAccountModal &&
 		!showServerMessages &&
 		!photoViewerItem &&
-		!comicViewerItem
+		!reading
 	);
 	const {isInactive: showScreensaver, dismiss: dismissScreensaver, wake: wakeScreensaver} = useInactivityTimer(screensaverTimeout, screensaverEnabled);
 
@@ -443,7 +469,7 @@ const AppContent = (props) => {
 				setLibraries(libs);
 				// Warm the plugin's game library list so selecting a tile can tell a game
 				// library from a normal one without waiting on a request.
-				refreshGameLibraries();
+				afterHomeReady().then(refreshGameLibraries);
 			} catch (err) {
 				console.error('Failed to fetch libraries:', err);
 			}
@@ -549,7 +575,7 @@ const AppContent = (props) => {
 	const THEME_MUSIC_TYPES = ['Movie', 'Series', 'Season', 'Episode'];
 
 	useEffect(() => {
-		if (panelIndex === PANELS.DETAILS && selectedItem && THEME_MUSIC_TYPES.includes(selectedItem.Type)) {
+		if (panelIndex === PANELS.DETAILS && selectedItem && THEME_MUSIC_TYPES.includes(selectedItem.Type) && !backgroundMusic) {
 			themeMusic.playThemeMusic(selectedItem.SeriesId || selectedItem.Id);
 		} else if (panelIndex === PANELS.PLAYER) {
 			themeMusic.stopThemeMusicImmediate();
@@ -557,7 +583,7 @@ const AppContent = (props) => {
 			themeMusic.cancelDelayed();
 			themeMusic.stopThemeMusic();
 		}
-	}, [panelIndex, selectedItem?.Id]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [panelIndex, selectedItem?.Id, backgroundMusic]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	// The hardware decoder stays claimed until these are torn down.
 	const releaseVideoElements = useCallback(() => {
@@ -771,7 +797,9 @@ const AppContent = (props) => {
 			if ((e.keyCode === KEYS.UP || e.keyCode === KEYS.DOWN || e.keyCode === KEYS.LEFT || e.keyCode === KEYS.RIGHT) && Spotlight.getPointerMode()) {
 				Spotlight.setPointerMode(false);
 			}
-			if (showShuffleOverlay) {
+			// The book readers and their dialog take Back themselves, from a listener
+			// beside this one on the window, so this one stays out of it.
+			if (showShuffleOverlay || reading || unreadableBook) {
 				return;
 			}
 			if (isTvKeyboardVisible()) {
@@ -856,7 +884,7 @@ const AppContent = (props) => {
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [panelIndex, handleBack, performAppCleanup, settings.exitConfirmation, showAccountModal, showServerMessages, showExitDialog, showSettingsPanel, showShuffleOverlay, isPinGateActive, timesUp, setupWizardActive, updateInfo, dismissUpdate, syncPlayDialogOpen, closeSyncPlay]);
+	}, [panelIndex, handleBack, performAppCleanup, settings.exitConfirmation, showAccountModal, showServerMessages, showExitDialog, showSettingsPanel, showShuffleOverlay, reading, unreadableBook, isPinGateActive, timesUp, setupWizardActive, updateInfo, dismissUpdate, syncPlayDialogOpen, closeSyncPlay]);
 
 	// The account stays saved, so it can be chosen again from the picker once its hours are back.
 	const handleTimesUpSwitchUser = useCallback(() => {
@@ -899,8 +927,8 @@ const AppContent = (props) => {
 		navigateTo(PANELS.PLAYER);
 	}, [navigateTo]);
 
-	const handleSelectItem = useCallback((item) => {
-		setDetailsAutoPlay(false);
+	const handleSelectItem = useCallback((item, autoPlay = false) => {
+		setDetailsAutoPlay(Boolean(autoPlay) && item?.Type !== 'Audio' && !isLiveTvChannel(item));
 		// A channel has no details worth landing on, so it tunes straight away.
 		if (isLiveTvChannel(item)) {
 			handlePlayChannel(item);
@@ -923,7 +951,8 @@ const AppContent = (props) => {
 			return;
 		}
 		if (panelIndex === PANELS.DETAILS && selectedItem) {
-			detailsItemStackRef.current.push(selectedItem);
+			// One episode to the next takes its place, so Back leaves the run of episodes in one press.
+			if (selectedItem.Type !== 'Episode' || item.Type !== 'Episode') detailsItemStackRef.current.push(selectedItem);
 			setSelectedItem(item);
 		} else {
 			detailsItemStackRef.current = [];
@@ -934,8 +963,7 @@ const AppContent = (props) => {
 
 	// A song or a channel plays as soon as it's picked, so only the rest wait for their screen to start them.
 	const handlePlayFromMenu = useCallback((item) => {
-		handleSelectItem(item);
-		if (item.Type !== 'Audio' && !isLiveTvChannel(item)) setDetailsAutoPlay(true);
+		handleSelectItem(item, true);
 	}, [handleSelectItem]);
 
 	const handleAutoPlayed = useCallback(() => setDetailsAutoPlay(false), []);
@@ -950,8 +978,23 @@ const AppContent = (props) => {
 		setPhotoViewerItems([]);
 	}, []);
 
-	const handleCloseComicViewer = useCallback(() => {
-		setComicViewerItem(null);
+	const handleCloseReader = useCallback(() => {
+		setReading(null);
+	}, []);
+
+	const handleCloseUnreadableBook = useCallback(() => {
+		const returnTo = unreadableBook?.returnTo;
+		setUnreadableBook(null);
+		if (returnTo) setTimeout(() => Spotlight.focus(returnTo), 0);
+	}, [unreadableBook]);
+
+	const openBook = useCallback((item) => {
+		const reader = bookReader(item);
+		if (reader && (!reader.newer || supportsNewerBookFormats())) {
+			setReading({item, reader});
+		} else {
+			setUnreadableBook({ext: reader ? reader.ext : null, returnTo: Spotlight.getCurrent()});
+		}
 	}, []);
 
 	const handleSelectLibrary = useCallback(async (library) => {
@@ -1008,18 +1051,21 @@ const AppContent = (props) => {
 		navigateTo(PANELS.GAME_DETAILS);
 	}, [navigateTo]);
 
-	const handlePlayGame = useCallback((gameLibrary, game, opts) => {
+	const handlePlayGame = useCallback(async (gameLibrary, game, opts) => {
+		if (backgroundMusic) await remoteControl.runPlayerCommand('stop');
 		setSelectedGameLibrary(gameLibrary);
 		setSelectedGame(game);
 		setGameStartFresh(!!(opts && opts.fresh));
 		navigateTo(PANELS.GAME_PLAYER);
-	}, [navigateTo]);
+	}, [navigateTo, backgroundMusic]);
 
-	const handlePlay = useCallback((item, resume, options) => {
-		if (item.MediaType === 'Book' && item.Path?.toLowerCase().endsWith('.cbz')) {
-			setComicViewerItem(item);
+	const handlePlay = useCallback(async (item, resume, options) => {
+		if (isBookItem(item)) {
+			openBook(item);
 			return;
 		}
+		// Music left playing behind the screens reports its stop before the new item opens.
+		if (backgroundMusic) await remoteControl.releasePlayer();
 		if (isSyncPlayInGroup) {
 			syncPlaySetNewQueue([item.Id]);
 		} else if (settings.syncplayEnabled !== false && settings.syncplayAutoOpen) {
@@ -1029,7 +1075,7 @@ const AppContent = (props) => {
 		setPlaybackOptions(options || null);
 		setIsResume(!!resume);
 		navigateTo(PANELS.PLAYER);
-	}, [navigateTo, isSyncPlayInGroup, openSyncPlay, settings.syncplayAutoOpen, settings.syncplayEnabled, syncPlaySetNewQueue]);
+	}, [navigateTo, isSyncPlayInGroup, openSyncPlay, settings.syncplayAutoOpen, settings.syncplayEnabled, syncPlaySetNewQueue, backgroundMusic, openBook]);
 
 	const playSyncPlayItem = useCallback((item) => {
 		if (panelIndex === PANELS.PLAYER && playingItem?.Id === item.Id) return;
@@ -1098,9 +1144,23 @@ const AppContent = (props) => {
 		setPlayingItem(null);
 		setPlaybackOptions(null);
 		setIsResume(false);
-		handleBack();
+		setMusicInBackground(false);
+		// Music stopped from the mini player ends wherever the viewer already is.
+		if (panelIndex === PANELS.PLAYER) handleBack();
 		window.dispatchEvent(new CustomEvent('moonfin:browseRefresh'));
-	}, [handleBack, panelHistory, selectedItem, playingItem]);
+	}, [handleBack, panelHistory, selectedItem, playingItem, panelIndex]);
+
+	const handlePlayerBackground = useCallback(() => {
+		setMusicInBackground(true);
+		handleBack();
+	}, [handleBack]);
+
+	const handleOpenMusic = useCallback(() => navigateTo(PANELS.PLAYER), [navigateTo]);
+
+	// Landing on the player screen by any route takes the music out of the background.
+	useEffect(() => {
+		if (panelIndex === PANELS.PLAYER) setMusicInBackground(false);
+	}, [panelIndex]);
 
 	// The guide button on the live TV OSD always lands on the guide, not wherever
 	// playback was launched from. When the player was opened from the guide its
@@ -1656,6 +1716,8 @@ const AppContent = (props) => {
 					onUserMenu={handleOpenAccountModal}
 					onMessages={handleOpenServerMessages}
 					onFriends={handleOpenFriends}
+					music={navMusic}
+					onOpenMusic={handleOpenMusic}
 				/>
 			) : showNavBar ? (
 				<NavBar
@@ -1675,6 +1737,8 @@ const AppContent = (props) => {
 					onUserMenu={handleOpenAccountModal}
 					onMessages={handleOpenServerMessages}
 					onFriends={handleOpenFriends}
+					music={navMusic}
+					onOpenMusic={handleOpenMusic}
 				/>
 			) : null}
 			<ItemMenuProvider onPlay={handlePlayFromMenu} onOpenItem={handleSelectItem} backRef={itemMenuBackRef}>
@@ -1732,29 +1796,8 @@ const AppContent = (props) => {
 								/>
 							)}
 						</Panel>
-						<Panel>
-							{panelIndex === PANELS.PLAYER && playingItem && (
-								<Player
-									item={playingItem}
-									resume={isResume}
-									initialMediaSourceId={playbackOptions?.mediaSourceId}
-									initialAudioIndex={playbackOptions?.audioStreamIndex}
-									initialSubtitleIndex={playbackOptions?.subtitleStreamIndex}
-									initialStartPositionTicks={playbackOptions?.startPositionTicks}
-									initialQuality={playbackOptions?.forceBitrate}
-									forceTranscode={playbackOptions?.forceTranscode}
-									audioPlaylist={playbackOptions?.audioPlaylist}
-									videoQueue={playbackOptions?.videoQueue}
-									liveTvChannels={playbackOptions?.liveTvChannels}
-									onEnded={handlePlayerEnd}
-									onBack={handlePlayerEnd}
-									onGuide={handlePlayerGuide}
-									onPlayNext={handlePlayNext}
-									onSelectPerson={handleSelectPersonFromPlayer}
-									onPausedChange={setIsPlayerPaused}
-								/>
-							)}
-						</Panel>
+						{/* The player's place in the panel order. It's drawn after the panels so music can keep playing behind them. */}
+						<Panel />
 						<Panel>
 							{panelIndex === PANELS.FAVORITES && (
 								<Favorites onSelectItem={handleSelectItem} onSelectPerson={handleSelectPerson} onHome={handleHome} backHandlerRef={backHandlerRef} />
@@ -1912,6 +1955,32 @@ const AppContent = (props) => {
 						</Panel>
 					</Panels>
 				</Suspense>
+				{/* Its own boundary, so a screen loading for the first time can't swap out music playing behind it. */}
+				<Suspense fallback={<PanelLoader />}>
+					{playingItem && (panelIndex === PANELS.PLAYER || backgroundMusic) && (
+						<Player
+							item={playingItem}
+							resume={isResume}
+							initialMediaSourceId={playbackOptions?.mediaSourceId}
+							initialAudioIndex={playbackOptions?.audioStreamIndex}
+							initialSubtitleIndex={playbackOptions?.subtitleStreamIndex}
+							initialStartPositionTicks={playbackOptions?.startPositionTicks}
+							initialQuality={playbackOptions?.forceBitrate}
+							forceTranscode={playbackOptions?.forceTranscode}
+							audioPlaylist={playbackOptions?.audioPlaylist}
+							videoQueue={playbackOptions?.videoQueue}
+							liveTvChannels={playbackOptions?.liveTvChannels}
+							background={backgroundMusic}
+							onBackground={handlePlayerBackground}
+							onEnded={handlePlayerEnd}
+							onBack={handlePlayerEnd}
+							onGuide={handlePlayerGuide}
+							onPlayNext={handlePlayNext}
+							onSelectPerson={handleSelectPersonFromPlayer}
+							onPausedChange={setIsPlayerPaused}
+						/>
+					)}
+				</Suspense>
 				{/* Covered screens hide Home rather than unmount it, so going back is instant and lands on
 				the same card. It's let go at sign in and during playback, which wants the memory. */}
 				{panelIndex !== PANELS.LOGIN && panelIndex !== PANELS.PLAYER && panelIndex !== PANELS.GAME_PLAYER && (
@@ -1929,7 +1998,7 @@ const AppContent = (props) => {
 							onOpenSeerrShortcut={handleOpenSeerrShortcut}
 							isVisible={panelIndex === PANELS.BROWSE && !showSettingsPanel}
 							backHandlerRef={backHandlerRef}
-							onFocusItemThemeMusic={themeMusic.playThemeMusicDelayed}
+							onFocusItemThemeMusic={backgroundMusic ? undefined : themeMusic.playThemeMusicDelayed}
 							onBlurItemThemeMusic={themeMusic.cancelDelayed}
 							onLeaveThemeMusic={themeMusic.stopThemeMusic}
 							onHoldThemeMusic={themeMusic.holdThemeMusic}
@@ -2000,14 +2069,23 @@ const AppContent = (props) => {
 					onClose={handleClosePhotoViewer}
 				/>
 			)}
-			{comicViewerItem && (
-				<ComicViewer
-					item={comicViewerItem}
+			{BookReader && (
+				<BookReader
+					item={reading.item}
+					archive={reading.reader.archive}
 					serverUrl={serverUrl}
 					accessToken={accessToken}
-					onClose={handleCloseComicViewer}
+					onClose={handleCloseReader}
 				/>
 			)}
+			<AdminMessageDialog
+				open={!!unreadableBook}
+				title={$L('This book can\'t be read here')}
+				message={unreadableBook?.ext
+					? $L('{format} books need a newer TV. Read this one in Moonfin on a phone, tablet or computer.').replace('{format}', unreadableBook.ext.toUpperCase())
+					: $L('This TV can\'t read books in this format. Read this one in Moonfin on a phone, tablet or computer.')}
+				onDismiss={handleCloseUnreadableBook}
+			/>
 			<Screensaver
 				visible={showScreensaver}
 				backdrop={settings.screensaverBackdrop || 'library'}
@@ -2029,7 +2107,7 @@ const AppContent = (props) => {
 			{/* Home only, and unmounted under the screensaver and the full screen overlays so it
 			never keeps animating behind them. */}
 			{panelIndex === PANELS.BROWSE && !showScreensaver && !showShuffleOverlay &&
-				!photoViewerItem && !comicViewerItem && (
+				!photoViewerItem && !reading && (
 				<SeasonalTheme theme={settings.seasonalTheme} density={settings.seasonalDensity} />
 			)}
 			<NoConnection />

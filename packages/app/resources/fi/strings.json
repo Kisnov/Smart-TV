@@ -2467,5 +2467,12 @@
     "Quick Access": "Pikavalikko",
     "Search Music": "Etsi musiikkia",
     "Video Library Style": "Videokirjaston tyyli",
-    "Or scan this with a phone that's signed in to your server": "Tai skannaa tämä puhelimella, joka on kirjautunut palvelimellesi"
+    "Or scan this with a phone that's signed in to your server": "Tai skannaa tämä puhelimella, joka on kirjautunut palvelimellesi",
+    "Switch User": "Vaihda Käyttäjä",
+    "This account isn't available right now.": "Tämä tili ei ole tällä hetkellä käytettävissä.",
+    "Time's up": "Aika loppui",
+    "You can use it again on {day} at {time}.": "Voit käyttää sitä uudelleen {day} klo {time}.",
+    "You can use it again today at {time}.": "Voit käyttää sitä uudelleen tänään klo {time}.",
+    "You can use it again tomorrow at {time}.": "Voit käyttää sitä uudelleen huomenna klo {time}.",
+    "This account can't sign in right now. It may be outside its allowed hours, locked or disabled. Try again later or ask an administrator.": "Tällä tilillä ei voi kirjautua sisään tällä hetkellä. Se saattaa olla sallittujen käyttöaikojen ulkopuolella, lukittu tai poistettu käytöstä. Yritä myöhemmin uudelleen tai ota yhteyttä järjestelmänvalvojaan."
 }

@@ -2,21 +2,22 @@ import {getPlatform} from '../../platform';
 import {getDeviceId} from '../../services/jellyfinApi';
 import {getDeviceCapabilities} from '../../services/deviceProfile';
 import serverLogger from '../../services/serverLogger';
+import {volumeLevel} from '../../utils/volumeLevel';
 import {
-	PREVIEW_DWELL_MS,
 	PREVIEW_OPEN_TIMEOUT_MS,
 	PREVIEW_PLAY_CAP_MS,
 	buildMediaPreviewUrl,
 	newPlaySessionId,
 	pickPreviewAudioIndex,
 	previewApiFor,
+	previewDwellMs,
 	previewSegmentContainer,
 	previewServerOf,
 	previewStartSeconds,
 	resolvePreviewTarget,
 	supportsMediaPreview
 } from '../../services/mediaPreviewSource';
-import {claimSharedVideo, releaseSharedVideo} from '../../utils/sharedVideoOwner';
+import {claimSharedVideo, isMusicPlaying, releaseSharedVideo} from '../../utils/sharedVideoOwner';
 import {coverVideoInBox, resetVideoBox} from '../../utils/videoCover';
 
 const noop = () => {};
@@ -77,7 +78,7 @@ export const createMediaPreviewController = ({getSettings, api, onThemeMusicHold
 
 	const applyAudio = (video) => {
 		video.muted = !audioEnabled;
-		video.volume = audioEnabled ? 1 : 0;
+		video.volume = audioEnabled ? volumeLevel((getSettings() || {}).previewVolume) : 0;
 	};
 
 	// Everything a preview took is handed back here, in an order that frees the
@@ -246,7 +247,7 @@ export const createMediaPreviewController = ({getSettings, api, onThemeMusicHold
 	const schedule = (key, item) => {
 		if (key) focused = {key, item};
 		if (current && current.key === key) return;
-		const qualifies = enabled && !!key && supportsMediaPreview(item);
+		const qualifies = enabled && !!key && supportsMediaPreview(item) && !isMusicPlaying();
 		if (current) stop(qualifies ? 'replaced' : 'blur');
 		if (!qualifies) return;
 		requestId += 1;
@@ -269,7 +270,7 @@ export const createMediaPreviewController = ({getSettings, api, onThemeMusicHold
 		timers.dwell = setTimeout(() => {
 			timers.dwell = null;
 			if (isActive(entry.requestId)) resolve(entry);
-		}, PREVIEW_DWELL_MS);
+		}, previewDwellMs());
 	};
 
 	const cancel = (key) => {

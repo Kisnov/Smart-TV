@@ -1,7 +1,7 @@
 import {useCallback, useMemo, useState} from 'react';
 import * as playback from '../../../services/playback';
 import useAudioQueue from './useAudioQueue';
-import {focusAudioRow} from './audioFocus';
+import {focusAudioRow, noteDockFocus} from './audioFocus';
 
 // The transport both players share. Everything platform specific arrives as a
 // callback, so this knows how to walk the queue without knowing whether the
@@ -69,7 +69,9 @@ const useAudioTransport = ({
 		playQueueTrack(track);
 	}, [playQueueTrack, item]);
 
+	// Entered from a panel toggle, which is where coming back down lands.
 	const handleEnterAudioPanel = useCallback(() => {
+		noteDockFocus();
 		setFocusRow('panel');
 		focusAudioRow('panel');
 	}, [setFocusRow]);
@@ -101,7 +103,8 @@ const useAudioTransport = ({
 		handleSelectQueueTrack,
 		handleSeekToLyric: seekTo,
 		audioPanel,
-		handleSelectAudioPanel
+		handleSelectAudioPanel,
+		queueTracks: queue.tracks
 	};
 };
 

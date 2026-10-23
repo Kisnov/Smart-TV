@@ -299,6 +299,9 @@ export const AuthProvider = ({children}) => {
 	 * Switch to a different server/user
 	 */
 	const switchUser = useCallback(async (serverId, userId) => {
+		// Music left playing behind the screens is the leaving user's, so it stops while their
+		// sign in can still report it.
+		await remoteControl.runPlayerCommand('stop');
 		try {
 			const success = await multiServerManager.setActiveServer(serverId, userId);
 			if (!success) return false;
@@ -424,6 +427,7 @@ export const AuthProvider = ({children}) => {
 	}, []);
 
 	const logout = useCallback(async () => {
+		await remoteControl.runPlayerCommand('stop');
 		if (activeServerInfo) {
 			await multiServerManager.removeServer(activeServerInfo.serverId, activeServerInfo.userId);
 		}
@@ -455,6 +459,7 @@ export const AuthProvider = ({children}) => {
 	 * Full logout - remove all servers and users
 	 */
 	const logoutAll = useCallback(async () => {
+		await remoteControl.runPlayerCommand('stop');
 		// Clear all caches first
 		clearAllCaches();
 
@@ -536,7 +541,7 @@ export const AuthProvider = ({children}) => {
 		userDataSync.bindTo(serverSocket.onMessage, jellyfinApi.getUserId());
 		remoteControl.bindTo(serverSocket.onMessage);
 		const stopReporting = serverSocket.onConnectionChange((open) => {
-			if (open) jellyfinApi.reportCapabilities();
+			if (open) jellyfinApi.reportCapabilities({unlessRecent: true});
 		});
 		return () => {
 			stopReporting();

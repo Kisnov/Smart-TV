@@ -141,6 +141,8 @@ const PLAYBACK_TIMEOUT_MS = 120000;
 // Some servers answer a people search far slower than everything else, so it
 // gets a limit of its own rather than holding the other results back.
 const PEOPLE_SEARCH_TIMEOUT_MS = 10000;
+// The playback information dialog waits on this, so it gives up quickly and goes without.
+const OWN_SESSION_TIMEOUT_MS = 1500;
 export const HOME_ROW_ITEM_FIELDS = 'DateCreated,PremiereDate,PrimaryImageAspectRatio,OfficialRating,Overview,Genres,GenreItems,ProductionYear,RunTimeTicks,CommunityRating,CriticRating,ProviderIds,ImageTags,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,ParentThumbItemId,ParentLogoItemId,ParentLogoImageTag,SeriesPrimaryImageTag,ParentPrimaryImageTag,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,UserData,AlbumArtist,AlbumId,AlbumPrimaryImageTag';
 
 // The home Next Up row asks the server for a window instead of the whole watch
@@ -246,8 +248,34 @@ const request = async (endpoint, options = {}) => {
 	return JSON.parse(text);
 };
 
-export function reportCapabilities() {
+let userRead = null;
+
+// Several callers read the user as the app starts, so a read still on its way, or one answered
+// in the last few seconds, is shared.
+const readCurrentUser = () => {
+	const session = `${currentServer}|${currentUser}|${accessToken}`;
+	if (userRead && userRead.session === session && (!userRead.at || Date.now() - userRead.at < 5000)) {
+		return userRead.promise;
+	}
+	const entry = {session, at: 0, promise: request(`/Users/${currentUser}`)};
+	userRead = entry;
+	entry.promise.then(() => {
+		entry.at = Date.now();
+	}, () => {
+		if (userRead === entry) userRead = null;
+	});
+	return entry.promise;
+};
+
+let capabilitiesSent = null;
+
+// Signing in reports what this session can do and the socket opening a moment later would send it
+// again, so the socket skips a report made for the same session in the last few seconds.
+export function reportCapabilities({unlessRecent = false} = {}) {
 	if (!currentServer || !accessToken) return;
+	const session = `${currentServer}|${accessToken}`;
+	if (unlessRecent && capabilitiesSent?.session === session && Date.now() - capabilitiesSent.at < 10000) return;
+	capabilitiesSent = {session, at: Date.now()};
 	request('/Sessions/Capabilities/Full', {
 		method: 'POST',
 		body: {
@@ -522,14 +550,17 @@ export const api = {
 
 	getMediaSegments: (itemId) => request(`/MediaSegments/${itemId}`),
 
-	getUserConfiguration: () => request(`/Users/${currentUser}`),
+	getUserConfiguration: () => readCurrentUser(),
 
 	getCurrentUser: () => request('/Users/Me'),
 
-	updateUserConfiguration: (config) => request(userRoutes.configuration(), {
-		method: 'POST',
-		body: config
-	}),
+	updateUserConfiguration: (config) => {
+		userRead = null;
+		return request(userRoutes.configuration(), {
+			method: 'POST',
+			body: config
+		});
+	},
 
 	getLatest: (libraryId, limit = 20) =>
 		request(`${userRoutes.latest()}ParentId=${libraryId}&Limit=${limit}&Fields=${encodeURIComponent(HOME_ROW_ITEM_FIELDS)}&ImageTypeLimit=1&GroupItems=true`),
@@ -592,6 +623,8 @@ export const api = {
 		body: data
 	}),
 
+	getOwnSessions: () => request(`/Sessions?DeviceId=${encodeURIComponent(deviceId)}`, {timeoutMs: OWN_SESSION_TIMEOUT_MS}),
+
 	closeLiveStream: (liveStreamId) => request(`/LiveStreams/Close?LiveStreamId=${encodeURIComponent(liveStreamId)}`, {
 		method: 'POST'
 	}),
@@ -633,8 +666,8 @@ export const api = {
 	getStudioCompanies: (tmdbId, mediaType) =>
 		request(`/Moonfin/Tmdb/ProductionCompanies?tmdbId=${encodeURIComponent(tmdbId)}&type=${mediaType === 'tv' ? 'tv' : 'movie'}`),
 
-	// A collection has no order of its own on the server, so the plugin keeps one: a plain list of
-	// item ids. Absent plugin, absent order, and the caller falls back to release order.
+	// The plugin keeps a collection's hand-arranged order as a plain list of item ids. Without the
+	// plugin or a saved order, the caller falls back to the server's order.
 	getCollectionOrder: (collectionId) =>
 		request(`/Moonfin/Collections/${collectionId}/Order`),
 
@@ -704,6 +737,11 @@ export const api = {
 	setWatched: (itemId, watched) => request(userRoutes.played(itemId), {
 		method: watched ? 'POST' : 'DELETE'
 	}).then(publishUserData(itemId, playedUserData(watched))),
+
+	setPlaybackPosition: (itemId, ticks) => request(userRoutes.userData(itemId), {
+		method: 'POST',
+		body: {PlaybackPositionTicks: ticks, LastPlayedDate: new Date().toISOString()}
+	}).then(publishUserData(itemId, {PlaybackPositionTicks: ticks})),
 
 	// A thumb rating goes through the dedicated endpoint, which stores the liked
 	// flag and a score of its own choosing.
@@ -1194,6 +1232,8 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 				method: 'DELETE'
 			}),
 
+		getOwnSessions: () => serverRequest(`/Sessions?DeviceId=${encodeURIComponent(deviceId)}`, {timeoutMs: OWN_SESSION_TIMEOUT_MS}),
+
 		closeLiveStream: (liveStreamId) => serverRequest(`/LiveStreams/Close?LiveStreamId=${encodeURIComponent(liveStreamId)}`, {
 			method: 'POST'
 		}),
@@ -1205,6 +1245,11 @@ export const createApiForServer = (serverUrl, token, userId, serverTypeOverride 
 		setWatched: (itemId, watched) => serverRequest(serverUserRoutes.played(itemId), {
 			method: watched ? 'POST' : 'DELETE'
 		}).then(publishUserData(itemId, playedUserData(watched))),
+
+		setPlaybackPosition: (itemId, ticks) => serverRequest(serverUserRoutes.userData(itemId), {
+			method: 'POST',
+			body: {PlaybackPositionTicks: ticks, LastPlayedDate: new Date().toISOString()}
+		}).then(publishUserData(itemId, {PlaybackPositionTicks: ticks})),
 
 		setRating: (itemId, likes) => serverRequest(`/UserItems/${itemId}/Rating?Likes=${likes}`, {
 			method: 'POST'
