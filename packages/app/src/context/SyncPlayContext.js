@@ -161,11 +161,14 @@ export const SyncPlayProvider = ({children}) => {
 	const getGroupPositionTicks = useCallback(() => syncPlayService.getGroupPositionTicks(), []);
 
 	// Moves the whole group to an item, by next or previous when it's the neighbouring entry.
-	const moveGroupTo = useCallback((itemId) => {
+	const moveGroupTo = useCallback((itemId, startPositionTicks = 0) => {
 		const entries = playQueue?.Playlist || [];
 		const index = playQueue?.PlayingItemIndex ?? -1;
 		const entry = entries.find((e) => sameItemId(e.ItemId, itemId));
-		if (!entry) syncPlayService.setNewQueue([itemId]);
+		// Only SetNewQueue accepts a start position. Its update places every member at the resume point.
+		if (startPositionTicks > 0) {
+			syncPlayService.setNewQueue(entry ? entries.map(e => e.ItemId) : [itemId], entry ? entries.indexOf(entry) : 0, startPositionTicks);
+		} else if (!entry) syncPlayService.setNewQueue([itemId]);
 		else if (index >= 0 && entry === entries[index + 1]) syncPlayService.nextItem();
 		else if (index > 0 && entry === entries[index - 1]) syncPlayService.previousItem();
 		else syncPlayService.setPlaylistItem(entry.PlaylistItemId);

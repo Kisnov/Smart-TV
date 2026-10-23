@@ -1012,7 +1012,8 @@ const AppContent = (props) => {
 	const handlePlayNext = useCallback((item, options) => {
 		// In a group the group moves on, and its queue update brings this player along.
 		if (isSyncPlayInGroup && item.MediaType !== 'Audio' && item.Type !== 'TvChannel') {
-			syncPlayMoveGroupTo(item.Id);
+			const startPositionTicks = options?.resume === true ? (item.UserData?.PlaybackPositionTicks || 0) : 0;
+			syncPlayMoveGroupTo(item.Id, startPositionTicks);
 			return;
 		}
 		setPlayingItem(item);

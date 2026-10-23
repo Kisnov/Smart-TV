@@ -85,4 +85,24 @@ describe('moveGroupTo', () => {
 		expect(mockQueueRequests.setNewQueue).toHaveBeenCalledWith(['bbbbbbbb000000000000000000000009']);
 		expect(mockQueueRequests.nextItem).not.toHaveBeenCalled();
 	});
+
+	test.each([0, 2, 3])('resumes entry %i at its saved position while keeping the group queue', (targetIndex) => {
+		const playlist = queue(1).Playlist;
+		inGroupAt(1).current.moveGroupTo(playlist[targetIndex].ItemId, 420000000);
+		expect(mockQueueRequests.setNewQueue).toHaveBeenCalledWith(playlist.map(e => e.ItemId), targetIndex, 420000000);
+		expect(mockQueueRequests.nextItem).not.toHaveBeenCalled();
+		expect(mockQueueRequests.previousItem).not.toHaveBeenCalled();
+		expect(mockQueueRequests.setPlaylistItem).not.toHaveBeenCalled();
+	});
+
+	test('resumes an episode outside the queue at its saved position', () => {
+		inGroupAt(3).current.moveGroupTo('bbbbbbbb000000000000000000000009', 420000000);
+		expect(mockQueueRequests.setNewQueue).toHaveBeenCalledWith(['bbbbbbbb000000000000000000000009'], 0, 420000000);
+	});
+
+	test('keeps the next-item request when there is no saved position', () => {
+		inGroupAt(1).current.moveGroupTo('aaaaaaaa000000000000000000000003', 0);
+		expect(mockQueueRequests.nextItem).toHaveBeenCalledTimes(1);
+		expect(mockQueueRequests.setNewQueue).not.toHaveBeenCalled();
+	});
 });
