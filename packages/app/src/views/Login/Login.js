@@ -23,7 +23,6 @@ const SpottableDiv = Spottable('div');
 const FocusArea = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
 const DialogArea = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -1134,7 +1133,7 @@ const Login = ({
 		if (dialog?.kind === 'add') {
 			return (
 				<div className={css.dialogScrim}>
-					<DialogArea className={css.dialog}>
+					<DialogArea className={css.dialog} spotlightRestrict="self-only">
 						<h2 className={css.dialogTitle}>{$L('Connect to Server')}</h2>
 						<div className={css.inputWithIcon}>
 							<MaterialIcon name="dns" className={css.inputIcon} />
@@ -1179,7 +1178,7 @@ const Login = ({
 		if (dialog?.kind === 'remove') {
 			return (
 				<div className={css.dialogScrim}>
-					<DialogArea className={css.dialog}>
+					<DialogArea className={css.dialog} spotlightRestrict="self-only">
 						<h2 className={css.dialogTitle}>{$L('Remove Server')}</h2>
 						<p className={css.serverLabel}>
 							{$L('Remove "{serverName}" from your servers?').replace('{serverName}', dialog.server.name)}

@@ -22,7 +22,6 @@ import css from './GamePlayer.module.less';
 const SpottableRow = Spottable('div');
 const OverlayContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -118,7 +117,7 @@ const HoldIndicator = () => (
 
 const ListPanel = ({header, children}) => (
 	<div className={css.scrim}>
-		<OverlayContainer className={`${css.panel} ${css.listPanel}`}>
+		<OverlayContainer className={`${css.panel} ${css.listPanel}`} spotlightRestrict="self-only">
 			<div className={css.panelHeader}>{header}</div>
 			<div className={css.panelBody}>{children}</div>
 		</OverlayContainer>
@@ -571,7 +570,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 
 			{overlayOpen && !settingsOpen ? (
 				<div className={css.scrim}>
-					<OverlayContainer className={css.panel}>
+					<OverlayContainer className={css.panel} spotlightRestrict="self-only">
 						<div className={css.panelTitle}>
 							{game.title}
 							<div className={css.panelSubtitle}>{$L('Paused')}</div>

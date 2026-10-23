@@ -13,11 +13,10 @@ import css from './Recordings.module.less';
 
 const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
-// self-only on its own still lets a press at the edge reach the cards behind the
-// scrim, so every direction is closed off as well.
+// A press at the edge must not reach the cards behind the scrim. Each popup holds focus
+// through spotlightRestrict where it is drawn, since the decorator drops a restrict set here.
 const PopupContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''},
 	preserveId: true
 }, 'div');
@@ -379,7 +378,7 @@ const Recordings = ({onPlayRecording, onBack, backHandlerRef}) => {
 
 			{selectedItem && selectedItem.type === 'recording' && (
 				<div className={css.dialogScrim}>
-					<PopupContainer className={css.dialog} spotlightId="recordings-popup">
+					<PopupContainer className={css.dialog} spotlightId="recordings-popup" spotlightRestrict="self-only">
 						<div className={css.dialogTitle}>{selectedItem.item.Name}</div>
 						<div className={css.dialogBody}>
 							{selectedItem.item.EpisodeTitle && (
@@ -418,7 +417,7 @@ const Recordings = ({onPlayRecording, onBack, backHandlerRef}) => {
 
 			{selectedItem && selectedItem.type !== 'recording' && (
 				<div className={css.dialogScrim}>
-					<PopupContainer className={`${css.dialog} ${css.confirmDialog}`} spotlightId="recordings-popup">
+					<PopupContainer className={`${css.dialog} ${css.confirmDialog}`} spotlightId="recordings-popup" spotlightRestrict="self-only">
 						<div className={css.dialogTitle}>
 							{selectedItem.type === 'timer' ? $L('Cancel Recording?') : $L('Cancel Series Recording?')}
 						</div>

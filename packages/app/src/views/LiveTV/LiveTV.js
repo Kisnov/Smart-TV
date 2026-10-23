@@ -33,11 +33,10 @@ const WindowBarContainer = SpotlightContainerDecorator({enterTo: 'last-focused',
 // overflow makes Spotlight focus cells without the browser scrolling them into view. The guide
 // scrolls the grid itself, and a second scroll from focus would redraw rows twice per press.
 const ProgramGridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first', overflow: true}, 'div');
-// self-only on its own still lets a press at the edge reach the guide behind the scrim, so every
-// direction is closed off as well.
+// A press at the edge must not reach the guide behind the scrim. Each popup holds focus through
+// spotlightRestrict where it is drawn, since the decorator drops a restrict set here.
 const PopupContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''},
 	preserveId: true
 }, 'div');
@@ -1186,7 +1185,7 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 
 			{dialog?.type === 'sort' && (
 				<div className={css.dialogScrim}>
-					<PopupContainer className={css.dialog} spotlightId="livetv-sort">
+					<PopupContainer className={css.dialog} spotlightId="livetv-sort" spotlightRestrict="self-only">
 						<div className={css.dialogTitle}>{$L('Sort By')}</div>
 						<div className={css.dialogBody}>
 							{CHANNEL_SORTS.map((key) => (
@@ -1206,7 +1205,7 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 
 			{dialog?.type === 'date' && (
 				<div className={css.dialogScrim}>
-					<PopupContainer className={css.dialog} spotlightId="livetv-date">
+					<PopupContainer className={css.dialog} spotlightId="livetv-date" spotlightRestrict="self-only">
 						<div className={css.dialogTitle}>{$L('Select date')}</div>
 						<div className={css.dialogBody}>
 							{buildDateOptions().map((date, idx) => {
@@ -1229,7 +1228,7 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 
 			{program && (
 				<div className={css.dialogScrim}>
-					<PopupContainer className={css.dialog} spotlightId="livetv-popup">
+					<PopupContainer className={css.dialog} spotlightId="livetv-popup" spotlightRestrict="self-only">
 						<div className={css.dialogTitle}>{program.Name}</div>
 						<div className={css.dialogBody}>
 							<div className={css.dialogTime}>
