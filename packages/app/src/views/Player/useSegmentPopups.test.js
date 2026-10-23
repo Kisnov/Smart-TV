@@ -317,6 +317,13 @@ describe('next up when the episode ends', () => {
 		expect(result.current.nextEpisodeCountdown).toBe(4);
 	});
 
+	test('an Instant timeout shows no card and leaves the move to the end of the file', () => {
+		const {result, at, onPlayNext} = setupNextUp({nextUpTimeout: 0});
+		at(99.9);
+		expect(result.current.showNextEpisode).toBe(false);
+		expect(onPlayNext).not.toHaveBeenCalled();
+	});
+
 	test('a seek back out of the window takes the card down until playback reaches it again', () => {
 		const {result, at} = setupNextUp();
 		at(95);
