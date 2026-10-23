@@ -317,6 +317,16 @@ describe('next up when the episode ends', () => {
 		expect(result.current.nextEpisodeCountdown).toBe(4);
 	});
 
+	test('a seek back out of the window takes the card down until playback reaches it again', () => {
+		const {result, at} = setupNextUp();
+		at(95);
+		at(50);
+		expect(result.current.showNextEpisode).toBe(false);
+		expect(result.current.nextEpisodeCountdown).toBeNull();
+		at(95);
+		expect(result.current.showNextEpisode).toBe(true);
+	});
+
 	test('nothing moves on before the file ends', () => {
 		const {at, onPlayNext} = setupNextUp();
 		at(95);

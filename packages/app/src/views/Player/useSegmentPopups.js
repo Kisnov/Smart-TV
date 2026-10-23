@@ -353,8 +353,10 @@ const useSegmentPopups = ({
 			if (nearEnd && !hasTriggeredNextEpisodeRef.current) {
 				setShowNextEpisode(true);
 			}
+			// Counts down what's left, and a seek back out of the window takes the card down.
 			if (advanceAtEnd && !hasTriggeredNextEpisodeRef.current) {
 				setNextEpisodeCountdown(nearEnd ? Math.ceil(remaining / 10000000) : null);
+				if (!nearEnd) setShowNextEpisode(false);
 			}
 		}
 	}, [mediaSegments, settings.introAction, settings.nextUpBehavior, settings.outroAction, settings.replaceSkipOutroWithNextUp, settings.mediaSegmentAutoHide, settings.nextUpTimeout, advanceAtEnd, nextEpisode, currentIsPreroll, runTimeRef, handlePlayNextEpisode, handleSkipSegment, clearSkipPrompt]);
