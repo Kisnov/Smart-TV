@@ -198,7 +198,15 @@ const useBrowseData = ({
 	// The user is part of that, since a switch can bring the token and the user in
 	// separate renders, and rows read in between still belong to the previous user.
 	const owner = `${accessToken}:${userId}`;
+	const shownOwnerRef = useRef(owner);
 	useEffect(() => {
+		// Rows already on screen belong to whoever was signed in before. They go at once
+		// rather than staying up until the new user's rows arrive.
+		if (shownOwnerRef.current !== owner) {
+			shownOwnerRef.current = owner;
+			dispatch({type: 'SET_ROW_DATA', rowData: []});
+			dispatch({type: 'SET_FEATURED_ITEMS', items: []});
+		}
 		if (memoryCache.owner === owner) return;
 		clearMemoryCache();
 		memoryCache.owner = owner;
@@ -284,6 +292,8 @@ const useBrowseData = ({
 			}
 
 			const persistedCache = await loadBrowseCache(cacheOwner.serverUrl, cacheOwner.userId);
+			// A user switch started another load while this one waited, and these rows are not theirs.
+			if (cancelled) return;
 			const hasValidPersistedCache = persistedCache &&
 				(persistedCache.rowConfigKey || 'per-library') === rowConfigKey &&
 				isCacheValid(persistedCache.timestamp, CACHE_TTL_LIBRARIES) &&
@@ -555,6 +565,9 @@ const useBrowseData = ({
 		api,
 		serverUrl,
 		accessToken,
+		// A switch can bring the new token a render before the new user, and the load that
+		// render starts reads the previous user's stored rows, so the user has to start one too.
+		userId,
 		reloadKey,
 		settings.featuredContentType,
 		settings.featuredItemCount,
