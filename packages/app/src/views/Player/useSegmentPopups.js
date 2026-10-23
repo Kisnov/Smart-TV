@@ -94,7 +94,7 @@ const useSegmentPopups = ({
 	const nextEpisodeTimerRef = useRef(null);
 	const nextEpisodeTimeoutRef = useRef(null);
 	// The episode plays to its end and the ended handler moves on, so the card counts down what's left of it.
-	const advanceAtEnd = Boolean(settings.autoPlay) && settings.nextUpAdvance === 'end';
+	const advanceAtEnd = settings.autoPlay && settings.nextUpAdvance === 'end';
 
 	// --- Countdown ---
 
@@ -114,34 +114,29 @@ const useSegmentPopups = ({
 	}, []);
 
 	// Counts an episode that starts by itself, or raises the prompt in its place and returns true.
-	const askStillWatchingFirst = useCallback(() => {
+	// The ended handler calls it too, so episodes that ran to their end count as well.
+	const shouldHoldForStillWatching = useCallback(() => {
+		cancelNextEpisodeCountdown();
+		if (currentIsPreroll) return false;
 		if (shouldAskStillWatching(consecutiveRef.current, settings.stillWatchingBehavior)) {
 			setAskStillWatching(true);
 			return true;
 		}
 		consecutiveRef.current += 1;
 		return false;
-	}, [settings.stillWatchingBehavior]);
+	}, [currentIsPreroll, cancelNextEpisodeCountdown, settings.stillWatchingBehavior]);
 
 	// The automatic path. A long enough run of these is what raises the prompt.
 	const handlePlayNextEpisode = useCallback(async () => {
 		if (!nextEpisode || !onPlayNext) return;
-		cancelNextEpisodeCountdown();
-		if (askStillWatchingFirst()) {
+		if (shouldHoldForStillWatching()) {
 			// The current episode is still running underneath, and the prompt says
 			// playback has been paused, so it has to actually be paused.
 			onPausePlayback?.();
 			return;
 		}
 		await onPlayNext(nextEpisode);
-	}, [nextEpisode, onPlayNext, onPausePlayback, cancelNextEpisodeCountdown, askStillWatchingFirst]);
-
-	// The ended handler asks too, so episodes that ran to their end count toward the prompt.
-	const shouldHoldForStillWatching = useCallback(() => {
-		if (currentIsPreroll) return false;
-		cancelNextEpisodeCountdown();
-		return askStillWatchingFirst();
-	}, [currentIsPreroll, cancelNextEpisodeCountdown, askStillWatchingFirst]);
+	}, [nextEpisode, onPlayNext, onPausePlayback, shouldHoldForStillWatching]);
 
 	// Pressing Play Next answers the question, so the run starts over.
 	const handlePlayNextNow = useCallback(async () => {
