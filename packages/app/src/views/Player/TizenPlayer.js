@@ -12,6 +12,7 @@ import {
 	avplaySetBufferingParams, avplaySuspend, avplayRestore, waitForHlsManifest
 } from '@moonfin/platform-tizen/video';
 import {useSettings} from '../../context/SettingsContext';
+import {dbg, installResumeDebug, startResumeDebugStatus} from '../../utils/resumeDebug';
 import {useSyncPlay} from '../../context/SyncPlayContext';
 import * as syncPlayService from '../../services/syncPlay';
 import {KEYS, isBackKey, isMediaKey} from '../../utils/keys';
@@ -948,6 +949,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	useEffect(() => {
 		const init = async () => {
 			await initTizenAPI();
+			installResumeDebug();
 			await keepScreenOn(!isPaused);
 
 			// Make ALL ancestor backgrounds transparent so AVPlay video layer shows through.
@@ -983,7 +985,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			unregisterAppStateRef.current = registerAppStateObserver(
 				() => {
 					console.log('[Player] App resumed');
-					if (playback.consumeBackgroundStopFired()) {
+					dbg(`[player] FOREGROUND isPaused=${isPaused} ready=${avplayReadyRef.current} suspended=${suspendedRef.current ? `yes pos=${suspendedRef.current.positionMs} wasPlaying=${suspendedRef.current.wasPlaying}` : 'no'} state=${avplayGetState()}`);
+					const bgStopFired = playback.consumeBackgroundStopFired();
+					dbg(`[player] bgStopFired=${bgStopFired} session=${playback.getCurrentSession() ? playback.getCurrentSession().playMethod : 'NONE'}`);
+					if (bgStopFired) {
 						// the session was stopped on the server while we were
 						// backgrounded, so bring it back before we resume playback
 						resumeReportingRef.current?.();
@@ -992,6 +997,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					suspendedRef.current = null;
 					if (suspended) {
 						avplayRestore(suspended.url, suspended.positionMs).then((ok) => {
+							dbg(`[player] restore resolved ok=${ok} state=${avplayGetState()}`);
 							if (ok) {
 								if (suspended.wasPlaying) {
 									try { avplayPlay(); } catch (e) { void e; }
@@ -1001,12 +1007,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 								// the transcode session likely expired while backgrounded
 								console.warn('[Player] AVPlay restore failed, reloading stream');
 								reloadPlaybackRef.current?.().then((reloaded) => {
+									dbg(`[player] reload after failed restore -> ${reloaded}`);
 									if (!reloaded) setError($L('Playback failed. The file format may not be supported.'));
 								});
 							}
 						});
 						return;
 					}
+					dbg('[player] no suspended session to restore');
 					if (avplayReadyRef.current && !isPaused) {
 						const state = avplayGetState();
 						if (state === 'PAUSED' || state === 'READY') {
@@ -1016,6 +1024,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				},
 				() => {
 					console.log('[Player] App backgrounded - suspending and saving progress');
+					dbg(`[player] BACKGROUND state=${avplayGetState()} ready=${avplayReadyRef.current} url=${String(currentUrlRef.current || 'none').split('?')[0].slice(-40)} method=${playback.getCurrentSession()?.playMethod}`);
 					// Script freezes as soon as the app is backgrounded and a kill
 					// while suspended runs nothing at all, so the stop has to go out
 					// right now. It also records the resume position. Coming back
@@ -1030,6 +1039,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 						const positionMs = avplayGetCurrentTime();
 						if (avplaySuspend()) {
 							suspendedRef.current = {url: currentUrlRef.current, positionMs, wasPlaying};
+							dbg(`[player] suspended at ${positionMs} wasPlaying=${wasPlaying}`);
+						} else {
+							dbg('[player] suspend returned false');
 						}
 					}
 				}
@@ -1062,6 +1074,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		};
 	}, [isPaused, background]);
 
+	useEffect(() => startResumeDebugStatus(() => `isPaused=${isPausedRef.current} ready=${avplayReadyRef.current}`), []);
+
 	useEffect(() => {
 		onPausedChange?.(isPaused);
 	}, [isPaused, onPausedChange]);
@@ -1079,7 +1093,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		// backing out of the app entirely never reaches the unmount cleanup, so
 		// the session would sit open on the server forever
-		const handleAppExit = () => {
+		const handleAppExit = (e) => {
+			dbg(`[player] handleAppExit via ${e?.type} persisted=${e?.persisted} -> cleanupAVPlay`);
 			// always report the stop, even at position 0 (live TV and freshly
 			// opened media start there), or the session lingers on the server
 			// Only a stop that went out lets the session go, so a failed one gets
@@ -1955,6 +1970,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 	const handleError = useCallback(async () => {
 		console.error('[Player] Playback error');
+		dbg(`[player] handleError state=${avplayGetState()} hasPlayed=${hasPlayedRef.current} reopened=${hasReopenedRef.current}`);
 
 		// A channel past its tune is the live recovery's to bring back.
 		if (liveRecovery?.engaged()) {
@@ -2017,6 +2033,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Reload the current item from its last position, used when a suspended
 	// session cant be restored after the app returns to the foreground
 	const reloadCurrentPlayback = useCallback(async () => {
+		dbg('[player] reloadCurrentPlayback');
 		try {
 			const result = await playback.getPlaybackInfo(item.Id, {
 				startPositionTicks: positionRef.current,
@@ -2170,6 +2187,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	}, []);
 
 	const handlePlayPause = useCallback(() => {
+		dbg(`[player] PLAY/PAUSE key state=${avplayGetState()} ready=${avplayReadyRef.current} isPaused=${isPausedRef.current}`);
 		if (resumeHeldScrub()) return;
 		noteViewerActivity();
 		const state = avplayGetState();
