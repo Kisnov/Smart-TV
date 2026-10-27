@@ -31,7 +31,7 @@ jest.mock('@enact/spotlight/SpotlightContainerDecorator', () => ({
 	__esModule: true,
 	default: (config, tag) => {
 		const React = require('react');
-		return ({spotlightId, ...props}) => React.createElement(tag, props); // eslint-disable-line no-unused-vars
+		return ({spotlightId, spotlightRestrict, ...props}) => React.createElement(tag, props); // eslint-disable-line no-unused-vars
 	}
 }));
 jest.mock('../SpottableInput/SpottableInput', () => ({__esModule: true, default: () => null}));
