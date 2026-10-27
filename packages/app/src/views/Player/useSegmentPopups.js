@@ -294,6 +294,8 @@ const useSegmentPopups = ({
 						}
 						return prev;
 					});
+				} else {
+					setShowSkipCredits(false);
 				}
 			}
 		}
