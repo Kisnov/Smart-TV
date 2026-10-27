@@ -1002,8 +1002,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 							playback.reportProgress(positionRef.current, {isPaused: true, eventName: 'pause'});
 						}
 					});
-					// A stream the server builds ends with the background stop, so it is opened again rather than restored
-					if (suspended && stoppedOnServer && playback.getCurrentSession()?.playMethod !== playback.PlayMethod.DirectPlay) {
+					// The background stop ended the session and restoreAsync never answers on some firmware, so it is opened again
+					if (suspended && stoppedOnServer) {
 						reload();
 						return;
 					}
