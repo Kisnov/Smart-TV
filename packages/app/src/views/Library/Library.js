@@ -7,6 +7,7 @@ import {VirtualGridList} from '@enact/sandstone/VirtualList';
 import {useAuth} from '../../context/AuthContext';
 import {createApiForServer} from '../../services/jellyfinApi';
 import MusicBrowse from '../MusicBrowse';
+import BookBrowse from '../BookBrowse';
 import BackdropLayer from '../../components/BackdropLayer';
 import TileGrid from '../../components/TileGrid';
 import {getImageUrl, getPrimaryImageId, formatDuration} from '../../utils/helpers';
@@ -18,6 +19,7 @@ import MediaRow from '../../components/MediaRow';
 import {LIBRARY_GROUP_OPTIONS, groupLibraryItems} from '../../utils/libraryGroupBy';
 import {PLAYLIST_SAMPLE_SIZE, groupPlaylists, playlistCategoryFromItems, playlistNeedsItemCheck, playlistSummaryCategory} from '../../utils/playlistGrouping';
 import {isScrolledAway} from '../../utils/quickReturn';
+import {combinedTypes, isBookLibraryType} from '../../utils/bookLibrary';
 import RatingsRow from '../../components/RatingsRow';
 import SpottableInput from '../../components/SpottableInput/SpottableInput';
 import {useStorage} from '../../hooks/useStorage';
@@ -30,7 +32,8 @@ import useSortSettingsPanels from '../../hooks/useSortSettingsPanels';
 import useStartLetter from '../../hooks/useStartLetter';
 import {useUserDataList} from '../../hooks/useUserDataSync';
 import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
-import {GRID_DIRECTIONS, IMAGE_SIZES, IMAGE_TYPES, LETTERS, capitalize, createGridKeyDown, createToolbarKeyDown, cycleValue, focusOverhang, horizontalCellPad, stopPropagation} from '../../utils/gridChrome';
+import {GRID_DIRECTIONS, IMAGE_SIZES, IMAGE_TYPES, capitalize, createGridKeyDown, createRowsLeftKeyDown, createToolbarKeyDown, cycleValue, focusOverhang, horizontalCellPad, stopPropagation} from '../../utils/gridChrome';
+import {HOME_ICON, Letters, LibraryDock, LibraryTitle, ModernBar, ModernLetters, SEARCH_ICON, SETTINGS_ICON, SORT_ICON} from './LibraryHeaders';
 import LibrarySkeleton from './LibrarySkeleton';
 import LoadFailedNotice from '../../components/LoadFailedNotice';
 
@@ -73,20 +76,35 @@ const MUSIC_CONTENT_TYPES = [
 	{key: 'albums', label: $L('Albums'), itemType: 'MusicAlbum'},
 	{key: 'albumArtists', label: $L('Album Artists'), itemType: 'AlbumArtist'},
 	{key: 'artists', label: $L('Artists'), itemType: 'MusicArtist'},
+	{key: 'songs', label: $L('Songs'), itemType: 'Audio'},
 	{key: 'playlists', label: $L('Playlists'), itemType: 'Playlist'},
 	{key: 'genres', label: $L('Genres'), itemType: 'MusicGenre'}
 ];
 
+// Every favorite in a music library, whatever its type.
+const FAVORITE_ITEMS = 'favoriteItems';
+
 const FOLDER_DETAIL_TYPES = ['Series', 'BoxSet', 'Playlist', 'MusicAlbum', 'MusicArtist'];
+
+// The plain folders a folder view lists ahead of everything else. The server counts a series as a
+// folder too, so sorting on IsFolder would put every show ahead of every movie.
+const DIRECTORY_TYPES = 'Folder,CollectionFolder,UserView,PhotoAlbum';
 
 // The inset the stylesheet keeps either side of the grid, both sides added up.
 const GRID_INSET = 174;
+// The Docked panel's width, matched in the stylesheet. The grid keeps its own inset beside it.
+const DOCK_WIDTH = 420;
 // The least room a row leaves between two cards.
 const MIN_ROW_GAP = 6;
+// The header, ratings and backdrop follow focus once it rests, so a move in the grid only redraws tiles.
+const FOCUS_SETTLE_MS = 150;
 
 // Opening an item takes the library off screen and it's built again on the way back, so the item
 // that was opened is noted here to come back to.
 let returnTo = null;
+// The same for a book grid the item was opened from, so Back comes to the grid rather than the
+// book library.
+let bookGridReturn = null;
 
 const PLAYED_FILTERS = [
 	{key: 'all', label: $L('All')},
@@ -107,20 +125,20 @@ const QUALITY_FILTERS = [
 	{key: 'sd', label: $L('SD')},
 	{key: 'hd', label: $L('HD')},
 	{key: 'uhd', label: $L('4K'), jellyfinOnly: true},
-	{key: 'threeD', label: $L('3D')}
+	{key: 'threeD', label: $L('3D'), plexless: true}
 ];
 
 // A tag list can run to thousands of entries, and each one costs a focusable
 // row, so a facet opens on this many and grows a page at a time.
 const FACET_PAGE = 50;
 
-const SEARCH_ICON = 'M784-120 532-372q-30 24-69 38t-83 14q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l252 252-56 56ZM380-400q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z';
-
 const CLEAR_GROUP_ICON = 'm580-465-43-43 183-232H305l-60-60h527q21 0 31 19t-4 36L580-465ZM813-61 560-314v114q0 17-11.5 28.5T520-160h-80q-17 0-28.5-11.5T400-200v-274L61-813l43-43 752 752-43 43ZM537-508Z';
 
 // Sorting is what the panel is opened for most of the time, so it is the one section
 // standing open when the panel arrives.
 const SORT_SECTION = 'sort';
+const SORT_FOCUS_ID = 'sort-option-0';
+const SETTINGS_FOCUS_ID = 'settings-image-size';
 
 const VIDEO_SOURCE_FILTERS = [
 	{key: 'Dvd', label: $L('DVD')},
@@ -189,14 +207,25 @@ const handleToolbarKeyDownGrouped = createToolbarKeyDown('library-group-row-0');
 // alphabet bar is switched off and that letter is not there to land on.
 const handleGridKeyDown = createGridKeyDown(css.grid, 'library-letter-hash');
 const handleGridKeyDownNoLetters = createGridKeyDown(css.grid, 'library-toolbar');
+// Each style's controls sit in a container of their own. A shared id would break on a
+// style change, since the outgoing container lets go of the id after the new one took it.
+const HEADER_IDS = {classic: 'library-toolbar', modern: 'library-bar', docked: 'library-dock'};
+// The Modern bar drops onto the letter row under it when that is showing.
+const handleBarKeyDownLetters = createToolbarKeyDown('library-letter-hash');
+const handleGridKeyDownNoLettersModern = createGridKeyDown(css.grid, HEADER_IDS.modern);
+// Docked has nothing above the grid, so Up from its top row and Left from its first
+// column both go to the panel.
+const handleGridKeyDownDocked = createGridKeyDown(css.grid, HEADER_IDS.docked, HEADER_IDS.docked);
+const handleRowsKeyDownDocked = createRowsLeftKeyDown(HEADER_IDS.docked);
 
 // The list redraws every card it holds each time it renders, so without this a
 // focus move that only changes the header would redraw the whole grid.
 const GridList = memo(VirtualGridList);
 
-const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto, onHome, backHandlerRef}) => {
+const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto, onHome, onPlay, onSearch, backHandlerRef}) => {
 	const {api, serverUrl, serverType} = useAuth();
 	const {settings, updateSetting} = useSettings();
+	const libraryServerType = library?._serverType || serverType;
 
 	const effectiveApi = useMemo(() => {
 		if (library?._serverUrl && library?._serverAccessToken) {
@@ -210,6 +239,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	}, [library, serverUrl]);
 
 	const isMusicLibrary = library?.CollectionType?.toLowerCase() === 'music';
+	const isBookLibrary = isBookLibraryType(library?.CollectionType);
+	const [restoredBookGrid] = useState(() => (bookGridReturn?.libraryId === library?.Id ? bookGridReturn : null));
+	useEffect(() => { bookGridReturn = null; }, []);
 	const isSeriesLibrary = library?.CollectionType?.toLowerCase() === 'tvshows';
 	const activeSortOptions = isMusicLibrary
 		? MUSIC_SORT_OPTIONS
@@ -233,12 +265,22 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const [featureFilters, setFeatureFilters] = useState([]);
 	const [qualityFilters, setQualityFilters] = useState([]);
 	const [videoSourceFilters, setVideoSourceFilters] = useState([]);
-	const [genreFilters, setGenreFilters] = useState([]);
+	const [genreFilters, setGenreFilters] = useState(() => restoredBookGrid?.genreFilters || []);
 	const [ratingFilters, setRatingFilters] = useState([]);
 	const [tagFilters, setTagFilters] = useState([]);
 	const [yearFilters, setYearFilters] = useState([]);
 	const [audioLanguageFilters, setAudioLanguageFilters] = useState([]);
 	const [subtitleLanguageFilters, setSubtitleLanguageFilters] = useState([]);
+	// Plex can't filter on these, so a choice carried over from another server's library is dropped.
+	useEffect(() => {
+		if (libraryServerType !== 'plex') return;
+		const none = (current) => (current.length ? [] : current);
+		setLikedFilter('all');
+		setSeriesFilter('all');
+		setFeatureFilters(none);
+		setVideoSourceFilters(none);
+		setQualityFilters((current) => (current.includes('threeD') ? current.filter((key) => key !== 'threeD') : current));
+	}, [libraryServerType]);
 	const [facetValues, setFacetValues] = useState(null);
 	const [expandedSection, setExpandedSection] = useState(SORT_SECTION);
 	const [facetLimit, setFacetLimit] = useState(FACET_PAGE);
@@ -246,6 +288,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const [musicContentType, setMusicContentType] = useState('albums');
 	const [focusedItem, setFocusedItem] = useState(null);
 	const [musicGridView, setMusicGridView] = useState(null);
+	const [bookGridView, setBookGridView] = useState(() => restoredBookGrid?.view || null);
 	const libraryId = library?.Id || (genreFilter ? `genre-${genreFilter}` : studioFilter ? `studio-${studioFilter}` : 'default');
 	const [imageSize, setImageSize] = useStorage(`library_imageSize_${libraryId}`, 'medium');
 	const [imageType, setImageType] = useStorage(`library_imageType_${libraryId}`, isSquareDefault ? 'square' : 'poster');
@@ -254,19 +297,23 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const [folderView, setFolderView] = useStorage(`library_folderView_${libraryId}`, 'off');
 	const [sortKey, setSortKey] = useStorage(`library_sortKey_${libraryId}`, 'SortName');
 	const [sortOrder, setSortOrder] = useStorage(`library_sortOrder_${libraryId}`, '');
-	const [searchQuery, setSearchQuery] = useState('');
+	const [searchQuery, setSearchQuery] = useState(() => restoredBookGrid?.search || '');
 	const [cardText, setCardText] = useStorage(`library_cardText_${libraryId}`, 'on');
 	const [letterNav, setLetterNav] = useStorage(`library_letterNav_${libraryId}`, 'on');
 	const showCardText = cardText !== 'off';
 	const showLetterNav = letterNav !== 'off';
+	// A style this app doesn't know, say one a newer client synced, reads as Classic.
+	const libraryStyle = settings.libraryStyle === 'modern' || settings.libraryStyle === 'docked' ? settings.libraryStyle : 'classic';
+	const isDocked = libraryStyle === 'docked';
 	const detailedSubtitles = settings.useDetailedSubHeadings !== false;
 	const isMixedContentLibrary = library != null && (!library.CollectionType || library.CollectionType.toLowerCase() === 'folders');
 	const folderViewMode = settings.folderViewMode || 'local';
 	const isFolderView =
 	isMixedContentLibrary ||
 	folderViewMode === 'on' ||
-	(folderViewMode !== 'off' && folderView === 'on');
-	const [folderStack, setFolderStack] = useState([]);
+	(folderViewMode !== 'off' && folderView === 'on') ||
+	Boolean(bookGridView?.folders);
+	const [folderStack, setFolderStack] = useState(() => restoredBookGrid?.folderStack || []);
 	const currentFolderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : library?.Id;
 	const currentFolderCollectionType = folderStack.length > 0 ? folderStack[folderStack.length - 1].collectionType?.toLowerCase() : null;
 	const isGenreMode = !!genreFilter;
@@ -275,11 +322,15 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 	const loadingMoreRef = useRef(false);
 	const apiFetchIndexRef = useRef(0);
+	// How many plain folders lead a folder view, which the item pages start after.
+	const directoryCountRef = useRef(0);
 	const initialFocusDoneRef = useRef(false);
 	const loadItemsRef = useRef(null);
 	const fetchGenerationRef = useRef(0);
 
 	const isMusicBrowseHome = isMusicLibrary && !isFilterMode && !isFolderView && !musicGridView;
+	const isBookBrowseHome = isBookLibrary && !isFilterMode && !isFolderView && !bookGridView;
+	const isBrowseHome = isMusicBrowseHome || isBookBrowseHome;
 
 	const isMovieLibrary = library?.CollectionType?.toLowerCase() === 'movies';
 	const canGroup = (isMovieLibrary || isSeriesLibrary) && !isFolderView;
@@ -356,20 +407,22 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			case 'music':
 			{
 				const mc = MUSIC_CONTENT_TYPES.find(c => c.key === musicContentType);
-				return mc ? mc.itemType : 'MusicAlbum';
+				if (mc) return mc.itemType;
+				return musicContentType === FAVORITE_ITEMS ? '' : 'MusicAlbum';
 			}
 			case 'musicvideos':
 				return 'MusicVideo';
 			case 'playlists':
 				return 'Playlist';
 			case 'books':
-				return 'Book';
+			case 'audiobooks':
+				return bookGridView?.types || 'Book';
 			case 'trailers':
 				return 'Trailer';
 			default:
 				return '';
 		}
-	}, [library, musicContentType, settings.groupItemsIntoCollections]);
+	}, [library, musicContentType, bookGridView, settings.groupItemsIntoCollections]);
 
 	const getExcludeItemTypes = useCallback(() => {
 		const groupCollections = Boolean(settings.groupItemsIntoCollections);
@@ -442,26 +495,38 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			});
 
 			if (isFolderView) {
-				const params = {
+				const shared = {
 					ParentId: currentFolderId,
-					StartIndex: startIndex,
-					Limit: 150,
-					SortBy: `IsFolder,${sortOption.field}`,
 					SortOrder: effectiveOrder,
-					EnableTotalRecordCount: true,
-					Fields: 'PrimaryImageAspectRatio,SortName,Path,ChildCount,MediaSourceCount,ProductionYear,ImageTags,OfficialRating,CommunityRating,CriticRating,RunTimeTicks,UserData'
+					Fields: 'PrimaryImageAspectRatio,SortName,Path,ChildCount,MediaSourceCount,ProductionYear,ImageTags,OfficialRating,CommunityRating,CriticRating,RunTimeTicks,UserData',
+					...(filters.length > 0 ? {Filters: filters.join(',')} : {}),
+					...extraParams
 				};
-				if (filters.length > 0) params.Filters = filters.join(',');
-				Object.assign(params, extraParams);
-				const result = await effectiveApi.getItems(params);
+				const firstPage = startIndex === 0;
+				const [result, directories] = await Promise.all([
+					effectiveApi.getItems({
+						...shared,
+						StartIndex: firstPage ? 0 : startIndex - directoryCountRef.current,
+						Limit: 150,
+						SortBy: sortOption.field,
+						ExcludeItemTypes: DIRECTORY_TYPES,
+						EnableTotalRecordCount: true
+					}),
+					firstPage ? effectiveApi.getItems({...shared, SortBy: 'SortName', IncludeItemTypes: DIRECTORY_TYPES, EnableTotalRecordCount: false}) : null
+				]);
 				let newItems = result.Items || [];
 				if (currentFolderCollectionType === 'movies' || currentFolderCollectionType === 'tvshows') {
 					newItems = newItems.filter(i => i.Type !== 'BoxSet');
 				}
 				if (generation !== fetchGenerationRef.current) return;
+				if (firstPage) {
+					const folders = directories?.Items || [];
+					directoryCountRef.current = folders.length;
+					newItems = folders.concat(newItems);
+				}
 				apiFetchIndexRef.current = append ? apiFetchIndexRef.current + newItems.length : newItems.length;
 				showPage(newItems);
-				setTotalCount(result.TotalRecordCount || 0);
+				setTotalCount((result.TotalRecordCount || 0) + directoryCountRef.current);
 			} else {
 				const params = {
 					StartIndex: startIndex,
@@ -518,8 +583,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 					result = await effectiveApi.getAlbumArtists(artistParams);
 				} else if (isMusicLibrary && musicContentType === 'artists') {
 					result = await effectiveApi.getArtists(artistParams);
-				} else if (isMusicLibrary && musicContentType === 'genres') {
+				} else if ((isMusicLibrary && musicContentType === 'genres') || bookGridView?.genres) {
 					result = await effectiveApi.getMusicGenres({
+						...(bookGridView ? {IncludeItemTypes: bookGridView.types} : {}),
 						ParentId: library?.Id,
 						StartIndex: startIndex,
 						Limit: 150,
@@ -551,7 +617,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			setIsLoading(false);
 			loadingMoreRef.current = false;
 		}
-	}, [isPlaylistLibrary, effectiveApi, library, genreFilter, studioFilter, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, isFolderView, currentFolderId, currentFolderCollectionType, isMusicLibrary, musicContentType, getItemTypeForLibrary, getExcludeItemTypes, settings.groupItemsIntoCollections, isGenreMode]);
+	}, [isPlaylistLibrary, effectiveApi, library, genreFilter, studioFilter, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, isFolderView, currentFolderId, currentFolderCollectionType, isMusicLibrary, musicContentType, bookGridView, getItemTypeForLibrary, getExcludeItemTypes, settings.groupItemsIntoCollections, isGenreMode]);
 
 	loadItemsRef.current = loadItems;
 
@@ -614,9 +680,12 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		Spotlight.focus(`library-group-row-${rowIndex}`);
 	}, []);
 
+	// A ref, since the rows hold on to the first handler they were given.
+	const headerIdRef = useRef(HEADER_IDS.classic);
+	headerIdRef.current = HEADER_IDS[libraryStyle];
 	const handleGroupNavigateUp = useCallback((rowIndex) => {
 		if (rowIndex === 0) {
-			Spotlight.focus('library-toolbar');
+			Spotlight.focus(headerIdRef.current);
 			return;
 		}
 		scrollToGroupRow(rowIndex - 1);
@@ -628,7 +697,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	}, [scrollToGroupRow]);
 
 	useEffect(() => {
-		if (isMusicBrowseHome) {
+		if (isBrowseHome) {
 			setIsLoading(false);
 			return;
 		}
@@ -642,14 +711,14 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			initialFocusDoneRef.current = false;
 			loadItemsRef.current(0, false);
 		}
-	}, [library, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, musicContentType, isFolderView, currentFolderId, genreFilter, studioFilter, isMusicBrowseHome, settings.groupItemsIntoCollections, reloadKey]);
+	}, [library, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, musicContentType, bookGridView, isFolderView, currentFolderId, genreFilter, studioFilter, isBrowseHome, settings.groupItemsIntoCollections, reloadKey]);
 
 	// The values the library actually holds, read once per library so opening
 	// the filter panel does not wait on the network.
 	useEffect(() => {
 		let cancelled = false;
 		setFacetValues(null);
-		if (!effectiveApi?.getQueryFilters || isMusicBrowseHome) return undefined;
+		if (!effectiveApi?.getQueryFilters || isBrowseHome) return undefined;
 		effectiveApi.getQueryFilters(library?.Id, getItemTypeForLibrary())
 			.then(values => {
 				if (!cancelled) setFacetValues(values);
@@ -658,18 +727,38 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		return () => {
 			cancelled = true;
 		};
-	}, [effectiveApi, library, isMusicBrowseHome, getItemTypeForLibrary]);
+	}, [effectiveApi, library, isBrowseHome, getItemTypeForLibrary]);
 
-	// Favorites is the albums grid with the filter on rather than a type of its own.
-	const handleOpenMusicGrid = useCallback((target) => {
+	// Favorites is the albums grid with the filter on rather than a type of its own, and every
+	// favorite is the same filter over every type. A genre tile opens the albums grid filtered
+	// to its genre, and every other grid opens unfiltered.
+	const handleOpenMusicGrid = useCallback((target, genre) => {
 		if (!target) return;
 		setMusicGridView(target);
 		setMusicContentType(target === 'favorites' ? 'albums' : target);
-		setFavoritesOnly(target === 'favorites');
+		setFavoritesOnly(target === 'favorites' || target === FAVORITE_ITEMS);
+		setGenreFilters(genre ? [genre] : []);
 		setAllItems([]);
 		apiFetchIndexRef.current = 0;
 		initialFocusDoneRef.current = false;
 	}, []);
+
+	// The book library's See All and its series, genre and folder cards. A series with no folder of
+	// its own is looked for by name, and a folder series opens at its folder with Back going home.
+	const handleOpenBookGrid = useCallback((target) => {
+		setBookGridView({
+			types: target.types || combinedTypes(library),
+			genres: Boolean(target.genres),
+			folders: Boolean(target.folder),
+			baseDepth: target.folder?.Id ? 1 : 0
+		});
+		setFolderStack(target.folder?.Id ? [{id: target.folder.Id, name: target.folder.Name}] : []);
+		setGenreFilters(target.genre ? [target.genre] : []);
+		setSearchQuery(target.search || '');
+		setAllItems([]);
+		apiFetchIndexRef.current = 0;
+		initialFocusDoneRef.current = false;
+	}, [library]);
 
 	const handleItemClick = useCallback((ev) => {
 		const itemIndex = ev.currentTarget?.dataset?.index;
@@ -678,6 +767,10 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		const index = parseInt(itemIndex, 10);
 		const item = itemsRef.current[index];
 		if (item) {
+			if (bookGridView?.genres && item.Type === 'Genre') {
+				handleOpenBookGrid({genre: item.Name});
+				return;
+			}
 			if (isFolderView && item.IsFolder && !FOLDER_DETAIL_TYPES.includes(item.Type)) {
 				setFolderStack(prev => [...prev, {id: item.Id, name: item.Name, collectionType: item.CollectionType}]);
 				return;
@@ -686,10 +779,11 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				onViewPhoto(item, itemsRef.current);
 			} else {
 				returnTo = {libraryId, itemId: item.Id, index};
+				bookGridReturn = bookGridView ? {libraryId, view: bookGridView, folderStack, genreFilters, search: searchQuery} : null;
 				onSelectItem?.(item);
 			}
 		}
-	}, [isFolderView, onSelectItem, onViewPhoto, libraryId]);
+	}, [isFolderView, onSelectItem, onViewPhoto, libraryId, bookGridView, folderStack, genreFilters, searchQuery, handleOpenBookGrid]);
 
 	const {getScrollTo: getGridScrollTo, quickReturn, scrollTo: scrollGridTo} = useQuickReturnGrid('library-grid');
 
@@ -721,7 +815,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		return () => clearTimeout(id);
 	}, [searchQuery, allItems.length, totalCount, isLoading, loadItems]);
 
-	// Back past the panels: leave the search box, drop out of a music grid, then
+	// Back past the panels: leave the search box, drop out of a music or book grid, then
 	// climb the folder stack. The global back handling runs in a capture
 	// listener, so the search answers here rather than in a key handler of its
 	// own, which would never see the press.
@@ -737,6 +831,17 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			setFavoritesOnly(false);
 			return true;
 		}
+		if (bookGridView) {
+			if (folderStack.length > bookGridView.baseDepth) {
+				setFolderStack(prev => prev.slice(0, -1));
+			} else {
+				setBookGridView(null);
+				setFolderStack([]);
+				setGenreFilters([]);
+				setSearchQuery('');
+			}
+			return true;
+		}
 		if (isFolderView && folderStack.length > 0) {
 			setFolderStack(prev => prev.slice(0, -1));
 			return true;
@@ -749,9 +854,13 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			return false;
 		}
 		return quickReturn();
-	}, [musicGridView, isFolderView, folderStack, quickReturn, groupedActive, scrollToGroupRow]);
+	}, [musicGridView, bookGridView, isFolderView, folderStack, quickReturn, groupedActive, scrollToGroupRow]);
 
-	// There is one back slot, and the music browse screen claims it while it's up. Nothing
+	// Where focus lands as a panel opens. Show and Group open theirs on the row they name.
+	const [sortFocusId, setSortFocusId] = useState(SORT_FOCUS_ID);
+	const [settingsFocusId, setSettingsFocusId] = useState(SETTINGS_FOCUS_ID);
+
+	// There is one back slot, and the music or book browse screen claims it while it's up. Nothing
 	// here would be true there anyway, since it only shows with no grid, panel or folder stack.
 	const {
 		showSortPanel, showSettingsPanel,
@@ -759,10 +868,10 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		handleToggleSettingsPanel, handleCloseSettingsPanel
 	} = useSortSettingsPanels({
 		backHandlerRef,
-		sortFocusId: 'sort-option-0',
-		settingsFocusId: 'settings-image-size',
+		sortFocusId,
+		settingsFocusId,
 		onBack: handleBackBeyondPanels,
-		enabled: !isMusicBrowseHome
+		enabled: !isBrowseHome
 	});
 	// The grid takes focus once a list has landed, but not while a panel is up, since that's
 	// the viewer still picking. A pick that closes the panel runs this before the reload has
@@ -930,7 +1039,23 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		setExpandedSection(SORT_SECTION);
 		setFacetLimit(FACET_PAGE);
 		setFacetQuery('');
+		setSortFocusId(SORT_FOCUS_ID);
 	}, [showSortPanel]);
+
+	useEffect(() => {
+		if (!showSettingsPanel) setSettingsFocusId(SETTINGS_FOCUS_ID);
+	}, [showSettingsPanel]);
+
+	const handleOpenPlayedFilter = useCallback(() => {
+		setExpandedSection('played');
+		setSortFocusId(`filter-played-${playedFilter}`);
+		handleToggleSortPanel();
+	}, [playedFilter, handleToggleSortPanel]);
+
+	const handleOpenGroupBy = useCallback(() => {
+		setSettingsFocusId('settings-group-by');
+		handleToggleSettingsPanel();
+	}, [handleToggleSettingsPanel]);
 
 	const handleCycleImageSize = useCallback(() => {
 		setImageSize(cycleValue(IMAGE_SIZES, imageSize));
@@ -1006,7 +1131,8 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			: ({small: 116, medium: 145, large: 174, extraLarge: 203}[imageSize] || 145);
 	const cardHeight = posterHeight + textHeight;
 
-	const cellPadX = horizontalCellPad(cardWidth, window.innerWidth - GRID_INSET);
+	const gridWidth = window.innerWidth - GRID_INSET - (isDocked ? DOCK_WIDTH : 0);
+	const cellPadX = horizontalCellPad(cardWidth, gridWidth);
 	const cellPadY = Math.max(MIN_ROW_GAP, focusOverhang(cardHeight));
 	const cellPadding = `${cellPadY}px ${cellPadX}px`;
 	const gridItemSize = useMemo(() => (
@@ -1114,7 +1240,15 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		</div>
 	), [renderCard, cellPadding]);
 
-	const handleTileFocus = useCallback((index) => setFocusedItem(itemsRef.current[index] || null), []);
+	const tileFocusTimerRef = useRef(null);
+	const handleTileFocus = useCallback((index) => {
+		clearTimeout(tileFocusTimerRef.current);
+		tileFocusTimerRef.current = setTimeout(() => setFocusedItem(itemsRef.current[index] || null), FOCUS_SETTLE_MS);
+	}, []);
+	useEffect(() => () => clearTimeout(tileFocusTimerRef.current), []);
+	const gridKeyDown = isDocked ? handleGridKeyDownDocked
+		: showLetterNav ? handleGridKeyDown
+			: libraryStyle === 'modern' ? handleGridKeyDownNoLettersModern : handleGridKeyDownNoLetters;
 
 	const currentSort = activeSortOptions.find(o => o.key === sortKey);
 	const sortLabel = currentSort ? currentSort.label : $L('Name');
@@ -1145,6 +1279,24 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		return picked && value !== 'all' ? $L(picked.label) : null;
 	};
 	const countLabel = (count) => (count > 0 ? String(count) : null);
+
+	// What the Modern bar and the Docked panel share. Every value here holds still while
+	// focus moves through the grid, so neither redraws with the focused item.
+	const controlProps = {
+		canGroup,
+		sortLabel,
+		sortAscending: (sortOrder || currentSort?.order) !== 'Descending',
+		groupLabel: GROUP_BY_LABELS[groupBy](),
+		showLabel: chosenLabel(PLAYED_FILTERS, playedFilter) || $L('All'),
+		searchQuery,
+		onSearchChange: handleSearchChange,
+		onHome,
+		onSort: handleToggleSortPanel,
+		onGroup: handleOpenGroupBy,
+		onShow: handleOpenPlayedFilter,
+		onSettings: handleToggleSettingsPanel
+	};
+	const displayLabel = $L(capitalize(imageSize));
 
 	// Every group in the panel is one of these. The body is a function so the closed
 	// ones cost nothing to keep on the list, which matters for the facets that run to
@@ -1275,9 +1427,12 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const showVideoFilters = !isMusicLibrary && !isPlaylistLibrary;
 	// Emby's items query has no 4K flag and its series status holds only
 	// continuing and ended, so those options stay out of the panel there.
-	const supported = (options) => options.filter(o => !o.jellyfinOnly || serverType !== 'emby');
+	// Plex can't filter on series status, likes, subtitles, trailers, extras, theme media, 3D or disc source.
+	const onPlex = libraryServerType === 'plex';
+	const supported = (options) => options.filter(o => (!o.jellyfinOnly || libraryServerType !== 'emby') && !(onPlex && o.plexless));
 	const folderName = folderStack.length > 0 ? folderStack[folderStack.length - 1].name : library?.Name;
 	const displayName = genreFilter || studioFilter || library?.Name || '';
+	const titleProps = {isFolderView, folderStack, rootName: library?.Name, displayName, shownCount, onBreadcrumb: handleFolderBreadcrumb};
 	const statusText = isFolderView
 		? $L("Browsing folders in '{folderName}' sorted by {sortLabel}").replace('{folderName}', folderName).replace('{sortLabel}', sortLabel)
 		: genreFilter
@@ -1288,7 +1443,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				? $L("Showing {filterLabel} from '{genreFilter}' sorted by {sortLabel}").replace('{filterLabel}', filterLabel).replace('{genreFilter}', studioFilter).replace('{sortLabel}', sortLabel)
 				: $L("Showing {filterLabel} from '{libraryName}' sorted by {sortLabel}").replace('{filterLabel}', filterLabel).replace('{libraryName}', library?.Name).replace('{sortLabel}', sortLabel);
 
-	const backdropsEnabled = settings?.showHomeBackdrop !== false && !settings?.hideBackdropsInLibraries;
+	const backdropsEnabled = !settings?.hideBackdropsInLibraries;
 
 	const backdropId = focusedItem?.BackdropImageTags?.length
 		? focusedItem.Id
@@ -1310,6 +1465,22 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		);
 	}
 
+	if (isBookBrowseHome) {
+		return (
+			<BookBrowse
+				key={library.Id}
+				library={library}
+				api={effectiveApi}
+				serverUrl={effectiveServerUrl}
+				onSelectItem={onSelectItem}
+				onOpenGrid={handleOpenBookGrid}
+				onPlay={onPlay}
+				onSearch={onSearch}
+				backHandlerRef={backHandlerRef}
+			/>
+		);
+	}
+
 	if (isMusicBrowseHome) {
 		return (
 			<MusicBrowse
@@ -1318,6 +1489,8 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				serverUrl={effectiveServerUrl}
 				onSelectItem={onSelectItem}
 				onOpenGrid={handleOpenMusicGrid}
+				onPlay={onPlay}
+				onSearch={onSearch}
 				onHome={onHome}
 				backHandlerRef={backHandlerRef}
 			/>
@@ -1347,63 +1520,53 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			{backdropsEnabled && (
 				<BackdropLayer targetUrl={backdropUrl} blurAmount={settings?.backdropBlurHome} />
 			)}
-			<div className={css.content}>
-				<div className={css.header}>
-					<div className={css.headerSide} />
-					<div className={css.headerTitle}>
-						{isFolderView && folderStack.length > 0 ? (
-							<div className={css.breadcrumb}>
-								<SpottableButton
-									className={css.breadcrumbItem}
-									onClick={handleFolderBreadcrumb}
-									data-depth={0}
-									spotlightId="breadcrumb-root"
-								>
-									{library.Name}
-								</SpottableButton>
-								{folderStack.map((f, i) => (
-									<span key={f.id} className={css.breadcrumbSegment}>
-										<span className={css.breadcrumbSep}>›</span>
-										{i < folderStack.length - 1 ? (
-											<SpottableButton
-												className={css.breadcrumbItem}
-												onClick={handleFolderBreadcrumb}
-												data-depth={i + 1}
-											>
-												{f.name}
-											</SpottableButton>
-										) : (
-											<span className={css.breadcrumbCurrent}>{f.name}</span>
-										)}
-									</span>
-								))}
-								<div className={css.itemCount}>{shownCount} {$L('Items')}</div>
+			{isDocked && (
+				<LibraryDock
+					{...titleProps}
+					{...controlProps}
+					displayLabel={displayLabel}
+					showLetters={showLetterNav && !groupedActive}
+					startLetter={startLetter}
+					onLetterSelect={handleLetterSelect}
+				/>
+			)}
+			<div className={isDocked ? `${css.content} ${css.contentDocked}` : css.content}>
+				{libraryStyle === 'classic' && (
+					<div className={css.header}>
+						<div className={css.headerSide} />
+						<div className={css.headerTitle}>
+							<LibraryTitle {...titleProps} />
+						</div>
+						<div className={css.headerSide}>
+							<div className={css.searchWrap}>
+								<svg className={css.searchIcon} viewBox="0 -960 960 960">
+									<path d={SEARCH_ICON} />
+								</svg>
+								<SpottableInput
+									type="text"
+									className={css.searchField}
+									placeholder={$L('Search this library...')}
+									value={searchQuery}
+									onChange={handleSearchChange}
+									onKeyDown={handleSearchKeyDown}
+									spotlightId="library-search"
+									autoComplete="off"
+								/>
 							</div>
-						) : (
-							<>
-								<div className={css.libraryTitle}>{displayName}</div>
-								<div className={css.itemCount}>{shownCount} {$L('Items')}</div>
-							</>
-						)}
-					</div>
-					<div className={css.headerSide}>
-						<div className={css.searchWrap}>
-							<svg className={css.searchIcon} viewBox="0 -960 960 960">
-								<path d={SEARCH_ICON} />
-							</svg>
-							<SpottableInput
-								type="text"
-								className={css.searchField}
-								placeholder={$L('Search this library...')}
-								value={searchQuery}
-								onChange={handleSearchChange}
-								onKeyDown={handleSearchKeyDown}
-								spotlightId="library-search"
-								autoComplete="off"
-							/>
 						</div>
 					</div>
-				</div>
+				)}
+				{libraryStyle === 'modern' && (
+					<>
+						<div className={css.modernTitle}>
+							<LibraryTitle {...titleProps} />
+						</div>
+						<ModernBar
+							{...controlProps}
+							onKeyDown={groupedActive ? handleToolbarKeyDownGrouped : showLetterNav ? handleBarKeyDownLetters : handleToolbarKeyDown}
+						/>
+					</>
+				)}
 
 				{settings?.showMediaDetailsOnLibraryPage !== false && (
 					<div className={css.focusedInfo}>
@@ -1423,59 +1586,54 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 					</div>
 				)}
 
-				<ToolbarContainer className={css.toolbar} spotlightId="library-toolbar" onKeyDown={groupedActive ? handleToolbarKeyDownGrouped : handleToolbarKeyDown}>
-					<SpottableButton
-						className={css.toolbarBtn}
-						onClick={onHome}
-						spotlightId="library-home-btn"
-					>
-						<svg className={css.toolbarIcon} viewBox="0 0 24 24">
-							<path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
-						</svg>
-					</SpottableButton>
+				{libraryStyle === 'classic' && (
+					<ToolbarContainer className={css.toolbar} spotlightId="library-toolbar" onKeyDown={groupedActive ? handleToolbarKeyDownGrouped : handleToolbarKeyDown}>
+						<SpottableButton
+							className={css.toolbarBtn}
+							onClick={onHome}
+							spotlightId="library-home-btn"
+						>
+							<svg className={css.toolbarIcon} viewBox="0 0 24 24">
+								<path d={HOME_ICON} />
+							</svg>
+						</SpottableButton>
 
-					<SpottableButton
-						className={css.toolbarBtn}
-						onClick={handleToggleSortPanel}
-						spotlightId="library-sort-btn"
-					>
-						<svg className={css.toolbarIcon} viewBox="0 -960 960 960">
-							<path d="m80-280 162-400h63l161 400h-63l-38-99H181l-38 99H80Zm121-151h144l-70-185h-4l-70 185Zm347 151v-62l233-286H566v-52h272v63L607-332h233v52H548ZM384-784l96-96 96 96H384Zm96 704-96-96h192l-96 96Z" />
-						</svg>
-					</SpottableButton>
+						<SpottableButton
+							className={css.toolbarBtn}
+							onClick={handleToggleSortPanel}
+							spotlightId="library-sort-btn"
+						>
+							<svg className={css.toolbarIcon} viewBox="0 -960 960 960">
+								<path d={SORT_ICON} />
+							</svg>
+						</SpottableButton>
 
-					<SpottableButton
-						className={css.toolbarBtn}
-						onClick={handleToggleSettingsPanel}
-						spotlightId="library-settings-btn"
-					>
-						<svg className={css.toolbarIcon} viewBox="0 -960 960 960">
-							<path d="m388-80-20-126q-19-7-40-19t-37-25l-118 54-93-164 108-79q-2-9-2.5-20.5T185-480q0-9 .5-20.5T188-521L80-600l93-164 118 54q16-13 37-25t40-18l20-127h184l20 126q19 7 40.5 18.5T669-710l118-54 93 164-108 77q2 10 2.5 21.5t.5 21.5q0 10-.5 21t-2.5 21l108 78-93 164-118-54q-16 13-36.5 25.5T592-206L572-80H388Zm48-60h88l14-112q33-8 62.5-25t53.5-41l106 46 40-72-94-69q4-17 6.5-33.5T715-480q0-17-2-33.5t-7-33.5l94-69-40-72-106 46q-23-26-52-43.5T538-708l-14-112h-88l-14 112q-34 7-63.5 24T306-642l-106-46-40 72 94 69q-4 17-6.5 33.5T245-480q0 17 2.5 33.5T254-413l-94 69 40 72 106-46q24 24 53.5 41t62.5 25l14 112Zm44-210q54 0 92-38t38-92q0-54-38-92t-92-38q-54 0-92 38t-38 92q0 54 38 92t92 38Zm0-130Z" />
-						</svg>
-					</SpottableButton>
+						<SpottableButton
+							className={css.toolbarBtn}
+							onClick={handleToggleSettingsPanel}
+							spotlightId="library-settings-btn"
+						>
+							<svg className={css.toolbarIcon} viewBox="0 -960 960 960">
+								<path d={SETTINGS_ICON} />
+							</svg>
+						</SpottableButton>
 
-					{showLetterNav && !groupedActive && (
-						<div className={css.letterNav}>
-							{LETTERS.map((letter, index) => (
-								<SpottableButton
-									key={letter}
-									className={`${css.letterButton} ${startLetter === letter ? css.active : ''}`}
-									onClick={handleLetterSelect}
-									data-letter={letter}
-									spotlightId={index === 0 ? 'library-letter-hash' : undefined}
-								>
-									{letter}
-								</SpottableButton>
-							))}
-						</div>
-					)}
-				</ToolbarContainer>
+						{showLetterNav && !groupedActive && (
+							<div className={css.letterNav}>
+								<Letters startLetter={startLetter} onSelect={handleLetterSelect} />
+							</div>
+						)}
+					</ToolbarContainer>
+				)}
+				{libraryStyle === 'modern' && showLetterNav && !groupedActive && (
+					<ModernLetters startLetter={startLetter} onSelect={handleLetterSelect} />
+				)}
 
-				<GridContainer className={css.gridContainer}>
+				<GridContainer className={css.gridContainer} spotlightId="library-grid-area">
 					{isLoading && items.length === 0 ? (
 						<div className={css.gridWrapper}>
 							<LibrarySkeleton
-								gridWidth={window.innerWidth - GRID_INSET}
+								gridWidth={gridWidth}
 								cardWidth={cardWidth}
 								posterHeight={posterHeight}
 								padX={cellPadX}
@@ -1491,7 +1649,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							<div className={css.empty}>{$L('No items found')}</div>
 						)
 					) : groupedActive ? (
-						<div className={css.groupRows} ref={groupRowsRef}>
+						<div className={css.groupRows} ref={groupRowsRef} onKeyDownCapture={isDocked ? handleRowsKeyDownDocked : undefined}>
 							{groups.map((group, index) => (
 								<MediaRow
 									key={group.name}
@@ -1499,7 +1657,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 									spotlightId={`library-group-row-${index}`}
 									title={group.name}
 									items={group.items}
-									serverUrl={serverUrl}
+									serverUrl={effectiveServerUrl}
 									cardType={playlistGrouped ? 'square' : 'portrait'}
 									rowIndex={index}
 									onSelectItem={onSelectItem}
@@ -1514,6 +1672,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 						<div className={css.gridWrapper} {...menuHold}>
 							{gridDirection === 'vertical' ? (
 								<TileGrid
+									key={libraryStyle}
 									className={css.grid}
 									cbScrollTo={getGridScrollTo}
 									dataSize={items.length}
@@ -1521,12 +1680,13 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 									renderTile={renderTile}
 									resetKey={items[0]?.Id}
 									onFocusIndex={handleTileFocus}
-									onKeyDown={showLetterNav ? handleGridKeyDown : handleGridKeyDownNoLetters}
+									onKeyDown={gridKeyDown}
 									onClick={handleItemClick}
 									spotlightId="library-grid"
 								/>
 							) : (
 								<GridList
+									key={libraryStyle}
 									className={css.grid}
 									cbScrollTo={getGridScrollTo}
 									dataSize={items.length}
@@ -1537,7 +1697,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 									verticalScrollbar="hidden"
 									spacing={0}
 									onScrollStop={handleScrollStop}
-									onKeyDown={showLetterNav ? handleGridKeyDown : handleGridKeyDownNoLetters}
+									onKeyDown={gridKeyDown}
 									spotlightId="library-grid"
 								/>
 							)}
@@ -1636,7 +1796,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							))
 						))}
 
-						{renderSection('liked', $L('My Rating'), chosenLabel(LIKED_FILTERS, likedFilter), () => (
+						{!onPlex && renderSection('liked', $L('My Rating'), chosenLabel(LIKED_FILTERS, likedFilter), () => (
 							LIKED_FILTERS.map((option) => (
 								<SpottableButton
 									key={option.key}
@@ -1653,7 +1813,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							))
 						))}
 
-						{isSeriesLibrary && renderSection('series', $L('Series Status'), chosenLabel(SERIES_FILTERS, seriesFilter), () => (
+						{isSeriesLibrary && !onPlex && renderSection('series', $L('Series Status'), chosenLabel(SERIES_FILTERS, seriesFilter), () => (
 							supported(SERIES_FILTERS).map((option) => (
 								<SpottableButton
 									key={option.key}
@@ -1670,11 +1830,11 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							))
 						))}
 
-						{showVideoFilters && renderOptionSection('features', $L('Features'), supported(FEATURE_FILTERS), featureFilters, handleFeatureToggle, 'feature')}
+						{showVideoFilters && !onPlex && renderOptionSection('features', $L('Features'), supported(FEATURE_FILTERS), featureFilters, handleFeatureToggle, 'feature')}
 
 						{showVideoFilters && renderOptionSection('quality', $L('Quality'), supported(QUALITY_FILTERS), qualityFilters, handleQualityToggle, 'quality')}
 
-						{showVideoFilters && renderOptionSection('source', $L('Source'), VIDEO_SOURCE_FILTERS, videoSourceFilters, handleVideoSourceToggle, 'source')}
+						{showVideoFilters && !onPlex && renderOptionSection('source', $L('Source'), VIDEO_SOURCE_FILTERS, videoSourceFilters, handleVideoSourceToggle, 'source')}
 
 						{!genreFilter && renderFacetSection('genres', $L('Genres'), facetValues?.genres, genreFilters, handleGenreToggle)}
 						{renderFacetSection('ratings', $L('Parental Rating'), facetValues?.officialRatings, ratingFilters, handleRatingToggle)}
@@ -1778,7 +1938,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							<div className={css.settingValue}>{showLetterNav ? $L('On') : $L('Off')}</div>
 						</SpottableButton>
 
-						{!isFilterMode && (
+						{!isFilterMode && folderViewMode === 'local' && (
 							<SpottableButton
 								className={css.settingRow}
 								onClick={handleToggleFolderView}

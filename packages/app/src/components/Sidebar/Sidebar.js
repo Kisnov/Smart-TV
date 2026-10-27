@@ -2,6 +2,7 @@ import {memo, useCallback, useMemo} from 'react';
 import $L from '@enact/i18n/$L';
 import SpotlightContainerDecorator, {spotlightDefaultClass} from '@enact/spotlight/SpotlightContainerDecorator';
 import {useSettings} from '../../context/SettingsContext';
+import {useAuth} from '../../context/AuthContext';
 import {useSeerr} from '../../context/SeerrContext';
 import {useSyncPlay} from '../../context/SyncPlayContext';
 import {useServerMessages} from '../../context/ServerMessagesContext';
@@ -20,6 +21,7 @@ import SidebarItem from './SidebarItem';
 import SidebarLibraries from './SidebarLibraries';
 import SidebarUserButton from './SidebarUserButton';
 import useSidebarExpansion from './useSidebarExpansion';
+import {SidebarMusicCard} from '../MiniMusicPlayer/MiniMusicPlayer';
 
 import css from './Sidebar.module.less';
 
@@ -61,10 +63,14 @@ const Sidebar = ({
 	onUserMenu,
 	onSyncPlay,
 	onMessages,
-	onFriends
+	onFriends,
+	music,
+	onOpenMusic,
+	hideForTrailer
 }) => {
 	const {settings, activeTheme} = useSettings();
 	const {isEnabled: seerrEnabled, displayName} = useSeerr();
+	const {serverType} = useAuth();
 	const {isInGroup} = useSyncPlay();
 	const {messages, unreadCount} = useServerMessages();
 	const {socialAvailable, badgeCount: friendsBadge} = useAchievements();
@@ -80,7 +86,7 @@ const Sidebar = ({
 	const kidsMode = isKidsMode(settings);
 	const showLiveTv = !kidsMode && settings.showLiveTvButton !== false && hasLiveTv;
 	const showSeerr = !kidsMode && seerrEnabled && settings.showSeerrButton !== false;
-	const showSyncPlay = !kidsMode && settings.syncplayEnabled !== false && settings.showSyncPlayButton !== false;
+	const showSyncPlay = !kidsMode && serverType !== 'plex' && settings.syncplayEnabled !== false && settings.showSyncPlayButton !== false;
 	const navLibraries = librariesForNav(libraries, showLiveTv, {hideLiveTv: kidsMode});
 	const showLibraries = !kidsMode && settings.showLibrariesInToolbar !== false && navLibraries.length > 0;
 	// Only with something to show, so the rail never has a row that does nothing.
@@ -128,7 +134,7 @@ const Sidebar = ({
 
 	return (
 		<SidebarContainer
-			className={`${css.sidebar} ${expanded ? css.expanded : ''}`}
+			className={`${css.sidebar} ${expanded ? css.expanded : ''} ${hideForTrailer ? css.trailerHidden : ''}`}
 			style={navStyle}
 			onKeyDown={handleNavKeyDown}
 			onMouseEnter={handlers.onMouseEnter}
@@ -188,6 +194,8 @@ const Sidebar = ({
 					)}
 
 					<SidebarItem Icon={SettingsIcon} slot={nextSlot()} label={$L('Settings')} onClick={onSettings} spotlightId="navbar-settings" />
+
+					{music && <SidebarMusicCard item={music.item} paused={music.paused} expanded={expanded} onOpen={onOpenMusic} />}
 				</div>
 			</div>
 

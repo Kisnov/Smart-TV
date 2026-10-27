@@ -2,6 +2,7 @@ import {useEffect, useMemo, useRef, useState} from 'react';
 import {getPlatform, isLegacyTizen} from '../../platform';
 import {getDeviceCapabilities} from '../../services/deviceProfile';
 import {mediaPreviewAllowedOnDevice} from '../../services/mediaPreviewSource';
+import {mediaPreviewMode} from '../../utils/mediaPreviewMode';
 import {createMediaPreviewController} from './mediaPreviewController';
 
 // Owns the card preview controller for the home rows. It follows the setting and
@@ -52,15 +53,16 @@ export default function useMediaPreview({api, settings, isVisible, browseMode, o
 		webosVersion,
 		performanceMode: settings.performanceMode
 	});
-	const enabled = !!settings.episodePreviewEnabled && deviceAllowed && isVisible && browseMode === 'rows' && !screensaverActive;
+	const enabled = mediaPreviewMode(settings) !== 'off' && deviceAllowed && isVisible && browseMode === 'rows' && !screensaverActive;
 
 	useEffect(() => {
 		controller.setEnabled(enabled);
 	}, [controller, enabled]);
 
+	// The controller reads the volume from settings, so a new volume re-applies the audio too.
 	useEffect(() => {
 		controller.setAudioEnabled(settings.previewAudioEnabled !== false);
-	}, [controller, settings.previewAudioEnabled]);
+	}, [controller, settings.previewAudioEnabled, settings.previewVolume]);
 
 	// Older sets only fire the prefixed event, so both are watched.
 	useEffect(() => {
