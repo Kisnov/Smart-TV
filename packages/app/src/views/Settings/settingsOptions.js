@@ -227,9 +227,34 @@ export const getHomeRowsStyleOptions = () => [
 	{ value: 'v1', label: $L('Classic') }
 ];
 
+export const getHomeBackdropStyleOptions = () => [
+	{ value: 'off', label: $L('Off') },
+	{ value: 'fullScreen', label: $L('Full Screen') },
+	{ value: 'corner', label: $L('Corner') }
+];
+
+export const getMediaPreviewModeOptions = () => [
+	{ value: 'off', label: $L('Off') },
+	{ value: 'media', label: $L('Media Preview') },
+	{ value: 'trailer', label: $L('Trailer Preview') }
+];
+
 export const getLibraryStyleOptions = () => [
 	{ value: 'classic', label: $L('Classic') },
 	{ value: 'modern', label: $L('Modern') },
+	{ value: 'docked', label: $L('Docked') }
+];
+
+export const getBookLibraryStyleOptions = () => [
+	{ value: 'classic', label: $L('Classic') },
+	{ value: 'readingRoom', label: $L('Reading Room') },
+	{ value: 'bookstore', label: $L('Bookstore') }
+];
+
+export const getKeyboardStyleOptions = () => [
+	{ value: 'native', label: $L('Native') },
+	{ value: 'classic', label: $L('Classic') },
+	{ value: 'glass', label: $L('Glass') },
 	{ value: 'docked', label: $L('Docked') }
 ];
 
@@ -467,7 +492,7 @@ export const getTrickplayModeOptions = () => [
 
 export const getZoomModeOptions = () => [
 	{ value: 'fit', label: $L('Fit') },
-	{ value: 'autoCrop', label: $L('Auto Crop') },
+	{ value: 'autoCrop', label: $L('Zoom to Fill') },
 	{ value: 'stretch', label: $L('Stretch') }
 ];
 
@@ -658,7 +683,12 @@ export const getSeasonalThemeOptions = () => [
 	{ value: 'petals', label: $L('Spring Petals') },
 	{ value: 'fireflies', label: $L('Fireflies') },
 	{ value: 'leaves', label: $L('Falling Leaves') },
-	{ value: 'halloween', label: $L('Halloween') }
+	{ value: 'halloween', label: $L('Halloween') },
+	{ value: 'valentines', label: $L("Valentine's Day") },
+	{ value: 'easter', label: $L('Easter') },
+	{ value: 'pride', label: $L('Pride') },
+	{ value: 'lunar', label: $L('Lunar New Year') },
+	{ value: 'diwali', label: $L('Diwali') }
 ];
 
 export const getSeasonalDensityOptions = () => [

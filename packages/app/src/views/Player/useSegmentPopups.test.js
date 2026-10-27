@@ -2,7 +2,7 @@ import {renderHook, act} from '@testing-library/react';
 
 import Spotlight from '@enact/spotlight';
 
-import useSegmentPopups from './useSegmentPopups';
+import useSegmentPopups, {isSeekbarFocused} from './useSegmentPopups';
 
 // The framework's focus needs its own copy of React, so a stand in answers for it.
 jest.mock('@enact/spotlight', () => ({__esModule: true, default: {focus: jest.fn(() => false)}}));
@@ -26,10 +26,15 @@ const setup = () => {
 		onPlayNext,
 		onPausePlayback: () => {}
 	}));
-	// Runs an episode to its end, where the next one starts by itself.
+	// Runs an episode to its end, where the ended handler starts the next one unless the prompt holds it.
 	const playOut = () => {
 		act(() => result.current.resetPopups());
 		act(() => result.current.checkSegments(NEAR_END));
+		let held = false;
+		act(() => {
+			held = result.current.shouldHoldForStillWatching();
+		});
+		if (!held) onPlayNext({Id: 'next'});
 	};
 	return {result, playOut, onPlayNext};
 };
@@ -116,6 +121,14 @@ describe('the skip prompt', () => {
 		button.tabIndex = 0;
 		document.body.appendChild(button);
 		button.focus();
+	};
+	// Stands in for the seek bar, with focus on a knob inside it.
+	const focusSeekbar = () => {
+		const bar = document.createElement('div');
+		bar.setAttribute('data-spotlight-id', 'progress-bar');
+		bar.innerHTML = '<div tabindex="0"></div>';
+		document.body.appendChild(bar);
+		bar.firstChild.focus();
 	};
 
 	test('comes up on the way into a segment and clears the controls away', () => {
@@ -279,5 +292,109 @@ describe('the skip prompt', () => {
 		row.lastChild.focus();
 		expect(press(result, RIGHT)).toBe(true);
 		expect(Spotlight.focus).toHaveBeenCalledWith('skip-segment-btn');
+	});
+
+	test('knows when focus sits anywhere inside the seek bar', () => {
+		expect(isSeekbarFocused()).toBe(false);
+		focusSeekbar();
+		expect(isSeekbarFocused()).toBe(true);
+		focusPrompt();
+		expect(isSeekbarFocused()).toBe(false);
+	});
+
+	test('with the controls up, Up from the seek bar goes to it and Up from anywhere else is left alone', () => {
+		const {result, showControls} = setupPrompt({controlsVisible: true});
+		at(result, 61);
+
+		const other = document.createElement('button');
+		document.body.appendChild(other);
+		other.focus();
+		expect(press(result, UP)).toBe(false);
+		expect(showControls).not.toHaveBeenCalled();
+		expect(Spotlight.focus).not.toHaveBeenCalled();
+
+		focusSeekbar();
+		expect(press(result, UP)).toBe(true);
+		expect(showControls).toHaveBeenCalledTimes(1);
+		expect(Spotlight.focus).toHaveBeenCalledWith('skip-segment-btn');
+	});
+});
+
+describe('the next up card', () => {
+	const SECOND = 10000000;
+
+	beforeEach(() => jest.useFakeTimers());
+	afterEach(() => jest.useRealTimers());
+
+	const setupNextUp = (settings = {}) => {
+		const onPlayNext = jest.fn();
+		const {result} = renderHook(() => useSegmentPopups({
+			mediaSegments: null,
+			nextEpisode: {Id: 'next'},
+			settings: {autoPlay: true, nextUpBehavior: 'extended', nextUpTimeout: 10, stillWatchingBehavior: 'short_', ...settings},
+			runTimeRef: {current: 100 * SECOND},
+			activeModal: null,
+			controlsVisible: false,
+			hideControls: () => {},
+			showControls: () => {},
+			onPlayNext,
+			onPausePlayback: () => {}
+		}));
+		const at = (seconds) => act(() => result.current.checkSegments(seconds * SECOND));
+		return {result, at, onPlayNext};
+	};
+
+	test('the card comes up for the last seconds of the timeout and counts down what is left', () => {
+		const {result, at} = setupNextUp();
+		at(85);
+		expect(result.current.showNextEpisode).toBe(false);
+		at(91.5);
+		expect(result.current.showNextEpisode).toBe(true);
+		expect(result.current.nextEpisodeCountdown).toBe(9);
+		at(96);
+		expect(result.current.nextEpisodeCountdown).toBe(4);
+	});
+
+	test('an Instant timeout shows no card and leaves the move to the end of the file', () => {
+		const {result, at, onPlayNext} = setupNextUp({nextUpTimeout: 0});
+		at(99.9);
+		expect(result.current.showNextEpisode).toBe(false);
+		expect(onPlayNext).not.toHaveBeenCalled();
+	});
+
+	test('a seek back out of the window takes the card down until playback reaches it again', () => {
+		const {result, at} = setupNextUp();
+		at(95);
+		at(50);
+		expect(result.current.showNextEpisode).toBe(false);
+		expect(result.current.nextEpisodeCountdown).toBeNull();
+		at(95);
+		expect(result.current.showNextEpisode).toBe(true);
+	});
+
+	test('nothing moves on before the file ends', () => {
+		const {at, onPlayNext} = setupNextUp();
+		at(95);
+		act(() => jest.advanceTimersByTime(60000));
+		expect(onPlayNext).not.toHaveBeenCalled();
+	});
+
+	test('Back takes the card down for the rest of the episode', () => {
+		const {result, at} = setupNextUp();
+		at(95);
+		let consumed;
+		act(() => {
+			consumed = result.current.handlePopupKeyDown({keyCode: 27, preventDefault: jest.fn(), stopPropagation: jest.fn()});
+		});
+		expect(consumed).toBe(true);
+		at(97);
+		expect(result.current.showNextEpisode).toBe(false);
+	});
+
+	test('with autoplay off the card comes up as before, with no countdown', () => {
+		const {result, at} = setupNextUp({autoPlay: false});
+		at(75);
+		expect(result.current.showNextEpisode).toBe(true);
+		expect(result.current.nextEpisodeCountdown).toBeNull();
 	});
 });

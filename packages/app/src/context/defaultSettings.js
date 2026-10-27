@@ -44,6 +44,12 @@ export const defaultSettings = {
 	preferSdhSubtitles: false,
 	preferTextSubtitles: false,
 	preferExternalSubtitles: false,
+	// The second subtitle track's settings stay on this device. A size of 0 and an empty
+	// color follow the first track.
+	preferredSecondarySubtitleLanguage: '',
+	secondarySubtitleSize: 0,
+	secondarySubtitleOffset: 8,
+	secondarySubtitleColor: '',
 	// Seconds as a string, the shape the other clients sync for it.
 	resumeSubtractDuration: '0',
 	skipBackLength: 10000,
@@ -74,6 +80,7 @@ export const defaultSettings = {
 	// Off by default because every intro costs a full player teardown and reopen before
 	// the film, which is slow on older sets.
 	cinemaModeEnabled: false,
+	cinemaModeSkipEnabled: false,
 	theme: 'dark',
 	visualTheme: 'moonfin',
 	customThemeId: '',
@@ -91,6 +98,8 @@ export const defaultSettings = {
 	displayAudioArtists: true,
 	displayAudioAlbums: true,
 	audioSortOption: 'name',
+	personPageSortOption: 'alphabetical',
+	personPageGroupItems: false,
 	customHomeRows: [],
 	recentlyReleasedSeriesType: 'series',
 	mergeRadarrSonarrCalendars: false,
@@ -135,6 +144,7 @@ export const defaultSettings = {
 	hiddenContinueWatchingItems: null,
 	hiddenNextUpSeries: null,
 	showHomeBackdrop: true,
+	homeBackdropStyle: 'fullScreen',
 	detailsBackdropEnabled: true,
 	backdropBlurHome: 20,
 	backdropBlurDetail: 20,
@@ -143,6 +153,7 @@ export const defaultSettings = {
 	featuredContentType: 'both',
 	featuredItemCount: 10,
 	featuredBarStyle: 'moonfin',
+	mediaBarRowPeek: false,
 	featuredTrailerPreview: true,
 	featuredTrailerMuted: false,
 	trailerVolume: 100,
@@ -152,6 +163,7 @@ export const defaultSettings = {
 	mediaBarSourceType: 'library',
 	mediaBarLibraryIds: [],
 	mediaBarCollectionIds: [],
+	mediaBarExternalLists: [],
 	unifiedLibraryMode: false,
 	useMoonfinPlugin: false,
 	// The plugin profile this device syncs with. Empty follows the TV profile. It's a choice
@@ -194,6 +206,9 @@ export const defaultSettings = {
 	pinCodeHash: '',
 	pinFailedAttempts: 0,
 	pinLockedUntil: 0,
+	// Each account's sign in PIN by user id. The keys above are the PIN the TV kept for every
+	// profile, which an account without its own still falls back to.
+	userPins: {},
 	// Strips the app back to what a child needs and locks the way out behind a PIN. Deliberately
 	// absent from SYNCABLE_KEYS, so it stays on the television it was turned on for.
 	kidsModeEnabled: false,
@@ -230,11 +245,13 @@ export const defaultSettings = {
 	useDetailedSubHeadings: true,
 	showMediaDetailsOnLibraryPage: true,
 	libraryStyle: 'classic',
+	bookLibraryStyle: 'bookstore',
 	musicLibraryStyle: 'immersive',
 	hideBackdropsInLibraries: false,
 	useSeriesThumbnails: false,
 	// The server keys, as the other clients store them, so they sync as they are.
 	episodePreviewEnabled: false,
+	mediaPreviewMode: 'media',
 	previewAudioEnabled: true,
 	previewVolume: 100,
 	homeRowsPosterSize: 'default',
@@ -316,10 +333,7 @@ export const defaultSettings = {
 	recommendationSystemSource: null,
 	recommendationsApplyParentalRatingCap: null,
 	performanceMode: 'auto',
-	// Which keyboard a text field opens. The synced profile keeps one value for every
-	// client, and a phone wants the opposite answer a TV does, so this stays local
-	// instead of letting a handset decide how the TV types.
-	preferSystemImeKeyboard: false,
+	keyboardStyle: 'docked',
 	focusBorderColor: '',
 	navbarOpacity: 50,
 	navbarColor: 'gray',

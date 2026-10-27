@@ -1,6 +1,6 @@
 import {useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo} from 'react';
 import {isKidsMode, kidsModeRows, mergesContinueWatchingNextUp} from '../../utils/kidsMode';
-import {withoutBlocked} from '../../utils/parentalFilter';
+import {withoutBlockedOrUnrated} from '../../utils/parentalFilter';
 import {isPickedRow, isPickedRowShown} from '../../utils/pickedRows';
 import useParentalFilter from '../../hooks/useParentalFilter';
 import {useUserDataRows} from '../../hooks/useUserDataSync';
@@ -33,6 +33,9 @@ import useExternalRows from './useExternalRows';
 import useMediaPreview from './useMediaPreview';
 import {buildBrowseRows, sameRowList} from './buildBrowseRows';
 import {markHomeReady} from '../../utils/homeReady';
+import {homeBackdropStyle} from '../../utils/homeBackdropStyle';
+import {rem} from '../../utils/rootScale';
+import {rowImageType, rowPeekHeight} from './rowPeek';
 
 import css from './Browse.module.less';
 
@@ -43,6 +46,10 @@ const BACKDROP_SETTLE_MS = 250;
 const FIRST_ROWS = 3;
 const ROWS_AHEAD = 2;
 const ROW_MOUNT_GAP_MS = 50;
+// A picked row Home held back loads once focus is within this many rows of it, so it's usually in
+// by the time focus gets there.
+const NEAR_ROWS_ABOVE = 2;
+const NEAR_ROWS_BELOW = 5;
 // Engines without lazy loading fetch every poster on the page, so rows further down wait for theirs
 // until focus comes near.
 const NATIVE_LAZY_IMAGES = typeof document === 'undefined' || 'loading' in document.createElement('img');
@@ -67,7 +74,8 @@ const Browse = ({
 	onBlurItemThemeMusic,
 	onLeaveThemeMusic,
 	onHoldThemeMusic,
-	backHandlerRef
+	backHandlerRef,
+	trailerHidesChrome
 }) => {
 	const {api, serverUrl, accessToken, hasMultipleServers, user} = useAuth();
 	const {settings, activeTheme, loaded: settingsLoaded} = useSettings();
@@ -92,7 +100,8 @@ const Browse = ({
 		seerrEnabled,
 		seerrAuthenticated,
 		seerrUserId,
-		homeRows: homeRowsConfig
+		homeRows: homeRowsConfig,
+		serverUrl
 	});
 	const {rows: externalRows, pending: externalPending} = useExternalRows({settings, homeRows: homeRowsConfig, kidsMode});
 	const pendingRows = useMemo(() => [...seerrPending, ...externalPending], [seerrPending, externalPending]);
@@ -174,7 +183,7 @@ const Browse = ({
 
 	const {
 		isLoading, browseMode, allRowData, featuredItems: loadedFeaturedItems, pendingSections,
-		setBrowseMode, fetchFreshFeaturedItems, refreshVolatileData
+		setBrowseMode, fetchFreshFeaturedItems, refreshVolatileData, loadSectionsNear
 	} = useBrowseData({
 		api,
 		serverUrl,
@@ -201,10 +210,10 @@ const Browse = ({
 	};
 
 	// Filtered here rather than where the bar loads, so slides cached before a rating was blocked
-	// drop out too.
+	// drop out too. Slides from outside lists are held to the stricter rule their Home rows follow.
 	const {parentalFilter} = useParentalFilter();
 	const featuredItems = useMemo(
-		() => withoutBlocked(loadedFeaturedItems, parentalFilter),
+		() => withoutBlockedOrUnrated(loadedFeaturedItems, parentalFilter, false),
 		[loadedFeaturedItems, parentalFilter]
 	);
 
@@ -420,7 +429,7 @@ const Browse = ({
 	const handleNavigateUp = useCallback((fromRowIndex) => {
 		const targetIndex = focusableRowFrom(fromRowIndex - 1, -1);
 		if (targetIndex < 0) {
-			if (showFeaturedBar !== false) {
+			if (showFeaturedBar !== false && featuredItems.length > 0) {
 				setBrowseMode('featured');
 				setTimeout(() => Spotlight.focus('featured-banner'), 50);
 			} else if (settings.navbarPosition !== 'left') {
@@ -429,7 +438,7 @@ const Browse = ({
 			return;
 		}
 		scrollToRow(targetIndex, true);
-	}, [showFeaturedBar, settings.navbarPosition, scrollToRow, setBrowseMode, focusableRowFrom]);
+	}, [showFeaturedBar, featuredItems.length, settings.navbarPosition, scrollToRow, setBrowseMode, focusableRowFrom]);
 
 	filteredRowsRef.current = filteredRows;
 
@@ -696,6 +705,7 @@ const Browse = ({
 			const wanted = rowIndex + 1 + ROWS_AHEAD;
 			setMountedRows((count) => Math.max(count, wanted));
 			if (!NATIVE_LAZY_IMAGES) setImageRows((count) => Math.max(count, wanted));
+			loadSectionsNear(filteredRowsRef.current.slice(Math.max(0, rowIndex - NEAR_ROWS_ABOVE), rowIndex + 1 + NEAR_ROWS_BELOW).map((row) => row.id));
 		}
 		// A pointer hover focuses whatever it crosses, and pulling that row
 		// to its resting spot would make the screen chase the cursor, so the
@@ -705,7 +715,7 @@ const Browse = ({
 			return;
 		}
 		settleRow(rowIndex, rowChanged ? 2 : 1);
-	}, [setBrowseMode, pinMainScroll, settleRow]);
+	}, [setBrowseMode, pinMainScroll, settleRow, loadSectionsNear]);
 
 	const backdropTimerRef = useRef(null);
 	const handleFocusItem = useCallback((item) => {
@@ -732,6 +742,15 @@ const Browse = ({
 		window.cancelAnimationFrame(settleRef.current.frame);
 	}, []);
 
+	const rowPeek = browseMode === 'featured' && showFeaturedBar && featuredItems.length > 0
+		? rowPeekHeight(settings, filteredRows[0])
+		: 0;
+
+	// Rows mode leaves the scroller wherever the last row pinned it, and the peek shows its top.
+	useLayoutEffect(() => {
+		if (rowPeek && contentRowsRef.current) contentRowsRef.current.scrollTop = 0;
+	}, [rowPeek]);
+
 	const navOffsetClass = settings.navbarPosition === 'left' ? css.sidebarOffset : css.topbarOffset;
 	const rowsClipClass = showTopInfoArea ? '' : css.rowsClipTop;
 
@@ -751,10 +770,11 @@ const Browse = ({
 
 	return (
 		<div className={css.page}>
-			<div className={`${css.mainContent} ${navOffsetClass}`} ref={mainContentRef}>
+			<div className={`${css.mainContent} ${navOffsetClass} ${rowPeek ? css.rowPeek : ''}`} ref={mainContentRef}>
 				<BackdropLayer
 					targetUrl={targetBackdropUrl}
 					blurAmount={settings.backdropBlurHome}
+					inCorner={homeBackdropStyle(settings) === 'corner'}
 				/>
 
 				{featuredItems.length > 0 && showFeaturedBar !== false && (
@@ -767,7 +787,7 @@ const Browse = ({
 							settings={settings}
 							settingsLoaded={settingsLoaded}
 							getItemServerUrl={getItemServerUrl}
-							onSelectItem={handleSelectItem}
+							onSelectItem={handleSelectExternalItem}
 							onNavigateDown={handleNavigateDownFromFeatured}
 							onFeaturedFocus={handleFeaturedFocusCallback}
 							onAmbientItemChange={setFocusedItemForBackdrop}
@@ -775,13 +795,14 @@ const Browse = ({
 					) : settings.featuredBarStyle === 'gallery' ? (
 						<GalleryBanner
 							isVisible={browseMode === 'featured'}
+							rowPeek={rowPeek}
 							browseVisible={isVisible}
 							featuredItems={featuredItems}
 							api={api}
 							settings={settings}
 							settingsLoaded={settingsLoaded}
 							getItemServerUrl={getItemServerUrl}
-							onSelectItem={handleSelectItem}
+							onSelectItem={handleSelectExternalItem}
 							onNavigateDown={handleNavigateDownFromFeatured}
 							onFeaturedFocus={handleFeaturedFocusCallback}
 						/>
@@ -791,17 +812,18 @@ const Browse = ({
 							featuredItems={featuredItems}
 							settings={settings}
 							getItemServerUrl={getItemServerUrl}
-							onSelectItem={handleSelectItem}
+							onSelectItem={handleSelectExternalItem}
 							onNavigateDown={handleNavigateDownFromFeatured}
 							onFeaturedFocus={handleFeaturedFocusCallback}
 						/>
 					) : settings.featuredBarStyle === 'bookshelf' ? (
 						<BookshelfBar
 							isVisible={browseMode === 'featured'}
+							rowPeek={rowPeek}
 							featuredItems={featuredItems}
 							settings={settings}
 							getItemServerUrl={getItemServerUrl}
-							onSelectItem={handleSelectItem}
+							onSelectItem={handleSelectExternalItem}
 							onNavigateDown={handleNavigateDownFromFeatured}
 							onFeaturedFocus={handleFeaturedFocusCallback}
 						/>
@@ -815,13 +837,14 @@ const Browse = ({
 							settings={settings}
 							settingsLoaded={settingsLoaded}
 							getItemServerUrl={getItemServerUrl}
-							onSelectItem={handleSelectItem}
+							onSelectItem={handleSelectExternalItem}
 							onNavigateDown={handleNavigateDownFromFeatured}
 							onFeaturedFocus={handleFeaturedFocusCallback}
 						/>
 					) : (
 						<FeaturedBanner
 							isVisible={browseMode === 'featured'}
+							rowPeek={rowPeek}
 							browseVisible={isVisible}
 							featuredItems={featuredItems}
 							serverUrl={serverUrl}
@@ -829,7 +852,7 @@ const Browse = ({
 							settings={settings}
 							settingsLoaded={settingsLoaded}
 							getItemServerUrl={getItemServerUrl}
-							onSelectItem={handleSelectItem}
+							onSelectItem={handleSelectExternalItem}
 							onNavigateDown={handleNavigateDownFromFeatured}
 							onFeaturedFocus={handleFeaturedFocusCallback}
 							uiPanelStyle={uiPanelStyle}
@@ -852,7 +875,8 @@ const Browse = ({
 				<MediaPreviewContext.Provider value={mediaPreview}>
 				<div
 					ref={contentRowsRef}
-					className={`${css.contentRows} ${browseMode === 'rows' ? css.rowsMode : ''} ${rowsClipClass}`}
+					className={`${css.contentRows} ${browseMode === 'rows' ? css.rowsMode : ''} ${rowsClipClass} ${rowPeek && trailerHidesChrome ? css.rowsHidden : ''}`}
+					style={rowPeek ? {height: rem(rowPeek)} : undefined}
 					data-pointer-rows
 				>
 					{filteredRows.map((row, index) => {
@@ -911,14 +935,6 @@ const Browse = ({
 						if (row.isSeerrRow || row.isOnlineRecoRow) selectHandler = rowSelect.seerr;
 						else if (row.isExternalRow) selectHandler = rowSelect.external;
 						else if (row.isGenreRow) selectHandler = rowSelect.genre;
-						// Per library rows share one override under the id that gates them.
-						// Overrides are a classic rows feature, the modern layout keeps its
-						// own arrangement untouched.
-						const imageTypeKey = row.isLatestRow ? 'latest-media'
-							: row.isRecentlyReleasedRow ? 'recently-released' : row.id;
-						const rowImageOverride = settings.homeRowsStyle === 'v1'
-							? (settings.homeRowImageTypes || {})[imageTypeKey]
-							: undefined;
 						const rowMenuOptions = isCwOrNextUp
 							? continueWatchingMenuOptions
 							: undefined;
@@ -930,7 +946,7 @@ const Browse = ({
 								items={row.items}
 								serverUrl={serverUrl}
 								cardType={row.type}
-								rowImageType={rowImageOverride || settings.homeRowsImageType}
+								rowImageType={rowImageType(row, settings)}
 								onSelectItem={selectHandler}
 								onFocus={handleRowFocus}
 								onFocusItem={handleFocusItem}
