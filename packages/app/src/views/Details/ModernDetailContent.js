@@ -233,8 +233,6 @@ const ModernDetailContent = (props) => {
 
 	const hasUpNext = Boolean(nextUp?.[0]);
 	const hasTech = Boolean(techSize) || techBadges.length > 0;
-	const played = item.UserData?.Played;
-	const isFavorite = item.UserData?.IsFavorite;
 	const hideMediaDescription = hidesMediaDescription(item, settings);
 
 	const menuBackRef = useRef(null);
@@ -963,8 +961,6 @@ const ModernDetailContent = (props) => {
 								onWatchWithGroup={handleModernWatchWithGroup}
 								playlistTracks={isPlaylist ? displayedPlaylistTracks : undefined}
 								hasTech={hasTech}
-								played={played}
-								isFavorite={isFavorite}
 								onFocusRow={handleActionsFocus}
 								downTarget="details-tab-bar"
 								menuBackRef={menuBackRef}
