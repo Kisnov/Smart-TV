@@ -2037,6 +2037,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// session cant be restored after the app returns to the foreground
 	const reloadCurrentPlayback = useCallback(async () => {
 		const generation = loadGenerationRef.current;
+		// Back or another item while this runs leaves nothing to reload
+		const superseded = () => generation !== loadGenerationRef.current;
 		try {
 			const result = await playback.getPlaybackInfo(item.Id, {
 				startPositionTicks: positionRef.current,
@@ -2047,13 +2049,11 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				item,
 				stereoUpmixEnabled: settings.stereoUpmixEnabled
 			});
-			// Back or another item while the stream was asked for leaves nothing to reload
-			const superseded = () => generation !== loadGenerationRef.current;
 			if (superseded()) return null;
 			return await restartFromResult(result, positionRef.current, superseded);
 		} catch (err) {
 			console.error('[Player] Stream reload failed:', err);
-			return false;
+			return superseded() ? null : false;
 		}
 	}, [item, selectedQuality, settings.maxBitrate, settings.stereoUpmixEnabled, mediaSourceId, selectedAudioIndex, restartFromResult]);
 
