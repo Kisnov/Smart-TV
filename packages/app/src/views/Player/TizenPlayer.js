@@ -2058,6 +2058,17 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				// a background stop or the old session's end left stall detection off
 				playback.startHealthMonitoring(handleUnhealthy);
 				healthMonitorRef.current = playback.getHealthMonitor();
+				// AVPlay ignores the audio index outside a transcode, so the picked track is set again once it plays
+				if (selectedAudioIndex != null && result.playMethod !== playback.PlayMethod.Transcode) {
+					pendingTracksRef.current = {
+						audioIndex: selectedAudioIndex,
+						audioApplied: false,
+						subApplied: true,
+						audioStreams: result.audioStreams || [],
+						subtitleStreams: result.subtitleStreams || [],
+						deadline: Date.now() + 5000
+					};
+				}
 			}
 			return restarted;
 		} catch (err) {
