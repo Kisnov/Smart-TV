@@ -1620,7 +1620,7 @@ const Login = ({
 		if (dialog?.kind === 'add' && dialog.step === 'choose') {
 			return (
 				<div className={css.dialogScrim}>
-					<DialogArea className={css.dialog}>
+					<DialogArea className={css.dialog} spotlightRestrict="self-only">
 						<h2 className={css.dialogTitle}>{$L('Add Server')}</h2>
 						<p className={css.dialogNote}>{$L('Choose how you\'d like to connect.')}</p>
 						<SpottableDiv data-spotlight-id="add-choice-address" className={css.tile} onClick={showAddressStep}>
@@ -1655,7 +1655,7 @@ const Login = ({
 			const found = dialog.server;
 			return (
 				<div className={css.dialogScrim}>
-					<DialogArea className={css.dialog}>
+					<DialogArea className={css.dialog} spotlightRestrict="self-only">
 						<h2 className={css.dialogTitle}>{$L('Server found')}</h2>
 						<div className={css.tile}>
 							<ServerTypeIcon serverType={found.serverType} className={css.tileIcon} />

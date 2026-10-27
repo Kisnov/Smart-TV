@@ -1371,7 +1371,7 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 
 			{dialog?.type === 'series' && (
 				<div className={css.dialogScrim}>
-					<PopupContainer className={css.dialog} spotlightId="livetv-series">
+					<PopupContainer className={css.dialog} spotlightId="livetv-series" spotlightRestrict="self-only">
 						<div className={css.dialogTitle}>{$L('Which episodes should be recorded?')}</div>
 						<div className={css.dialogBody}>
 							<SeriesEpisodeChoices
@@ -1385,7 +1385,7 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 
 			{dialog?.type === 'later' && (
 				<div className={css.dialogScrim}>
-					<PopupContainer className={css.dialog} spotlightId="livetv-later">
+					<PopupContainer className={css.dialog} spotlightId="livetv-later" spotlightRestrict="self-only">
 						<div className={css.dialogTitle}>{dialog.program.Name}</div>
 						<div className={css.dialogBody}>
 							<div className={css.dialogTime}>{$L('This program has already started. Also record a later showing?')}</div>
