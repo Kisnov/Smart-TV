@@ -123,6 +123,7 @@ export const leaveGroup = async () => {
 	try {
 		await request('POST', 'Leave');
 		currentGroup = null;
+		currentPlaylistItemId = null;
 		emit('groupLeft', null);
 		return true;
 	} catch {
@@ -388,6 +389,7 @@ const handleGroupUpdate = (data) => {
 			currentGroup = null;
 			bufferingReported = false;
 			groupPosition = null;
+			currentPlaylistItemId = null;
 			emit('groupLeft', null);
 			break;
 
@@ -417,9 +419,7 @@ const handleGroupUpdate = (data) => {
 			if (queueData?.Playlist) {
 				const queue = queueData.Playlist;
 				const index = queueData.PlayingItemIndex ?? 0;
-				if (queue[index]) {
-					currentPlaylistItemId = queue[index].PlaylistItemId || null;
-				}
+				currentPlaylistItemId = queue[index]?.PlaylistItemId || null;
 			}
 			if (queueData) trackGroupPosition(queueData.StartPositionTicks || 0, queueData.IsPlaying);
 			emit('playQueue', queueData);
@@ -430,6 +430,7 @@ const handleGroupUpdate = (data) => {
 		case 'GroupDoesNotExist':
 			currentGroup = null;
 			groupPosition = null;
+			currentPlaylistItemId = null;
 			emit('groupLeft', null);
 			break;
 

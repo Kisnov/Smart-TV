@@ -1165,7 +1165,7 @@ const AppContent = (props) => {
 		// In a group the group moves on, and its queue update brings this player along. Plex has no
 		// SyncPlay, so a Plex item plays on here as it would outside a group.
 		const itemOnPlex = (item._serverType || serverType) === 'plex';
-		if (isSyncPlayInGroup && !itemOnPlex && item.MediaType !== 'Audio' && item.Type !== 'TvChannel') {
+		if (isSyncPlayInGroup && !itemOnPlex && !isAudioItem(item) && !isLiveTvChannel(item)) {
 			const startPositionTicks = options?.resume === true ? (item.UserData?.PlaybackPositionTicks || 0) : 0;
 			syncPlayMoveGroupTo(item.Id, startPositionTicks);
 			return;
