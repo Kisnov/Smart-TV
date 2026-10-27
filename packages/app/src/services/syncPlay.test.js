@@ -200,6 +200,25 @@ describe('SyncPlay group position', () => {
 		expect(service.getGroupPositionTicks()).toBe(30 * SECOND);
 	});
 
+	test('a resumed queue replaces the old group position before notifying the player', async () => {
+		command('Pause', 10 * SECOND, Date.now());
+		await service.setNewQueue(['e1', 'e2'], 1, 42 * SECOND);
+		const [url, request] = global.fetch.mock.calls.find(([path]) => path.endsWith('/SetNewQueue'));
+		expect(url).toBe('https://server/SyncPlay/SetNewQueue');
+		expect(JSON.parse(request.body)).toEqual({PlayingQueue: ['e1', 'e2'], PlayingItemPosition: 1, StartPositionTicks: 42 * SECOND});
+		let playerPosition;
+		service.addListener((event) => {
+			if (event === 'playQueue') playerPosition = service.getGroupPositionTicks();
+		});
+		groupUpdate('PlayQueue', {
+			Playlist: [{PlaylistItemId: 'p1', ItemId: 'e1'}, {PlaylistItemId: 'p2', ItemId: 'e2'}],
+			PlayingItemIndex: 1,
+			StartPositionTicks: 42 * SECOND,
+			IsPlaying: false
+		});
+		expect(playerPosition).toBe(42 * SECOND);
+	});
+
 	test('an Unpause runs on from its own time, so an echo of an old one still lands where the group is', () => {
 		command('Unpause', 100 * SECOND, Date.now() - 5000);
 		const ticks = service.getGroupPositionTicks();
