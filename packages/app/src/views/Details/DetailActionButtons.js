@@ -33,6 +33,7 @@ const DetailActionButtons = ({
 	settings,
 	seerr,
 	seerrOnly,
+	searchesTrailer,
 	isSeries,
 	isSeason,
 	isBoxSet,
@@ -169,7 +170,7 @@ const DetailActionButtons = ({
 				)}
 			</SpottableDiv>
 		)},
-		{id: 'trailer', when: item.LocalTrailerCount > 0 || item.RemoteTrailers?.length > 0, render: () => (
+		{id: 'trailer', when: item.LocalTrailerCount > 0 || item.RemoteTrailers?.length > 0 || searchesTrailer, render: () => (
 			<SpottableDiv className={css.btnWrapper} onClick={onTrailer}>
 				<div className={css.btnAction}>
 					<BtnIcon path={DETAIL_ICON_PATHS.trailer}/>
@@ -211,7 +212,7 @@ const DetailActionButtons = ({
 				<span className={css.btnLabel}>{personalRatingLabel(personalRatingStyle, item.UserData)}</span>
 			</SpottableDiv>
 		)},
-		{id: 'goToSeries', when: isEpisode && item.SeriesId, render: () => (
+		{id: 'goToSeries', when: (isEpisode || isSeason) && item.SeriesId, render: () => (
 			<SpottableDiv className={css.btnWrapper} onClick={onGoToSeries}>
 				<div className={css.btnAction}>
 					<BtnIcon path={DETAIL_ICON_PATHS.series}/>
