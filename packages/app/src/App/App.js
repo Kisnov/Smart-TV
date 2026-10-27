@@ -1166,7 +1166,7 @@ const AppContent = (props) => {
 		// here alone, the group's commands for the last item would land on this one. Plex has no
 		// SyncPlay, so a Plex item plays on here as it would outside a group.
 		const itemOnPlex = (item._serverType || serverType) === 'plex';
-		if (isSyncPlayInGroup && !itemOnPlex && item.MediaType !== 'Audio' && item.Type !== 'TvChannel') {
+		if (isSyncPlayInGroup && !itemOnPlex && !isAudioItem(item) && !isLiveTvChannel(item)) {
 			syncPlayMoveGroupTo(item.Id);
 			return;
 		}
