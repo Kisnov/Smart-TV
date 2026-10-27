@@ -1162,10 +1162,10 @@ const AppContent = (props) => {
 	// one the viewer picked by hand from the episode browser passes `resume` so an episode they
 	// were part way through carries on from where it stopped.
 	const handlePlayNext = useCallback((item, options) => {
-		// In a group the group moves on, and its queue update brings this player along. Plex has no
-		// SyncPlay, so a Plex item plays on here as it would outside a group.
-		const itemOnPlex = (item._serverType || serverType) === 'plex';
-		if (isSyncPlayInGroup && !itemOnPlex && !isAudioItem(item) && !isLiveTvChannel(item)) {
+		// In a group the group moves on, and its queue update brings this player along. The group
+		// only knows this server's items, so a Plex item or another server's plays on here alone.
+		const groupHasItem = (item._serverType || serverType) !== 'plex' && (!item._serverUrl || item._serverUrl === serverUrl);
+		if (isSyncPlayInGroup && groupHasItem && !isAudioItem(item) && !isLiveTvChannel(item)) {
 			const startPositionTicks = options?.resume === true ? (item.UserData?.PlaybackPositionTicks || 0) : 0;
 			syncPlayMoveGroupTo(item.Id, startPositionTicks);
 			return;
@@ -1184,7 +1184,7 @@ const AppContent = (props) => {
 			return null;
 		});
 		setIsResume(options?.resume === true);
-	}, [isSyncPlayInGroup, serverType, syncPlayMoveGroupTo]);
+	}, [isSyncPlayInGroup, serverType, serverUrl, syncPlayMoveGroupTo]);
 
 	const handlePlayerEnd = useCallback(() => {
 		// Episodes played on from inside the player (next episode, the episode browser) leave the
