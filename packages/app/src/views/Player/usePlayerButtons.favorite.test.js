@@ -24,6 +24,7 @@ jest.mock('../../services/jellyfinApi', () => ({getServerUrl: () => 'http://serv
 jest.mock('../../components/TrickplayPreview', () => () => null);
 jest.mock('./SubtitleOffsetOverlay', () => () => null);
 jest.mock('./SubtitleSettingsOverlay', () => () => null);
+jest.mock('./SecondarySubtitleSettingsOverlay', () => () => null);
 jest.mock('./EpisodeBrowser', () => () => null);
 jest.mock('../../components/TrackOptionRow', () => ({__esModule: true, default: () => null, TrackDivider: () => null}));
 jest.mock('../../platform', () => ({getPlatform: () => 'webos'}));
