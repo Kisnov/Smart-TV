@@ -987,7 +987,15 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					const suspended = suspendedRef.current;
 					suspendedRef.current = null;
 					const reload = () => reloadPlaybackRef.current?.().then((reloaded) => {
-						if (!reloaded) setError($L('Playback failed. The file format may not be supported.'));
+						if (!reloaded) {
+							setError($L('Playback failed. The file format may not be supported.'));
+						} else if (!suspended.wasPlaying) {
+							// the reopened stream starts playing, so a paused one is paused again
+							avplayPause();
+							setIsPaused(true);
+							healthMonitorRef.current?.setPaused(true);
+							playback.reportProgress(positionRef.current, {isPaused: true, eventName: 'pause'});
+						}
 					});
 					// A stream the server builds ends with the background stop, so it is opened again rather than restored
 					if (suspended && stoppedOnServer && playback.getCurrentSession()?.playMethod !== playback.PlayMethod.DirectPlay) {
