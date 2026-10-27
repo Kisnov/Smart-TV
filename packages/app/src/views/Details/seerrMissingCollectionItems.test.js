@@ -266,4 +266,26 @@ describe('mergeMissingByReleaseOrder', () => {
 		const merged = mergeMissingByReleaseOrder([item('A', '1980-01-01')], [item('B', '1990-01-01')]);
 		expect(merged.map((i) => i.Name)).toEqual(['A', 'B']);
 	});
+
+	describe('with the NSFW filter', () => {
+		const boxSet = {Id: 'b1', ProviderIds: {Tmdb: '1000'}};
+		const members = [
+			{Id: 'm1', Name: 'Part One', Type: 'Movie', ProviderIds: {Tmdb: '1001'}},
+			{Id: 'm2', Name: 'Part Two', Type: 'Movie', ProviderIds: {Tmdb: '1002'}}
+		];
+
+		beforeEach(() => {
+			seerrApi.getCollection.mockResolvedValue({id: 1000, parts: [
+				{id: 1001, title: 'Part One'},
+				{id: 1002, title: 'Part Two'},
+				{id: 1003, title: 'Part Three'},
+				{id: 1004, title: 'Part Four', adult: true}
+			]});
+		});
+
+		test('leaves out a part TMDB lists as adult unless the filter is off', async () => {
+			expect((await fetchMissingCollectionItems({boxSet, members, settings: {}})).map((part) => part.Name)).toEqual(['Part Three']);
+			expect((await fetchMissingCollectionItems({boxSet, members, settings: {seerrBlockNsfw: false}})).map((part) => part.Name)).toEqual(['Part Three', 'Part Four']);
+		});
+	});
 });

@@ -51,7 +51,8 @@ const hydrateRequestMediaItems = async (requests = []) => {
 				backdropPath: media?.backdropPath || details.backdropPath || details.backdrop_path,
 				overview: media?.overview || details.overview,
 				releaseDate: media?.releaseDate || details.releaseDate || details.release_date,
-				firstAirDate: media?.firstAirDate || details.firstAirDate || details.first_air_date
+				firstAirDate: media?.firstAirDate || details.firstAirDate || details.first_air_date,
+				adult: media?.adult ?? details.adult
 			}
 		};
 	});
@@ -80,7 +81,8 @@ export const hydrateWatchlistItems = async (items = []) => {
 			overview: item.overview || details.overview,
 			releaseDate: item.releaseDate || details.releaseDate,
 			firstAirDate: item.firstAirDate || details.firstAirDate,
-			mediaInfo: item.mediaInfo || details.mediaInfo
+			mediaInfo: item.mediaInfo || details.mediaInfo,
+			adult: item.adult ?? details.adult
 		};
 	});
 };
