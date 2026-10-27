@@ -1,7 +1,7 @@
 import $L from '@enact/i18n/$L';
 import seerrApi from '../services/seerrApi';
 import {seerrGenreBackdrop} from './seerrGenreArt';
-import hydrateRequestMediaItems, {hydrateWatchlistItems} from './seerrHydration';
+import hydrateRequestMediaItems, {hydrateRecentlyAddedItems, hydrateWatchlistItems} from './seerrHydration';
 import {libraryIdOf} from './seerrTarget';
 import {withoutSeerrAdult} from './seerrAdultFilter';
 
@@ -235,7 +235,7 @@ export const fetchSeerrHomeRow = async (rowId, {userId, blockAdult} = {}) => {
 			case 'trending':
 				return media(await seerrApi.trending(1)).slice(0, HOME_ROW_LIMIT).map(normalizeMediaItem);
 			case 'recentlyAdded':
-				return ((await seerrApi.getRecentlyAdded(HOME_ROW_LIMIT)).results || []).map(normalizeMediaItem);
+				return (await hydrateRecentlyAddedItems((await seerrApi.getRecentlyAdded(HOME_ROW_LIMIT)).results || [])).map(normalizeMediaItem);
 			case 'yourWatchlist': {
 				const results = ((await seerrApi.getWatchlist(1)).results || []).slice(0, HOME_ROW_LIMIT);
 				return withoutSeerrAdult(await hydrateWatchlistItems(results), blockAdult).map(normalizeMediaItem);
