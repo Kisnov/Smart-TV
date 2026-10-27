@@ -144,6 +144,35 @@ describe('putting focus back when it falls out of the page', () => {
 			jest.advanceTimersByTime(3500);
 			expect(press(KEYS.DOWN).defaultPrevented).toBe(false);
 		});
+
+		// The oldest sets fire nothing when the focused card is unmounted, so the loss is first seen
+		// on the press that finds focus gone.
+		describe('on an engine that reports no focusout', () => {
+			const loseScreenQuietly = () => {
+				secondRowCard.focus();
+				document.body.replaceChildren(container('navbar', navCard));
+				jest.advanceTimersByTime(0);
+			};
+
+			test('notices nothing until a press finds focus gone', () => {
+				loseScreenQuietly();
+				expect(serverLogger.info).not.toHaveBeenCalledWith('Navigation', 'Focus fell out of the page', expect.anything());
+			});
+
+			test('still holds that first press back while the next screen loads', () => {
+				loseScreenQuietly();
+				jest.advanceTimersByTime(10000);
+				expect(press(KEYS.DOWN).defaultPrevented).toBe(true);
+				expect(document.activeElement).toBe(document.body);
+			});
+
+			test('lets Spotlight have a press once the grace counted from the first one has passed', () => {
+				loseScreenQuietly();
+				press(KEYS.DOWN);
+				jest.advanceTimersByTime(3500);
+				expect(press(KEYS.DOWN).defaultPrevented).toBe(false);
+			});
+		});
 	});
 
 	test('notes each recovery in the diagnostics log', () => {

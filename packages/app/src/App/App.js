@@ -1250,7 +1250,7 @@ const AppContent = (props) => {
 		settingsOpenerRef.current = null;
 		// Once the panel has gone, and only if nothing else has taken focus meanwhile.
 		setTimeout(() => {
-			if (!Spotlight.getCurrent() && opener?.isConnected) Spotlight.focus(opener);
+			if (!Spotlight.getCurrent() && opener && document.body.contains(opener)) Spotlight.focus(opener);
 		}, 0);
 	}, []);
 

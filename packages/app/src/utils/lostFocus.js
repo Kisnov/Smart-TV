@@ -46,7 +46,10 @@ const hasFocus = () => {
 	return Boolean(active) && active !== document.body;
 };
 
-const onScreen = (node) => node.isConnected && node.getClientRects().length > 0;
+// Node.isConnected is newer than the oldest sets the app runs on, so it is asked of the body.
+const isAttached = (node) => document.body.contains(node);
+
+const onScreen = (node) => isAttached(node) && node.getClientRects().length > 0;
 
 const remember = (ev) => {
 	const node = ev.target;
@@ -66,7 +69,7 @@ const noteLoss = (ev) => {
 		serverLogger.info(serverLogger.LOG_CATEGORIES.NAVIGATION, 'Focus fell out of the page', {
 			from: last.label,
 			containers: last.containers.join(' < '),
-			removed: !last.node.isConnected
+			removed: !isAttached(last.node)
 		});
 	}, 0);
 };
@@ -89,12 +92,15 @@ const restore = () => {
 
 export const recoverLostFocus = (ev) => {
 	if (!ARROWS.includes(ev.keyCode) || hasFocus() || !last || Spotlight.isPaused()) return false;
+	// Where no focusout told of the loss, this press is the first sign of it, so the grace for a
+	// loading screen counts from here rather than never starting.
+	if (last.lostAt === null) last.lostAt = Date.now();
 	// Read before restoring, since the focus that restores it replaces what is remembered.
 	const lost = {
 		key: ev.keyCode,
 		from: last.label,
 		containers: last.containers.join(' < '),
-		removed: !last.node.isConnected,
+		removed: !isAttached(last.node),
 		lostForMs: last.lostAt ? Date.now() - last.lostAt : null
 	};
 	const restoredTo = restore();
