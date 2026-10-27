@@ -180,6 +180,8 @@ export const SyncPlayProvider = ({children}) => {
 		const index = playQueue?.PlayingItemIndex ?? -1;
 		const entry = entries.find((e) => sameItemId(e.ItemId, itemId));
 		if (!entry) syncPlayService.setNewQueue([itemId]);
+		// The group is already there, as when another member's move at the end of the episode landed first.
+		else if (entry === entries[index]) return;
 		else if (index >= 0 && entry === entries[index + 1]) syncPlayService.nextItem();
 		else if (index > 0 && entry === entries[index - 1]) syncPlayService.previousItem();
 		else syncPlayService.setPlaylistItem(entry.PlaylistItemId);
