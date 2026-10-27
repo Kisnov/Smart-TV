@@ -475,6 +475,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		selectedSubtitleIndex, canDownloadRemoteSubtitles: !isAudioMode && Boolean(item?.Id), hasCastMembers, zoomModeLabel, zoomModeKey: zoomMode,
 		sleepMinutes,
 		canBrowseEpisodes: canBrowseEpisodes({item, isLiveTV, isAudioMode}),
+		inSyncPlayGroup: isInGroup,
 		isFavorite, hasLyrics: lyrics.lines.length > 0, audioPanel,
 		recordable: liveRecording.available, recordMark: liveRecording.mark
 	});
@@ -2478,10 +2479,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		setActiveModal(null);
 		showControls(false);
 		window.requestAnimationFrame(() => {
-		  if (lastFocusedElementRef.current) {
-				Spotlight.focus(lastFocusedElementRef.current);
-			}else{
-			  Spotlight.focus('playerControls');
+			// The button that opened it can be gone by now, like SyncPlay's once the group is left.
+			const last = lastFocusedElementRef.current;
+			if (last && document.body.contains(last)) {
+				Spotlight.focus(last);
+			} else {
+				Spotlight.focus('play-pause-btn');
 			}
 		});
 	}, [showControls]);
@@ -2972,6 +2975,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			case 'cast': handleOpenCast(); break;
 			case 'zoom': handleToggleZoom(); break;
 			case 'sleep': openModal('sleep'); break;
+			case 'syncPlay': openModal('syncPlay'); break;
 			case 'info': openModal('info'); break;
 			case 'channels': openCarousel(); break;
 			case 'guide': handleOpenGuide(); break;

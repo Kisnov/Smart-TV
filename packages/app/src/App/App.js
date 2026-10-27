@@ -39,7 +39,7 @@ import {AchievementsProvider, useAchievements} from '../context/AchievementsCont
 import {achievementIconPath} from '../views/Settings/achievements/achievementIcons';
 import {threadIsPhoto} from '../utils/achievementsModel';
 import {ServerMessagesProvider, useServerMessages} from '../context/ServerMessagesContext';
-import {SyncPlayProvider, useSyncPlay} from '../context/SyncPlayContext';
+import {SyncPlayProvider, followsQueueUpdate, useSyncPlay} from '../context/SyncPlayContext';
 import {useVersionCheck} from '../hooks/useVersionCheck';
 import UpdateNotification from '../components/UpdateNotification';
 import {ItemMenuProvider} from '../components/ItemContextMenu';
@@ -178,7 +178,7 @@ const AppContent = (props) => {
 	const {streamNotification, dismissStreamNotification, pluginInfo} = useSeerr();
 	const {pendingPopups, markPopupsRead} = useServerMessages();
 	const themeMusic = useThemeMusic();
-	const {openDialog: openSyncPlay, closeDialog: closeSyncPlay, isDialogOpen: syncPlayDialogOpen, playQueueUpdate: syncPlayQueueUpdate, isInGroup: isSyncPlayInGroup, setNewQueue: syncPlaySetNewQueue, getGroupPositionTicks: getSyncPlayPositionTicks} = useSyncPlay();
+	const {openDialog: openSyncPlay, closeDialog: closeSyncPlay, isDialogOpen: syncPlayDialogOpen, playQueueUpdate: syncPlayQueueUpdate, isInGroup: isSyncPlayInGroup, setNewQueue: syncPlaySetNewQueue, moveGroupTo: syncPlayMoveGroupTo, getGroupPositionTicks: getSyncPlayPositionTicks} = useSyncPlay();
 	const handledSyncPlayQueueRef = useRef(null);
 
 	const [remoteMessage, setRemoteMessage] = useState(null);
@@ -1146,7 +1146,7 @@ const AppContent = (props) => {
 		const update = syncPlayQueueUpdate;
 		if (!update || update === handledSyncPlayQueueRef.current) return;
 		handledSyncPlayQueueRef.current = update;
-		if (!update.startsPlayback && playingItem?.Id === update.item.Id) return;
+		if (!followsQueueUpdate(update, playingItem?.Id)) return;
 		playSyncPlayItem(update.item);
 	}, [syncPlayQueueUpdate, playingItem, playSyncPlayItem]);
 
@@ -1162,6 +1162,14 @@ const AppContent = (props) => {
 	// one the viewer picked by hand from the episode browser passes `resume` so an episode they
 	// were part way through carries on from where it stopped.
 	const handlePlayNext = useCallback((item, options) => {
+		// In a group the group moves on, and its queue update brings this player along. Played on
+		// here alone, the group's commands for the last item would land on this one. The group only
+		// knows this server's items, so a Plex item or another server's plays on here alone.
+		const groupHasItem = (item._serverType || serverType) !== 'plex' && (!item._serverUrl || item._serverUrl === serverUrl);
+		if (isSyncPlayInGroup && groupHasItem && !isAudioItem(item) && !isLiveTvChannel(item)) {
+			syncPlayMoveGroupTo(item.Id);
+			return;
+		}
 		setPlayingItem(item);
 		setPlaybackOptions(prev => {
 			if (prev?.audioPlaylist?.some(t => t.Id === item.Id)) {
@@ -1176,7 +1184,7 @@ const AppContent = (props) => {
 			return null;
 		});
 		setIsResume(options?.resume === true);
-	}, []);
+	}, [isSyncPlayInGroup, serverType, serverUrl, syncPlayMoveGroupTo]);
 
 	const handlePlayerEnd = useCallback(() => {
 		// Episodes played on from inside the player (next episode, the episode browser) leave the
