@@ -1013,7 +1013,10 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 						resumeReportingRef.current?.();
 					}
 					if (suspended) {
+						const generation = loadGenerationRef.current;
 						avplayRestore(suspended.url, suspended.positionMs).then((ok) => {
+							// Back or another item during the restore leaves nothing to resume
+							if (generation !== loadGenerationRef.current) return;
 							if (ok) {
 								if (suspended.wasPlaying) {
 									try { avplayPlay(); } catch (e) { void e; }
