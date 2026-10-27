@@ -15,12 +15,14 @@ jest.mock('react/jsx-dev-runtime', () => {
 });
 
 let mockServerType = 'jellyfin';
+let mockPlexManifest = null;
 jest.mock('../../services/jellyfinApi', () => ({
 	getServerUrl: () => 'http://server',
 	getApiKey: () => 'key',
 	getServerType: () => mockServerType,
 	getTokenParam: (type) => ((type || mockServerType) === 'emby' ? 'api_key' : 'ApiKey'),
-	userRoutes: {item: (id) => `/Items/${id}?`}
+	userRoutes: {item: (id) => `/Items/${id}?`},
+	api: {getTrickplayManifest: async () => mockPlexManifest}
 }));
 
 // One width of ten by ten tiles every ten seconds, so a sheet covers 1000 seconds
@@ -117,5 +119,17 @@ describe('TrickplayPreview on Emby', () => {
 		expect(hasTrickplayPreview({Id: 'emby-bare'}, 'source')).toBe(false);
 		expect(hasTrickplayPreview({Id: 'emby-missing'}, 'source')).toBe(false);
 		expect(requested).toEqual([]);
+	});
+});
+
+describe('TrickplayPreview on Plex', () => {
+	test('reads the manifest through the Plex API and loads frames from the part index', async () => {
+		mockServerType = 'plex';
+		mockPlexManifest = {320: {Width: 320, Height: 180, TileWidth: 1, TileHeight: 1, Interval: 10000, ThumbnailCount: 10, PlexPartId: 'p1'}};
+		const item = {Id: 'plex-item'};
+		render(<TrickplayPreview item={item} mediaSourceId="source" positionTicks={25 * 1000 * TICKS_PER_MS} durationTicks={100 * 1000 * TICKS_PER_MS} stepSeconds={10} warm />);
+		await waitFor(() => expect(hasTrickplayPreview(item, 'source')).toBe(true));
+		await waitFor(() => expect(requested).toContain('http://server/library/parts/p1/indexes/sd/20000'));
+		expect(global.fetch).not.toHaveBeenCalled();
 	});
 });

@@ -8,16 +8,18 @@ import {Scroller} from '@enact/sandstone/Scroller';
 
 import MediaCard from '../../components/MediaCard';
 import {SeerrStatusBadge, SeerrDownloadBars} from '../../components/seerr/SeerrStatusBadge';
-import {SeerrChips, SeerrFacts, SeerrCollectionBanner} from '../../components/seerr/SeerrSections';
+import {SeerrChips, SeerrFacts, SeerrStreaming, SeerrCollectionBanner} from '../../components/seerr/SeerrSections';
 import RatingsRow from '../../components/RatingsRow';
 import DetailsTabBar from '../../components/DetailsTabBar';
 import ModernActionButtons from './ModernActionButtons';
 import {getImageUrl, formatDuration} from '../../utils/helpers';
 import {formatPlaybackDuration} from '../../utils/playbackTimeLabels';
 import {castPhotoUrl, hidesMediaDescription} from './detailsMedia';
+import {splitAdditionalParts} from './extraCategories';
 import {studioCardsFor, studioLogoIndex} from './studioLogos';
 import ExpandableOverview from './ExpandableOverview';
 import ModernFileInformation from './ModernFileInformation';
+import {ReviewCards} from './ReviewCard';
 import {KEYS} from '../../utils/keys';
 import {DETAIL_ICON_PATHS} from './detailIcons';
 import {iconViewBox} from '../../components/icons/iconViewBox';
@@ -28,8 +30,25 @@ import {episodeCardTitle} from '../../utils/episodeCardTitle';
 import useItemMenuHold, {itemWithIdAt} from '../../hooks/useItemMenuHold';
 import {AnimeEpisodePills, AnimeItemPills} from '../../components/AnimeMarkerPills';
 import {scrimStyle} from '../../utils/scrimImage';
+import PlaylistSortFilterBar, {EmptyPlaylistFilterState, EmptyPlaylistState} from '../../components/PlaylistSortFilterBar';
+import {
+	sortAndFilterPlaylistTracks,
+	showsPlaylistOrder,
+	playlistRowMenu,
+	PLAYLIST_SORT_ORDER,
+	PLAYLIST_SORT_RANDOM,
+	SORT_DIR_ASC,
+	PLAYED_ALL
+} from '../../utils/playlistSortFilter';
+
+import useCollectionSort from './useCollectionSort';
+import {sortLabel} from './nouveau/nouveauCollectionSort';
+import {collectionPlaylistItems} from './collectionPlaylist';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import NouveauSortDialog from './nouveau/sections/NouveauSortDialog';
 
 import css from './ModernDetailContent.module.less';
+import sectionsCss from './nouveau/sections/NouveauSections.module.less';
 
 const SpottableDiv = Spottable('div');
 
@@ -68,24 +87,135 @@ const ModernDetailContent = (props) => {
 		isEpisode, isSeries, isSeason, isPerson, isBoxSet, isAlbum, isMusicArtist, isPlaylist,
 		backdropUrl, posterUrl, logoUrl, onLogoError,
 		year, runtime, endsAt, officialRating, seasonCount, genres, tagline,
-		seasons, episodes, similar, extras, cast, crew = [], nextUp, collectionItems, collectionSections = [], albumTracks, artistAlbums, playlistItems, personMovies, personSeries, birthDate, birthPlace, episodeRatings,
+		seasons, episodes, similar, reviews = [], onSelectReview, extras, cast, crew = [], nextUp, collectionItems, collectionSections = [], albumTracks, artistAlbums, playlistItems, personMovies, personSeries, birthDate, birthPlace, episodeRatings,
 		techBadges = [], techSize, overviewBackRef,
 		mediaSource, supportsMediaSourceSelection, selectedAudioIndex, selectedSubtitleIndex,
 		handleChapterSelect, handleExtraSelect, playTrack, playlistMenu,
 		onSelectItem, onSelectPerson, onSelectStudio,
-		seerr, seerrNav, onSelectSeerrCard, spotlightBackRef, collectionMenu
+		seerr, seerrNav, onSelectSeerrCard, spotlightBackRef, collectionMenu, loadMoreCollectionItems, collectionOrder,
+		handlePlay, handleShuffle, onWatchWithGroup
 	} = props;
+
+	// A collection's play order, sorted the same way as in Nouveau.
+	const collectionSort = useCollectionSort(collectionOrder);
+	const collectionSortOpenRef = useRef(false);
+	collectionSortOpenRef.current = collectionSort.sortOpen;
+	const closeCollectionSort = collectionSort.closeSort;
+
+	const [sortBy, setSortBy] = useState(PLAYLIST_SORT_ORDER);
+	const [sortDirection, setSortDirection] = useState(SORT_DIR_ASC);
+	const [playedFilter, setPlayedFilter] = useState(PLAYED_ALL);
+	const [favoriteOnly, setFavoriteOnly] = useState(false);
+	const [mediaTypeFilter, setMediaTypeFilter] = useState(null);
+	const [randomSeed, setRandomSeed] = useState(42);
+
+	const availableMediaTypes = useMemo(() => {
+		if (!isPlaylist || !playlistItems) return [];
+		const set = new Set();
+		playlistItems.forEach((t) => {
+			const type = t.MediaType || t.Type;
+			if (type) set.add(type);
+		});
+		return Array.from(set);
+	}, [isPlaylist, playlistItems]);
+
+	const displayedPlaylistTracks = useMemo(() => {
+		if (!isPlaylist) return playlistItems || [];
+		return sortAndFilterPlaylistTracks({
+			tracks: playlistItems || [],
+			sortBy,
+			sortDirection,
+			playedFilter,
+			favoriteOnly,
+			mediaTypeFilter,
+			randomSeed
+		});
+	}, [isPlaylist, playlistItems, sortBy, sortDirection, playedFilter, favoriteOnly, mediaTypeFilter, randomSeed]);
+
+	const handleSortChange = useCallback((newSort, newDir) => {
+		setSortBy(newSort);
+		setSortDirection(newDir);
+		if (newSort === PLAYLIST_SORT_RANDOM) {
+			setRandomSeed(Date.now());
+		}
+	}, []);
+
+	const handleFilterChange = useCallback(({playedFilter: pf, favoriteOnly: fo, mediaTypeFilter: mtf}) => {
+		if (pf !== undefined) setPlayedFilter(pf);
+		if (fo !== undefined) setFavoriteOnly(fo);
+		if (mtf !== undefined) setMediaTypeFilter(mtf);
+	}, []);
+
+	const handleReset = useCallback(() => {
+		setSortBy(PLAYLIST_SORT_ORDER);
+		setSortDirection(SORT_DIR_ASC);
+		setPlayedFilter(PLAYED_ALL);
+		setFavoriteOnly(false);
+		setMediaTypeFilter(null);
+		setRandomSeed(Date.now());
+	}, []);
 
 	const episodeAt = useCallback((target) => itemWithIdAt(episodes, 'data-episode-id', target), [episodes]);
 	const episodeMenuHold = useItemMenuHold(episodeAt);
 
-	const tracks = isPlaylist ? playlistItems : albumTracks;
-	const trackAt = useCallback((target) => itemWithIdAt(tracks, 'data-track-id', target), [tracks]);
-	const trackMenuHold = useItemMenuHold(trackAt, playlistMenu);
+	const tracks = isPlaylist ? displayedPlaylistTracks : albumTracks;
+	const trackAt = useCallback((target) => {
+		const card = target.closest?.('[data-index]');
+		const idx = card ? parseInt(card.getAttribute('data-index'), 10) : -1;
+		if (idx >= 0 && idx < tracks.length) return tracks[idx];
+		return itemWithIdAt(tracks, 'data-track-id', target);
+	}, [tracks]);
+	const playlistOrderShown = showsPlaylistOrder({sortBy, sortDirection, playedFilter, favoriteOnly, mediaTypeFilter});
+	const trackMenuOptions = useMemo(
+		() => (isPlaylist ? playlistRowMenu(playlistMenu, displayedPlaylistTracks, playlistOrderShown) : playlistMenu),
+		[isPlaylist, playlistMenu, displayedPlaylistTracks, playlistOrderShown]
+	);
+	const trackMenuHold = useItemMenuHold(trackAt, trackMenuOptions);
 	const handleTrackClick = useCallback((ev) => {
 		const track = trackAt(ev.currentTarget);
-		if (track) playTrack(track);
-	}, [trackAt, playTrack]);
+		if (track) {
+			if (isPlaylist) {
+				playTrack(track, displayedPlaylistTracks);
+			} else {
+				playTrack(track);
+			}
+		}
+	}, [trackAt, playTrack, isPlaylist, displayedPlaylistTracks]);
+
+	const handleModernPlay = useCallback((targetItem, tracksOverride) => {
+		if (isPlaylist) {
+			const queue = Array.isArray(tracksOverride) ? tracksOverride : displayedPlaylistTracks;
+			const validTarget = (targetItem && !Array.isArray(targetItem) && targetItem.Id)
+				? queue.find((t) => (targetItem.PlaylistItemId ? t.PlaylistItemId === targetItem.PlaylistItemId : t.Id === targetItem.Id))
+				: null;
+			const first = validTarget || queue[0];
+			handlePlay?.(first, queue);
+		} else {
+			handlePlay?.(targetItem, tracksOverride);
+		}
+	}, [isPlaylist, displayedPlaylistTracks, handlePlay]);
+
+	const handleModernWatchWithGroup = useCallback((targetItem) => {
+		if (isPlaylist) {
+			const queue = displayedPlaylistTracks;
+			const validTarget = (targetItem && !Array.isArray(targetItem) && targetItem.Id)
+				? queue.find((t) => (targetItem.PlaylistItemId ? t.PlaylistItemId === targetItem.PlaylistItemId : t.Id === targetItem.Id))
+				: null;
+			const first = validTarget || queue[0];
+			onWatchWithGroup?.(first, queue);
+		} else {
+			onWatchWithGroup?.(targetItem);
+		}
+	}, [isPlaylist, displayedPlaylistTracks, onWatchWithGroup]);
+
+	const handleModernShuffle = useCallback((tracksOverride) => {
+		if (isPlaylist) {
+			const queue = Array.isArray(tracksOverride) ? tracksOverride : displayedPlaylistTracks;
+			handleShuffle?.(queue);
+		} else {
+			handleShuffle?.(tracksOverride);
+		}
+	}, [isPlaylist, displayedPlaylistTracks, handleShuffle]);
 
 	// Blur and opacity share one stored value, and the blur options reach 40 while
 	// this scale stops at 25, so a setting carried over from the classic layout is
@@ -108,14 +238,21 @@ const ModernDetailContent = (props) => {
 	const hideMediaDescription = hidesMediaDescription(item, settings);
 
 	const menuBackRef = useRef(null);
+	const sortFilterBackRef = useRef(null);
 	useEffect(() => {
 		if (!spotlightBackRef) return undefined;
-		const handler = () => Boolean(menuBackRef.current?.());
+		const handler = () => {
+			if (collectionSortOpenRef.current) {
+				closeCollectionSort();
+				return true;
+			}
+			return Boolean(sortFilterBackRef.current?.() || menuBackRef.current?.());
+		};
 		spotlightBackRef.current = handler;
 		return () => {
 			if (spotlightBackRef.current === handler) spotlightBackRef.current = null;
 		};
-	}, [spotlightBackRef]);
+	}, [spotlightBackRef, closeCollectionSort]);
 
 	const scrollToRef = useRef(null);
 	const handleScrollTo = useCallback((fn) => {
@@ -228,6 +365,11 @@ const ModernDetailContent = (props) => {
 						const showEpisodeRating = settings.tmdbEpisodeRatingsEnabled && isRatingSourceAllowed(settings.mdblistRatingSources, 'tmdb');
 						if (showEpisodeRating && rating) label += ` · ${rating}`;
 						parts.push({kind: 'text', text: label});
+					} else if (isPlaylist) {
+						const count = displayedPlaylistTracks.length;
+						const totalTicks = displayedPlaylistTracks.reduce((sum, t) => sum + (t.RunTimeTicks || 0), 0);
+						parts.push({kind: 'text', text: `${count} ${count !== 1 ? $L('Items') : $L('Item')}`});
+						if (totalTicks > 0) parts.push({kind: 'runtime', text: formatDuration(totalTicks)});
 					} else if (runtime) {
 						parts.push({kind: 'runtime', text: runtime});
 						if (endsAt) parts.push({kind: 'text', text: endsAt});
@@ -251,7 +393,7 @@ const ModernDetailContent = (props) => {
 		};
 
 		return orderedItems.flatMap((itemDef) => pieceFor(itemDef.id));
-	}, [settings.detailMetadataOrderTv, settings.hiddenDetailMetadataTv, year, officialRating, isSeries, seasonCount, isSeason, episodes.length, isEpisode, item.ParentIndexNumber, item.IndexNumber, item.Status, episodeRatings, settings.tmdbEpisodeRatingsEnabled, settings.mdblistRatingSources, runtime, endsAt, genres, upcomingEpisodeText, seerr.statusPills]);
+	}, [settings.detailMetadataOrderTv, settings.hiddenDetailMetadataTv, year, officialRating, isSeries, seasonCount, isSeason, episodes.length, isEpisode, item.ParentIndexNumber, item.IndexNumber, item.Status, episodeRatings, settings.tmdbEpisodeRatingsEnabled, settings.mdblistRatingSources, runtime, endsAt, genres, upcomingEpisodeText, seerr.statusPills, isPlaylist, displayedPlaylistTracks]);
 
 	const handleCastClick = useCallback((ev) => {
 		const personId = ev.currentTarget.dataset.personId;
@@ -275,9 +417,12 @@ const ModernDetailContent = (props) => {
 	// On an episode the Episodes tab lists the rest of its season, which is the More episodes
 	// section. A season's own list is the page itself.
 	const listsEpisodes = isSeason || (isEpisode && showsSection('moreEpisodes'));
-	const showsDetails = showsSection('mediaInfo') && supportsMediaSourceSelection && mediaSource?.MediaStreams?.length;
+	const showsDetails = showsSection('mediaInfo') &&
+		(item.Type === 'Book' || (supportsMediaSourceSelection && mediaSource?.MediaStreams?.length));
 	// Tabs are data-driven, appearing only when their data is present. A section the viewer
 	// switched off counts as one with nothing in it, so its tab goes the same way.
+	const {parts: additionalParts, others: otherExtras} = useMemo(() => splitAdditionalParts(extras), [extras]);
+
 	const tabs = useMemo(() => {
 		const list = [];
 		if (isSeries && seasons.length) list.push({id: 'seasons', label: $L('Seasons')});
@@ -286,20 +431,24 @@ const ModernDetailContent = (props) => {
 			if (personMovies.length) list.push({id: 'movies', label: $L('Movies')});
 			if (personSeries.length) list.push({id: 'series', label: $L('TV Shows')});
 		}
-		if ((isAlbum || isPlaylist) && (albumTracks.length || playlistItems.length)) list.push({id: 'tracks', label: $L('Tracks')});
+		if ((isAlbum && albumTracks.length) || isPlaylist) list.push({id: 'tracks', label: $L('Tracks')});
 		if (isMusicArtist && artistAlbums.length) list.push({id: 'albums', label: $L('Albums')});
 		if (isBoxSet && collectionItems.length) list.push({id: 'items', label: $L('Items')});
 		if (cast.length) list.push({id: 'cast', label: $L('Cast')});
 		if (crew.length) list.push({id: 'crew', label: $L('Crew')});
 		if (studios?.length) list.push({id: 'studios', label: $L('Studios')});
+		// After the collection's own tabs, so it still opens on what it holds.
+		if (isBoxSet && showsSection('playlistOrder')) list.push({id: 'collectionPlaylist', label: $L('Playlist')});
 		if (chapters?.length) list.push({id: 'chapters', label: $L('Chapters')});
-		if (extras.length) list.push({id: 'extras', label: $L('Extras')});
+		if (additionalParts.length) list.push({id: 'additionalParts', label: $L('Additional Parts')});
+		if (otherExtras.length) list.push({id: 'extras', label: $L('Extras')});
 		if (showsDetails) list.push({id: 'details', label: $L('Details')});
 		if (collectionSections.length) list.push({id: 'collection', label: collectionTabLabel});
 		if (similar.length) list.push({id: 'similar', label: $L('More Like This')});
+		if (reviews.length) list.push({id: 'reviews', label: $L('Reviews')});
 		if (seerr.hasTabContent) list.push({id: 'seerr', label: seerr.displayName});
 		return list;
-	}, [isSeries, seasons.length, listsEpisodes, episodes.length, isPerson, personMovies.length, personSeries.length, isAlbum, isPlaylist, albumTracks.length, playlistItems.length, isMusicArtist, artistAlbums.length, isBoxSet, collectionItems.length, collectionSections.length, collectionTabLabel, cast.length, crew.length, studios, chapters, extras.length, showsDetails, similar.length, seerr.hasTabContent, seerr.displayName]);
+	}, [isSeries, seasons.length, listsEpisodes, episodes.length, isPerson, personMovies.length, personSeries.length, isAlbum, isPlaylist, albumTracks.length, isMusicArtist, artistAlbums.length, isBoxSet, showsSection, collectionItems.length, collectionSections.length, collectionTabLabel, cast.length, crew.length, studios, chapters, additionalParts.length, otherExtras.length, showsDetails, similar.length, reviews.length, seerr.hasTabContent, seerr.displayName]);
 
 	const [activeTab, setActiveTab] = useState(null);
 	// Expanded Tabs on keeps the first tab open and lets focus follow selection.
@@ -344,14 +493,16 @@ const ModernDetailContent = (props) => {
 		if (tabBar && tabBar.contains(active)) {
 			if (ev.keyCode === KEYS.DOWN) {
 				// Down opens the focused tab (it may be collapsed) then drops into
-				// its content once it has rendered.
+				// its content once it has rendered. On an episode it lands on
+				// that episode's own row.
 				const id = active.closest('[data-id]')?.dataset.id;
 				if (id) {
 					ev.preventDefault();
 					ev.stopPropagation();
 					setActiveTab(id);
 					window.requestAnimationFrame(() => {
-						const first = tabContentRef.current?.querySelector('.spottable');
+						const opened = tabContentRef.current;
+						const first = opened?.querySelector(`.${css.currentEpisode}`) || opened?.querySelector('.spottable');
 						if (first) Spotlight.focus(first);
 					});
 				}
@@ -388,7 +539,7 @@ const ModernDetailContent = (props) => {
 				const epRuntime = ep.RunTimeTicks ? formatDuration(ep.RunTimeTicks) : '';
 				const progress = ep.UserData?.PlayedPercentage || 0;
 				return (
-					<SpottableDiv key={ep.Id} className={css.episodeRow} data-episode-id={ep.Id} onClick={handleEpisodeClick}>
+					<SpottableDiv key={ep.Id} className={`${css.episodeRow} ${isEpisode && ep.Id === item.Id ? css.currentEpisode : ''}`} data-episode-id={ep.Id} onClick={handleEpisodeClick}>
 						<div className={css.episodeThumb}>
 							{thumb ? <img src={thumb} alt="" /> : <div className={css.chapterThumbPlaceholder} />}
 							{ep.UserData?.Played && <div className={css.episodeWatched}><Icon path={DETAIL_ICON_PATHS.watched} /></div>}
@@ -427,7 +578,7 @@ const ModernDetailContent = (props) => {
 		<RowContainer className={css.grid}>
 			{item.Chapters.map((chapter, i) => {
 				const thumb = chapter.ImageTag
-					? `${effectiveServerUrl}/Items/${item.Id}/Images/Chapter/${i}?maxWidth=400&tag=${chapter.ImageTag}`
+					? getImageUrl(effectiveServerUrl, item.Id, `Chapter/${i}`, {maxWidth: 400, tag: chapter.ImageTag})
 					: null;
 				return (
 					<SpottableDiv key={i} className={css.chapterCard} data-start-ticks={chapter.StartPositionTicks} onClick={handleChapterSelect}>
@@ -442,9 +593,9 @@ const ModernDetailContent = (props) => {
 		</RowContainer>
 	);
 
-	const renderExtrasTab = () => (
+	const renderExtrasTab = (items) => (
 		<RowContainer className={css.grid}>
-			{extras.map((extra) => {
+			{items.map((extra) => {
 				const thumb = extra.ImageTags?.Primary
 					? getImageUrl(effectiveServerUrl, extra.Id, 'Primary', {maxWidth: 400, quality: 80})
 					: null;
@@ -462,17 +613,79 @@ const ModernDetailContent = (props) => {
 
 	const renderTracksTab = () => {
 		return (
-			<RowContainer className={css.trackList} {...(isPlaylist ? trackMenuHold : {})}>
-				{tracks.map((track, i) => (
-					<SpottableDiv key={track.PlaylistItemId || track.Id} className={css.trackRow} data-track-id={track.Id} onClick={handleTrackClick}>
-						<span className={css.trackIndex}>{track.IndexNumber || i + 1}</span>
-						<span className={css.trackTitle}>{track.Name}</span>
-						{track.RunTimeTicks && <span className={css.trackDuration}>{formatDuration(track.RunTimeTicks)}</span>}
-					</SpottableDiv>
-				))}
-			</RowContainer>
+			<div className={css.tracksContainer}>
+				{isPlaylist && (
+					<PlaylistSortFilterBar
+						sortBy={sortBy}
+						sortDirection={sortDirection}
+						onSortChange={handleSortChange}
+						playedFilter={playedFilter}
+						favoriteOnly={favoriteOnly}
+						mediaTypeFilter={mediaTypeFilter}
+						availableMediaTypes={availableMediaTypes}
+						onFilterChange={handleFilterChange}
+						onReset={handleReset}
+						backHandlerRef={sortFilterBackRef}
+					/>
+				)}
+				{isPlaylist && playlistItems.length === 0 ? (
+					<EmptyPlaylistState />
+				) : isPlaylist && displayedPlaylistTracks.length === 0 ? (
+					<EmptyPlaylistFilterState onReset={handleReset} />
+				) : (
+					<RowContainer className={css.trackList} {...(isPlaylist ? trackMenuHold : {})}>
+						{tracks.map((track, i) => (
+							<SpottableDiv key={track.PlaylistItemId || `${track.Id}_${i}`} className={css.trackRow} data-track-id={track.Id} data-playlist-item-id={track.PlaylistItemId} data-index={i} onClick={handleTrackClick}>
+								<span className={css.trackIndex}>{isPlaylist ? i + 1 : (track.IndexNumber || i + 1)}</span>
+								<span className={css.trackTitle}>{track.Name}</span>
+								{track.RunTimeTicks && <span className={css.trackDuration}>{formatDuration(track.RunTimeTicks)}</span>}
+							</SpottableDiv>
+						))}
+					</RowContainer>
+				)}
+			</div>
 		);
 	};
+
+	const collectionTracks = useMemo(() => collectionPlaylistItems(playlistItems, collectionItems), [playlistItems, collectionItems]);
+	const collectionTrackAt = useCallback(
+		(target) => collectionTracks[parseInt(target.closest('[data-index]')?.dataset.index, 10)] || null,
+		[collectionTracks]
+	);
+	const collectionMenuHold = useItemMenuHold(collectionTrackAt, playlistMenu);
+
+	const handleCollectionTrackClick = useCallback((ev) => {
+		const entry = collectionTrackAt(ev.currentTarget);
+		if (entry) playTrack(entry, collectionTracks);
+	}, [collectionTrackAt, collectionTracks, playTrack]);
+
+	// The rest of a long collection is read as focus nears the end of what's in.
+	const handleCollectionTrackFocus = useCallback((ev) => {
+		if (parseInt(ev.currentTarget.dataset.index, 10) >= playlistItems.length - 5) loadMoreCollectionItems?.();
+	}, [playlistItems.length, loadMoreCollectionItems]);
+
+	const renderCollectionPlaylistTab = () => (
+		<div className={css.tracksContainer}>
+			<div className={sectionsCss.railHeader}>
+				<SpottableDiv className={sectionsCss.sortButton} onClick={collectionSort.openSort}>
+					{sortLabel(collectionSort.sortOption)}
+				</SpottableDiv>
+			</div>
+			{collectionOrder?.loading && !playlistItems.length ? (
+				<div className={css.collectionLoading}><LoadingSpinner /></div>
+			) : (
+				<RowContainer className={css.trackList} {...collectionMenuHold}>
+					{collectionTracks.map((entry, i) => (
+						<SpottableDiv key={entry.Id} className={css.trackRow} data-index={i} onClick={handleCollectionTrackClick} onFocus={handleCollectionTrackFocus}>
+							<span className={css.trackIndex}>{i + 1}</span>
+							<span className={css.trackTitle}>{entry.SeriesName ? `${entry.SeriesName} · ${entry.Name}` : entry.Name}</span>
+							{entry.RunTimeTicks && <span className={css.trackDuration}>{formatDuration(entry.RunTimeTicks)}</span>}
+						</SpottableDiv>
+					))}
+				</RowContainer>
+			)}
+		</div>
+	);
 
 	const renderStudiosTab = () => (
 		<RowContainer className={css.grid}>
@@ -526,12 +739,13 @@ const ModernDetailContent = (props) => {
 	}, []);
 
 	// Everything Seerr adds to a title, in one tab: where it is filed, the production facts,
-	// what it is like, and the collection it belongs to.
+	// where it streams, what it is like, and the collection it belongs to.
 	const renderSeerrTab = () => (
 		<div className={css.sectionStack}>
 			{seerr.pieces.chips && <SeerrChips details={seerr.details} mediaType={seerr.mediaType} seerrNav={seerrNav} />}
 			{seerr.pieces.collection && <SeerrCollectionBanner collection={seerr.details.collection} onOpen={seerrNav?.onOpenCollection} />}
 			{seerr.pieces.facts && <SeerrFacts details={seerr.details} mediaType={seerr.mediaType} />}
+			{seerr.pieces.streaming && <SeerrStreaming providers={seerr.streamingProviders} />}
 			{seerr.pieces.recommendations && (
 				<div onFocus={handleSectionFocus}>
 					<h3 className={css.sectionHeading}>{$L('Recommendations')}</h3>
@@ -575,16 +789,26 @@ const ModernDetailContent = (props) => {
 				);
 			case 'similar':
 				return renderGrid(similar, 'portrait');
+			case 'reviews':
+				return (
+					<RowContainer className={css.grid}>
+						<ReviewCards reviews={reviews} onSelect={onSelectReview} />
+					</RowContainer>
+				);
 			case 'cast':
 				return renderPeople(cast);
 			case 'crew':
 				return renderPeople(crew);
 			case 'chapters':
 				return renderChaptersTab();
+			case 'additionalParts':
+				return renderExtrasTab(additionalParts);
 			case 'extras':
-				return renderExtrasTab();
+				return renderExtrasTab(otherExtras);
 			case 'tracks':
 				return renderTracksTab();
+			case 'collectionPlaylist':
+				return renderCollectionPlaylistTab();
 			case 'studios':
 				return renderStudiosTab();
 			case 'details':
@@ -666,7 +890,7 @@ const ModernDetailContent = (props) => {
 								{piece.kind === 'status' && (
 									<span className={`${css.statusBadge} ${piece.ended ? css.statusEnded : ''}`}>{piece.text}</span>
 								)}
-								{piece.kind === 'text' && piece.text}
+								{(piece.kind === 'text' || piece.kind === 'runtime') && piece.text}
 							</span>
 						);
 					})}
@@ -732,17 +956,19 @@ const ModernDetailContent = (props) => {
 									<ExpandableOverview text={isPerson && !showsSection('biography') ? '' : item.Overview} itemId={item.Id} className={css.descriptionSlot} backRef={overviewBackRef} />
 								</>
 							)}
-							{!isPerson && (
-								<ModernActionButtons
-									{...props}
-									hasTech={hasTech}
-									played={played}
-									isFavorite={isFavorite}
-									onFocusRow={handleActionsFocus}
-									downTarget="details-tab-bar"
-									menuBackRef={menuBackRef}
-								/>
-							)}
+							<ModernActionButtons
+								{...props}
+								handlePlay={handleModernPlay}
+								handleShuffle={handleModernShuffle}
+								onWatchWithGroup={handleModernWatchWithGroup}
+								playlistTracks={isPlaylist ? displayedPlaylistTracks : undefined}
+								hasTech={hasTech}
+								played={played}
+								isFavorite={isFavorite}
+								onFocusRow={handleActionsFocus}
+								downTarget="details-tab-bar"
+								menuBackRef={menuBackRef}
+							/>
 						</div>
 						{renderUpNext()}
 					</div>
@@ -762,6 +988,14 @@ const ModernDetailContent = (props) => {
 					)}
 				</div>
 			</Scroller>
+			{collectionSort.sortOpen && (
+				<NouveauSortDialog
+					options={collectionSort.sortOptions}
+					active={collectionSort.sortOption}
+					onSelect={collectionSort.chooseSort}
+					onClose={collectionSort.closeSort}
+				/>
+			)}
 		</>
 	);
 };

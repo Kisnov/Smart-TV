@@ -11,7 +11,7 @@ import {buildSettingsIndex, matchSettings, resultSpotlightId} from './settingsSe
 // a key that does not exist writes junk into settings, and a repeated spotlight id makes
 // a deep linked search result focus the wrong row.
 
-const CUSTOM_RENDERERS = ['moonbasePlugin', 'seerrPanel', 'aboutHeader', 'aboutDataActions', 'subtitlePreview', 'imageCacheActions', 'checkForUpdates', 'playbackTimePreview', 'screensaverPreview', 'loadingAnimationPreview', 'trickplayPreview'];
+const CUSTOM_RENDERERS = ['moonbasePlugin', 'seerrPanel', 'rommPanel', 'aboutHeader', 'aboutDataActions', 'subtitlePreview', 'imageCacheActions', 'checkForUpdates', 'playbackTimePreview', 'screensaverPreview', 'loadingAnimationPreview', 'trickplayPreview'];
 const KEYED = [KIND.TOGGLE, KIND.OPTION, KIND.SLIDER];
 
 // Enough of a context that every label, value and condition can be called.
@@ -20,6 +20,7 @@ const ctx = {
 	capabilities: {tizenVersionDisplay: '7.0', firmwareVersion: '1.0'},
 	seerr: {isEnabled: true, pluginInfo: {version: '1', settingsSyncEnabled: true, seerrEnabled: true}},
 	achievements: {available: true, leaderboardEnabled: true, questsEnabled: true, socialAvailable: true},
+	romm: {available: true},
 	seerrLabel: 'Seerr',
 	isSeerr: true,
 	hasMultipleServers: false,
@@ -30,6 +31,7 @@ const ctx = {
 	serverVersion: '10.9',
 	availableThemes: [{id: 'default', displayName: 'Default'}],
 	activeThemeId: 'default',
+	signInPin: {enabled: false, hash: '', failed: 0, lockedUntil: 0, server: false},
 	actions: {}
 };
 
@@ -166,6 +168,24 @@ describe('settings schema', () => {
 		});
 	});
 
+	test('only Xbox explains that its sound is decoded on the console, until passthrough is on', () => {
+		const note = allRows().find(({row}) => row.id === 'xboxAudioOutput').row;
+		const xbox = {...ctx, isWebOS: false, isXbox: true};
+		expect(note.when(xbox)).toBe(true);
+		expect(note.when(ctx)).toBeFalsy();
+		expect(note.when({...xbox, settings: {...defaultSettings, xboxPassthrough: true}})).toBe(false);
+		expect(note.when({...xbox, settings: {...defaultSettings, xboxPassthrough: true, xboxNativePlayer: false}})).toBe(true);
+	});
+
+	test('Xbox passthrough is offered only with the console player', () => {
+		const toggle = allRows().find(({row}) => row.key === 'xboxPassthrough').row;
+		const xbox = {...ctx, isWebOS: false, isXbox: true};
+		expect(defaultSettings.xboxPassthrough).toBe(false);
+		expect(toggle.when(xbox)).toBe(true);
+		expect(toggle.when({...xbox, settings: {...defaultSettings, xboxNativePlayer: false}})).toBe(false);
+		expect(toggle.when(ctx)).toBeFalsy();
+	});
+
 	// The fallback stands in for the value on the row's chip, so it's one of the chip texts
 	test('every option row falls back to what one of its own options shows on the chip', () => {
 		const mismatched = [];
@@ -188,23 +208,96 @@ describe('settings schema', () => {
 	});
 });
 
+describe('the home screen backdrop', () => {
+	const backdropRow = () => SETTINGS_SCHEMA
+		.find((category) => category.id === 'appearance').subcategories
+		.find((sub) => sub.id === 'homeScreen').rows
+		.find((row) => row.key === 'homeBackdropStyle');
+	const withSettings = (settings) => ({...ctx, settings: {...defaultSettings, ...settings}});
+
+	test('is a three way choice in place of the switch', () => {
+		const row = backdropRow();
+		expect(row.kind).toBe(KIND.OPTION);
+		expect(row.label()).toBe('Home Screen Backdrop');
+		expect(row.options(ctx).map((option) => [option.value, option.label])).toEqual([
+			['off', 'Off'],
+			['fullScreen', 'Full Screen'],
+			['corner', 'Corner']
+		]);
+		expect(allRows().some(({row: other}) => other.key === 'showHomeBackdrop')).toBe(false);
+	});
+
+	test('shows the style the two synced keys add up to', () => {
+		const row = backdropRow();
+		expect(row.value(withSettings({showHomeBackdrop: false, homeBackdropStyle: 'corner'}))).toBe('off');
+		expect(row.value(withSettings({showHomeBackdrop: true}))).toBe('fullScreen');
+		expect(row.value(withSettings({showHomeBackdrop: true, homeBackdropStyle: 'corner'}))).toBe('corner');
+	});
+
+	test('a choice writes both keys in one update', () => {
+		const setSettings = jest.fn();
+		const withActions = {...ctx, actions: {setSettings}};
+		['off', 'fullScreen', 'corner'].forEach((style) => backdropRow().onSelect(withActions, style));
+		expect(setSettings.mock.calls).toEqual([
+			[{showHomeBackdrop: false, homeBackdropStyle: 'off'}],
+			[{showHomeBackdrop: true, homeBackdropStyle: 'fullScreen'}],
+			[{showHomeBackdrop: true, homeBackdropStyle: 'corner'}]
+		]);
+	});
+});
+
 describe('the media preview switches', () => {
 	const homeScreen = () => SETTINGS_SCHEMA
 		.find((category) => category.id === 'appearance').subcategories
 		.find((sub) => sub.id === 'homeScreen');
 
-	test('sit in the Home Screen looks as toggles', () => {
+	const previewRow = () => homeScreen().rows.find((row) => row.key === 'mediaPreviewMode');
+	const withSettings = (settings) => ({...ctx, settings: {...defaultSettings, ...settings}});
+
+	test('sit in the Home Screen looks as a three way choice with the audio switch after it', () => {
 		const rows = homeScreen().rows;
-		const preview = rows.find((row) => row.key === 'episodePreviewEnabled');
+		const preview = previewRow();
 		const audio = rows.find((row) => row.key === 'previewAudioEnabled');
-		expect(preview.kind).toBe(KIND.TOGGLE);
+		expect(preview.kind).toBe(KIND.OPTION);
+		expect(preview.label()).toBe('Media Preview');
+		expect(preview.options(ctx).map((option) => [option.value, option.label])).toEqual([
+			['off', 'Off'],
+			['media', 'Media Preview'],
+			['trailer', 'Trailer Preview']
+		]);
 		expect(audio.kind).toBe(KIND.TOGGLE);
 		expect(rows.indexOf(audio)).toBe(rows.indexOf(preview) + 1);
+		expect(rows.some((row) => row.key === 'episodePreviewEnabled')).toBe(false);
 	});
 
-	test('the audio switch only shows while previews are on', () => {
-		const audio = homeScreen().rows.find((row) => row.key === 'previewAudioEnabled');
-		expect(audio.when({...ctx, settings: {...defaultSettings, episodePreviewEnabled: false}})).toBe(false);
-		expect(audio.when({...ctx, settings: {...defaultSettings, episodePreviewEnabled: true}})).toBe(true);
+	test('shows the mode the two synced keys add up to', () => {
+		const preview = previewRow();
+		expect(preview.value(withSettings({episodePreviewEnabled: false, mediaPreviewMode: 'trailer'}))).toBe('off');
+		expect(preview.value(withSettings({episodePreviewEnabled: true}))).toBe('media');
+		expect(preview.value(withSettings({episodePreviewEnabled: true, mediaPreviewMode: 'trailer'}))).toBe('trailer');
+	});
+
+	test('a choice writes both keys in one update', () => {
+		const setSettings = jest.fn();
+		const preview = previewRow();
+		const withActions = {...ctx, actions: {setSettings}};
+		preview.onSelect(withActions, 'off');
+		preview.onSelect(withActions, 'media');
+		preview.onSelect(withActions, 'trailer');
+		expect(setSettings.mock.calls).toEqual([
+			[{episodePreviewEnabled: false, mediaPreviewMode: 'off'}],
+			[{episodePreviewEnabled: true, mediaPreviewMode: 'media'}],
+			[{episodePreviewEnabled: true, mediaPreviewMode: 'trailer'}]
+		]);
+	});
+
+	test('the audio switch and volume only show while previews are on', () => {
+		const rows = homeScreen().rows;
+		['previewAudioEnabled', 'previewVolume'].forEach((key) => {
+			const row = rows.find((candidate) => candidate.key === key);
+			expect(row.when(withSettings({episodePreviewEnabled: false}))).toBe(false);
+			expect(row.when(withSettings({episodePreviewEnabled: true, mediaPreviewMode: 'media'}))).toBe(true);
+			expect(row.when(withSettings({episodePreviewEnabled: true, mediaPreviewMode: 'trailer'}))).toBe(true);
+		});
 	});
 });

@@ -1,7 +1,6 @@
 import {createContext, useContext, useState, useEffect, useCallback, useMemo, useRef} from 'react';
 import {getFromStorage, saveToStorage} from '../services/storage';
 import {getMoonfinSettings, getMoonfinThemes, saveMoonfinProfile, moonfinPing} from '../services/seerrApi';
-import {mergeServerPluginSections, pluginSectionsFromServer} from '../views/Settings/homeSectionsModel';
 import {parseThemeSpec} from '../theme/themeSpec';
 import {normalizeOverlayColorKey} from '../theme/overlayColors';
 import {noteAnsweredSettings, SETUP_QUESTION_KEYS} from '../utils/setupWizardGate';
@@ -10,6 +9,8 @@ import {applyOledMode} from '../utils/oledMode';
 import {normalizeRatingSources, ratingSourcesToServer} from '../utils/ratingSources';
 import {SEASONAL_DENSITIES, normalizeSeasonalTheme} from '../utils/seasonalEffects';
 import {normalizeSeasonalHiddenHolidays, normalizeSeasonalRowCountry} from '../utils/seasonalRow';
+import {sharePending} from '../utils/sharePending';
+import {pickedRowsFromLegacySections} from '../utils/pickedRows';
 import {
 	IMAGES as LOADING_IMAGES,
 	POSITIONS as LOADING_POSITIONS,
@@ -21,8 +22,10 @@ import {
 	SERVER_TO_TV_ROW,
 	TV_TO_SERVER_ROW,
 	hasSeenServerLayout,
+	homeRowImageTypesFromServer,
+	homeRowImageTypesToServer,
 	homeRowsFromProfile,
-	serverPluginSections,
+	rowImageTypeFromServer,
 	homeRowsToRowOrder,
 	homeRowsToSections,
 	mergeHomeRows
@@ -49,6 +52,7 @@ const SERVER_TO_LOCAL = {
 	detailsScreenBlur: 'backdropBlurDetail',
 	detailsBackdropBlur: 'backdropBlurDetail',
 	browsingBlur: 'backdropBlurHome',
+	homeBackdropEnabled: 'showHomeBackdrop',
 	use24HourClock: 'clockDisplay',
 	focusColor: 'focusBorderColor',
 	watchedIndicator: 'watchedIndicatorBehavior',
@@ -77,13 +81,15 @@ const LOCAL_TO_SERVER = Object.fromEntries(
 );
 
 // Synced values are all JSON, so comparing structure is enough to tell a genuinely new
-// value from a fresh copy of the one we already have.
-const sameSyncedValue = (left, right) => {
+// value from a fresh copy of the one we already have. Key order doesn't count, and neither does
+// the _id webOS puts on every object in a list, since its database hands settings back that way.
+export const sameSyncedValue = (left, right) => {
 	if (left === right) return true;
-	if (typeof left !== typeof right) return false;
-	if (left === null || right === null) return false;
-	if (typeof left !== 'object') return false;
-	return JSON.stringify(left) === JSON.stringify(right);
+	if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+	if (Array.isArray(left) !== Array.isArray(right)) return false;
+	const keys = Object.keys(left).filter((key) => key !== '_id');
+	if (keys.length !== Object.keys(right).filter((key) => key !== '_id').length) return false;
+	return keys.every((key) => sameSyncedValue(left[key], right[key]));
 };
 
 const normalizeHomeRowsStyle = (value) => {
@@ -178,6 +184,10 @@ const VALUE_CONVERSIONS = {
 		fromServer: normalizeSeasonalTheme
 	},
 	seasonalDensity: oneOf(SEASONAL_DENSITIES),
+	libraryStyle: oneOf(['classic', 'modern', 'docked']),
+	bookLibraryStyle: oneOf(['classic', 'readingRoom', 'bookstore']),
+	musicLibraryStyle: oneOf(['classic', 'quickAccess', 'immersive']),
+	keyboardStyle: oneOf(['native', 'classic', 'glass', 'docked']),
 	seasonalRowCountry: {fromServer: normalizeSeasonalRowCountry},
 	seasonalRowHiddenHolidays: {fromServer: normalizeSeasonalHiddenHolidays},
 	screensaverContentType: {
@@ -231,6 +241,10 @@ const VALUE_CONVERSIONS = {
 	mdblistRatingSources: {
 		toServer: ratingSourcesToServer,
 		fromServer: normalizeRatingSources
+	},
+	homeRowImageTypes: {
+		toServer: homeRowImageTypesToServer,
+		fromServer: homeRowImageTypesFromServer
 	}
 	// homeRows is missing on purpose. The home layout is two server fields that have to
 	// move together, so it gets resolved whole rather than a key at a time.
@@ -240,6 +254,7 @@ export const SYNCABLE_KEYS = [
 	'showShuffleButton', 'shuffleContentType', 'showGenresButton',
 	'showFavoritesButton', 'showLiveTvButton', 'showLibrariesInToolbar',
 	'mergeContinueWatchingNextUp',
+	'continueWatchingDefaultAction',
 	'nextUpMaxDays',
 	'hiddenContinueWatchingItems', 'hiddenNextUpSeries',
 	'mdblistEnabled', 'mdblistRatingSources', 'tmdbEpisodeRatingsEnabled',
@@ -247,14 +262,14 @@ export const SYNCABLE_KEYS = [
 	'imdbMostPopularTvShowsEnabled', 'imdbLowestRatedMoviesEnabled', 'imdbTopEnglishMoviesEnabled',
 	'sinceYouWatchedSource', 'sinceYouWatchedSourceItem', 'sinceYouWatchedSourceType', 'sinceYouWatchedIncludeWatched',
 	'rewatchIncludeMovies', 'rewatchIncludeShows', 'rewatchIncludeCollections', 'rewatchSortBy',
-	'navbarPosition', 'featuredBarStyle', 'featuredContentType', 'featuredItemCount',
-	'featuredTrailerPreview', 'featuredTrailerMuted', 'mediaBarTrailerCaptions', 'unifiedLibraryMode', 'seasonalTheme', 'seasonalDensity',
+	'navbarPosition', 'featuredBarStyle', 'mediaBarRowPeek', 'featuredContentType', 'featuredItemCount',
+	'featuredTrailerPreview', 'featuredTrailerMuted', 'trailerVolume', 'mediaBarTrailerCaptions', 'unifiedLibraryMode', 'seasonalTheme', 'seasonalDensity',
 	'seasonalRowEnabled', 'seasonalRowCountry', 'seasonalRowHiddenHolidays',
 	'visualTheme', 'customThemeId',
 	'showRatingLabels',
 	'showRatingBadges',
 	'themeMusicEnabled', 'themeMusicVolume', 'themeMusicOnHomeRows',
-	'homeRowsImageType', 'showClock', 'clockDisplay',
+	'homeRowsImageType', 'homeRowImageTypes', 'showClock', 'clockDisplay',
 	'homeRowOverlay', 'folderViewMode',
 	'excludedGenres',
 	'autoAdvance', 'autoAdvanceInterval',
@@ -269,19 +284,21 @@ export const SYNCABLE_KEYS = [
 	'musicPlaybackTimeDisplay', 'liveTvChannelSortBy',
 	'autoPlay', 'nextUpBehavior', 'nextUpTimeout', 'nextUpCountdownStyle',
 	'replaceSkipOutroWithNextUp',
-	'backdropBlurHome', 'backdropBlurDetail',
-	'mediaBarSourceType', 'mediaBarLibraryIds', 'mediaBarCollectionIds',
+	'showHomeBackdrop', 'homeBackdropStyle', 'detailsBackdropEnabled', 'backdropBlurHome', 'backdropBlurDetail',
+	'mediaBarSourceType', 'mediaBarLibraryIds', 'mediaBarCollectionIds', 'mediaBarExternalLists',
 	'mediaBarOverlayColor', 'mediaBarOverlayOpacity',
 	'homeRows', 'homeRowsStyle', 'modernCardsOnMyMediaRow', 'detailScreenStyle', 'detailExpandedTabs', 'fullScreenRows', 'homeRowsPosterSize', 'useSeriesThumbnails',
-	'episodePreviewEnabled', 'previewAudioEnabled',
+	'episodePreviewEnabled', 'mediaPreviewMode', 'previewAudioEnabled', 'previewVolume',
 	'hideDetailsMediaDescription', 'detailUseSeriesThumbnails', 'hideHomeMediaDescription',
+	'personPageSortOption', 'personPageGroupItems',
 	'personalRatingStyle', 'recentlyReleasedSeriesType', 'mergeRecentRowsByType', 'playlistsGroupByType', 'groupItemsIntoCollections',
-	'useDetailedSubHeadings', 'showMediaDetailsOnLibraryPage', 'hideBackdropsInLibraries',
+	'useDetailedSubHeadings', 'showMediaDetailsOnLibraryPage', 'hideBackdropsInLibraries', 'libraryStyle', 'bookLibraryStyle', 'musicLibraryStyle',
+	'keyboardStyle',
 	'syncplayEnabled', 'syncplayAutoOpen',
 	'showSyncPlayButton',
 	'syncPlayAdvancedCorrectionEnabled', 'syncPlayEnableSyncCorrection',
 	'syncPlayUseSkipToSync', 'syncPlayMinDelaySkipToSync', 'syncPlayExtraTimeOffset',
-	'videoStartDelay', 'cinemaModeEnabled', 'cinemaModeEpisodesEnabled',
+	'videoStartDelay', 'cinemaModeEnabled', 'cinemaModeEpisodesEnabled', 'cinemaModeSkipEnabled',
 	'audioLanguage', 'fallbackAudioLanguage', 'preferDefaultAudioTrack', 'preferAudioDescription',
 	'subtitleLanguage', 'fallbackSubtitleLanguage', 'preferSdhSubtitles', 'preferTextSubtitles', 'preferExternalSubtitles', 'subtitleMode',
 	'assDirectPlay',
@@ -333,6 +350,9 @@ export const profileToLocal = (serverProfile) => {
 			local[localKey] = converted;
 		}
 	}
+	// Continue Watching syncs on its own server key, while this app keeps it with the other rows.
+	const continueWatching = rowImageTypeFromServer(serverProfile.homeImageTypeContinueWatching);
+	if (continueWatching) local.homeRowImageTypes = {...local.homeRowImageTypes, resume: continueWatching};
 	// The TMDB key is read only. We pull it so online rows can call TMDB, but it
 	// stays out of SYNCABLE_KEYS so the client never pushes it back.
 	if (serverProfile.tmdbApiKey !== undefined && serverProfile.tmdbApiKey !== null) {
@@ -360,6 +380,10 @@ export const localToProfile = (localSettings, keys) => {
 		// stored one alone rather than overwriting it with a guess.
 		if (converted === undefined) continue;
 		profile[serverKey] = converted;
+	}
+	// Sent even when it's unset, so a cleared Continue Watching doesn't come back from the server.
+	if (profile.homeRowImageTypes !== undefined) {
+		profile.homeImageTypeContinueWatching = localSettings.homeRowImageTypes.resume || '';
 	}
 	// Send both views or neither. homeRowOrder on its own makes the server throw away the
 	// stored homeSections, whereas sending neither leaves the stored layout alone. That is
@@ -398,6 +422,15 @@ export const resolveFromEnvelope = (envelope, adminDefaults, profile) => {
 		const layer = firstWith(key);
 		if (layer) resolved[key] = layer[key];
 	}
+	// The per row map is two server keys, and each takes its own first layer the way the
+	// server resolves them.
+	const firstStored = (key) => sources.find((source) => source?.[key] != null)?.[key];
+	const rowImageTypes = profileToLocal({
+		homeRowImageTypes: firstStored('homeRowImageTypes'),
+		homeImageTypeContinueWatching: firstStored('homeImageTypeContinueWatching')
+	}).homeRowImageTypes;
+	if (rowImageTypes) resolved.homeRowImageTypes = rowImageTypes;
+	else delete resolved.homeRowImageTypes;
 	const tmdbLayer = firstWith('tmdbApiKey');
 	if (tmdbLayer) resolved.tmdbApiKey = tmdbLayer.tmdbApiKey;
 
@@ -411,10 +444,7 @@ export const resolveFromEnvelope = (envelope, adminDefaults, profile) => {
 		homeRows = homeRowsFromProfile(source, enabledById);
 		if (homeRows !== undefined) break;
 	}
-	if (homeRows !== undefined) {
-		resolved.homeRows = homeRows;
-		resolved.serverPluginSections = serverPluginSections();
-	}
+	if (homeRows !== undefined) resolved.homeRows = homeRows;
 	return resolved;
 };
 
@@ -561,6 +591,15 @@ const persistBootLocale = (locale) => {
 	}
 };
 
+// The old Prefer System Keyboard switch carries over only when it was on and no
+// keyboard style has been picked yet.
+export const migrateKeyboardStyle = (stored) => {
+	if (!('preferSystemImeKeyboard' in stored)) return false;
+	if (stored.preferSystemImeKeyboard === true && !('keyboardStyle' in stored)) stored.keyboardStyle = 'native';
+	delete stored.preferSystemImeKeyboard;
+	return true;
+};
+
 export function SettingsProvider({children}) {
 	const [settings, setSettings] = useState(defaultSettings);
 	const [loaded, setLoaded] = useState(false);
@@ -580,7 +619,7 @@ export function SettingsProvider({children}) {
 	const syncOnLoginRef = useRef({});
 
 	useEffect(() => {
-		getFromStorage('settings').then((stored) => {
+		Promise.all([getFromStorage('settings'), getFromStorage('auth')]).then(([stored, auth]) => {
 			if (stored) {
 				// Read off the raw blob before any migration fills keys in, because a
 				// key that is present here is one somebody or some sync actually wrote.
@@ -637,8 +676,11 @@ export function SettingsProvider({children}) {
 					stored.navbarColor = navbarColorKey;
 					migrated = true;
 				}
-				if (!Array.isArray(stored.pluginSections)) {
-					stored.pluginSections = [];
+				if ('pluginSections' in stored) {
+					// Picked collections and genres were a list of their own before they joined the rows
+					const picks = auth?.serverUrl ? pickedRowsFromLegacySections(stored.pluginSections, auth.serverUrl, stored.homeRows.length) : [];
+					stored.homeRows = [...stored.homeRows, ...picks];
+					delete stored.pluginSections;
 					migrated = true;
 				}
 				if (!Array.isArray(stored.customHomeRows)) {
@@ -757,6 +799,7 @@ export function SettingsProvider({children}) {
 					delete stored.liveTvDirect;
 					migrated = true;
 				}
+				if (migrateKeyboardStyle(stored)) migrated = true;
 				const merged = {...defaultSettings, ...stored};
 				setSettings(merged);
 				if (migrated) saveToStorage('settings', merged);
@@ -954,7 +997,7 @@ export function SettingsProvider({children}) {
 		});
 	}, []);
 
-	const syncFromServer = useCallback(async (serverUrl, token) => {
+	const pullFromServer = useCallback(async (serverUrl, token) => {
 		try {
 			serverCredsRef.current = {serverUrl, token};
 
@@ -1023,7 +1066,10 @@ export function SettingsProvider({children}) {
 			setSettings(prev => {
 				const nextValues = {};
 				for (const key of SYNCABLE_KEYS) {
-					const incoming = resolved[key];
+					// A row the server leaves out keeps what this device has.
+					const incoming = key === 'homeRowImageTypes' && resolved[key]
+						? {...prev[key], ...resolved[key]}
+						: resolved[key];
 					// Hold on to the previous reference when the value hasn't really changed.
 					// An equal but freshly built array still counts as a new identity, which
 					// would send Browse off to reload every row on every sync.
@@ -1034,10 +1080,6 @@ export function SettingsProvider({children}) {
 						: incoming;
 				}
 				const tmdbApiKey = resolved.tmdbApiKey !== undefined ? resolved.tmdbApiKey : prev.tmdbApiKey;
-				const pluginSections = mergeServerPluginSections(
-					prev.pluginSections,
-					pluginSectionsFromServer(resolved.serverPluginSections, {...prev, ...nextValues})
-				);
 				const homeRowsStyle = normalizeHomeRowsStyle(nextValues.homeRowsStyle);
 				const detailScreenStyle = normalizeDetailScreenStyle(nextValues.detailScreenStyle);
 
@@ -1053,7 +1095,6 @@ export function SettingsProvider({children}) {
 				// Unchanged values kept their previous reference, so comparing identity is
 				// enough here.
 				const changed = tmdbApiKey !== prev.tmdbApiKey ||
-					pluginSections !== prev.pluginSections ||
 					homeRowsStyle !== prev.homeRowsStyle ||
 					detailScreenStyle !== prev.detailScreenStyle ||
 					customThemeId !== prev.customThemeId ||
@@ -1065,7 +1106,6 @@ export function SettingsProvider({children}) {
 						...prev,
 						...nextValues,
 						tmdbApiKey,
-						pluginSections,
 						homeRowsStyle,
 						detailScreenStyle,
 						customThemeId,
@@ -1086,6 +1126,9 @@ export function SettingsProvider({children}) {
 			return 'error';
 		}
 	}, []);
+
+	// More than one caller pulls at launch, so a pull already running for the same server and token is shared.
+	const syncFromServer = useMemo(() => sharePending((serverUrl, token) => `${serverUrl}|${token}`, pullFromServer), [pullFromServer]);
 
 	// Mirrors Moonfin-Core's syncOnLogin. The first time a server is seen it detects
 	// the plugin and, if it answers, turns sync on and pulls whatever profile it holds.

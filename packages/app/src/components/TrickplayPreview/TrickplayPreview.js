@@ -1,5 +1,6 @@
 import {useState, useEffect, useLayoutEffect, useReducer, useRef} from 'react';
 import * as jellyfinApi from '../../services/jellyfinApi';
+import {plexTrickplayFrameUrl} from '../../utils/plexUrls';
 import {embyThumbnailInfo, planSeekSheetIndexes, trickplayTile} from '../../utils/trickplaySheets';
 import {VERTICAL_TRAVEL_TOP_MARGIN, planTrickplayPreview} from '../../utils/trickplayLayout';
 import {buildQueryString} from '../../utils/urlCompat';
@@ -32,6 +33,7 @@ const getEmbyThumbnailManifest = async (itemId, mediaSourceId, server) => {
 
 export const getTrickplayManifest = async (itemId, mediaSourceId, server = trickplayServer()) => {
     if (server.type === 'emby') return getEmbyThumbnailManifest(itemId, mediaSourceId, server);
+    if (jellyfinApi.getServerType() === 'plex') return jellyfinApi.api.getTrickplayManifest(itemId, mediaSourceId).catch(() => null);
     try {
         const serverUrl = jellyfinApi.getServerUrl();
         const apiKey = jellyfinApi.getApiKey();
@@ -113,8 +115,9 @@ const pickWidth = (manifest, preferredWidth) => {
 	return best;
 };
 
-const sheetUrl = (itemId, mediaSourceId, width, imageIndex) =>
-	`${jellyfinApi.getServerUrl()}/Videos/${itemId}/Trickplay/${width}/${imageIndex}.jpg?MediaSourceId=${mediaSourceId}&ApiKey=${jellyfinApi.getApiKey()}`;
+const sheetUrl = (itemId, mediaSourceId, width, imageIndex, info) => (info?.PlexPartId
+	? plexTrickplayFrameUrl(jellyfinApi.getServerUrl(), info, imageIndex)
+	: `${jellyfinApi.getServerUrl()}/Videos/${itemId}/Trickplay/${width}/${imageIndex}.jpg?MediaSourceId=${mediaSourceId}&ApiKey=${jellyfinApi.getApiKey()}`);
 
 const embyFrameUrl = (server, itemId, mediaSourceId, width, frame) => `${server.url}/Items/${itemId}/Images/Thumbnail?${embyQuery(server, {
 	maxWidth: width, tag: frame.imageTag, PositionTicks: frame.positionTicks, MediaSourceId: mediaSourceId, quality: 90
@@ -201,7 +204,7 @@ const TrickplayPreview = ({
 	const durationMs = durationTicks / 10000;
 	const urlFor = (imageIndex) => (info?.Frames
 		? embyFrameUrl(server, itemId, mediaSourceId, widthRef.current, info.Frames[imageIndex])
-		: sheetUrl(itemId, mediaSourceId, widthRef.current, imageIndex));
+		: sheetUrl(itemId, mediaSourceId, widthRef.current, imageIndex, info));
 
 	// Warms the sheets around a position in the direction the viewer is heading.
 	const prefetch = (fromMs, forward) => {

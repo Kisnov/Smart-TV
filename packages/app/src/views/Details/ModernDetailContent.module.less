@@ -599,6 +599,10 @@
 	transform: scale(1.01);
 }
 
+.currentEpisode {
+	box-shadow: inset 0 0 0 2px rgba(var(--theme-accent-rgb, 0, 164, 220), 0.7);
+}
+
 .episodeThumb {
 	position: relative;
 	flex: 0 0 260px;
@@ -763,10 +767,20 @@
 	font-size: 20px;
 }
 
+.tracksContainer {
+	display: flex;
+	flex-direction: column;
+	max-width: 900px;
+}
+
 .trackList {
 	display: flex;
 	flex-direction: column;
 	max-width: 900px;
+}
+
+.collectionLoading {
+	height: 160px;
 }
 
 .trackRow {
@@ -876,6 +890,7 @@
 .episodeBody          { .flex-col-gap(8px); }
 .castCard             { .flex-col-gap(10px); }
 .chapterCard          { .flex-col-gap(8px); }
+.tracksContainer      { .flex-col-gap(16px); }
 .trackList            { .flex-col-gap(4px); }
 .trackRow             { .flex-row-gap(20px); }
 .studioCard           { .flex-col-gap(12px); }
