@@ -1,6 +1,6 @@
 // The pieces the favorites, genres and library grids all share: the alphabet strip, the
 // arrow keys that carry focus in and out of the grid, and the settings each grid cycles
-// through. The two key handlers are built once per view rather than per render, since the
+// through. The key handlers are built once per view rather than per render, since the
 // only thing they close over is the id they were given.
 
 import Spotlight from '@enact/spotlight';
@@ -64,6 +64,21 @@ export const horizontalCellPad = (cardWidth, gridWidth) => {
 	return pad;
 };
 
+// Where a page key takes a grid. A page is the rows whose cards are fully on screen. Forward
+// scrolls the first row cut off at the bottom up to the top, back does the reverse, and focus
+// moves as many rows in its column, landing on the last item from a short last row. Rows start
+// stride apart, each card cardTop below its row's start. Null when focus has nowhere to go.
+export const pageGrid = ({from, direction, count, columns, stride, cardTop, cardHeight, scrollTop, viewport}) => {
+	const firstVisibleRow = Math.ceil((scrollTop - 0.5) / stride);
+	const firstCutOffRow = Math.floor((scrollTop + viewport + 0.5 - cardTop - cardHeight) / stride) + 1;
+	const rows = Math.max(1, firstCutOffRow - firstVisibleRow);
+	const lastRow = Math.floor((count - 1) / columns);
+	const clampRow = (row) => Math.max(0, Math.min(lastRow, row));
+	const target = Math.min(count - 1, clampRow(Math.floor(from / columns) + direction * rows) * columns + from % columns);
+	if (target === from) return null;
+	return {target, scrollTop: clampRow(firstVisibleRow + direction * rows) * stride};
+};
+
 // Down out of the toolbar drops into the grid. A screen with something focusable
 // above the toolbar passes it too, since the row it sits on is too wide for the
 // five-way to find it on its own.
@@ -82,8 +97,16 @@ export const createToolbarKeyDown = (gridSpotlightId, aboveSpotlightId) => (e) =
 };
 
 // Up out of the grid goes back to the toolbar, but only from the top of the list. Further
-// down it's left alone so the same key keeps scrolling.
-export const createGridKeyDown = (gridClassName, aboveSpotlightId) => (e) => {
+// down it's left alone so the same key keeps scrolling. A grid with a panel beside it sends
+// Left there too. Both grids only pass on a Left they have no column for, so any Left that
+// gets here comes from the first column.
+export const createGridKeyDown = (gridClassName, aboveSpotlightId, leftSpotlightId) => (e) => {
+	if (e.keyCode === KEYS.LEFT && leftSpotlightId) {
+		e.preventDefault();
+		e.stopPropagation();
+		Spotlight.focus(leftSpotlightId);
+		return;
+	}
 	if (e.keyCode !== KEYS.UP) return;
 
 	const grid = document.querySelector(`.${gridClassName}`);
@@ -92,4 +115,28 @@ export const createGridKeyDown = (gridClassName, aboveSpotlightId) => (e) => {
 	e.preventDefault();
 	e.stopPropagation();
 	Spotlight.focus(aboveSpotlightId);
+};
+
+// Right out of a panel beside the grid goes back to the grid. The letters keep the five-way,
+// since Right steps along their rows and only leaves from the end of one, and so does a
+// search being typed into.
+export const createPanelKeyDown = (gridSpotlightId) => (e) => {
+	if (e.keyCode !== KEYS.RIGHT || e.target.hasAttribute('data-letter') || e.target.tagName === 'INPUT') return;
+
+	e.preventDefault();
+	e.stopPropagation();
+	Spotlight.focus(gridSpotlightId);
+};
+
+// The same Left for a stack of rows, from the first card of any of them. A row wraps Left
+// round to its last card, so this listens in the capture phase to hear the press first.
+export const createRowsLeftKeyDown = (leftSpotlightId) => (e) => {
+	if (e.keyCode !== KEYS.LEFT) return;
+
+	const row = e.target.closest('[data-row-index]');
+	if (!row || row.querySelector('[data-media-card]') !== e.target) return;
+
+	e.preventDefault();
+	e.stopPropagation();
+	Spotlight.focus(leftSpotlightId);
 };

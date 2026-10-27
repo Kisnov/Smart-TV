@@ -24,7 +24,7 @@ Moonfin is a Jellyfin and Emby client for Samsung Smart TVs (Tizen), LG Smart TV
 ## Features
 
 - **Hardware-accelerated playback** through Samsung AVPlay, webOS Starfish, the Fire TV WebView and the Xbox console's own player, with direct play first and a transcode fallback only when needed.
-- **Lossless audio passthrough** for DTS, DTS-HD, and Dolby TrueHD to a capable receiver.
+- **Lossless audio passthrough** for DTS, DTS-HD, and Dolby TrueHD to a capable receiver on LG and Samsung TVs. On Xbox, an experimental Passthrough setting does the same for TrueHD, DTS and Dolby Digital. Without it, the console decodes the sound and sends it to the receiver as PCM.
 - **Multi-server and Emby support**, including Emby Connect, Quick Connect, and a unified library view across all your Jellyfin servers.
 - **A setup wizard on first run** that walks you through the look of the app with live previews built from your own artwork, including five detail screen styles: Classic, Modern, Spotlight, Nouveau, and Minimalist.
 - **Kids Mode and Blocked Ratings.** Kids Mode strips the app back for a child and locks the way out with a PIN, and blocked ratings apply everywhere, from home rows and search to detail screens and playback.
@@ -132,11 +132,11 @@ Contributions are welcome. Check the existing issues first, open an issue before
 
 To submit a change, fork the repo, create a feature branch, make your changes with clear commit messages, and open a pull request with a clear description.
 
-## Help translate Moonfin [here](https://translate.moonfin.io/engage/smart-tv/)
+## Help translate Moonfin [here](https://translate.moonfin.io/projects/moonfin/smart-tv/)
 
-<a href="https://translate.moonfin.io/engage/smart-tv/">
+<a href="https://translate.moonfin.io/projects/moonfin/smart-tv/">
   <img
-    src="https://translate.moonfin.io/widgets/smart-tv/-/multi-auto.svg"
+    src="https://translate.moonfin.io/widget/moonfin/smart-tv/multi-auto.svg"
     alt="Moonfin SmartTV translation status by language"
   />
 </a>

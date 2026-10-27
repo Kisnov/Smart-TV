@@ -2,31 +2,36 @@ import {getPlatform} from '../../platform';
 import {getDeviceId} from '../../services/jellyfinApi';
 import {getDeviceCapabilities} from '../../services/deviceProfile';
 import serverLogger from '../../services/serverLogger';
+import {volumeLevel} from '../../utils/volumeLevel';
 import {
-	PREVIEW_DWELL_MS,
 	PREVIEW_OPEN_TIMEOUT_MS,
 	PREVIEW_PLAY_CAP_MS,
 	buildMediaPreviewUrl,
 	newPlaySessionId,
 	pickPreviewAudioIndex,
 	previewApiFor,
+	previewDwellMs,
 	previewSegmentContainer,
 	previewServerOf,
 	previewStartSeconds,
+	isOutsideTitle,
 	resolvePreviewTarget,
+	resolveTrailerSource,
 	supportsMediaPreview
 } from '../../services/mediaPreviewSource';
-import {claimSharedVideo, releaseSharedVideo} from '../../utils/sharedVideoOwner';
+import {mediaPreviewMode} from '../../utils/mediaPreviewMode';
+import {claimSharedVideo, isMusicPlaying, releaseSharedVideo} from '../../utils/sharedVideoOwner';
 import {coverVideoInBox, resetVideoBox} from '../../utils/videoCover';
+import {isStreamlessStaticSource} from '../../utils/placeholderSource';
 
 const noop = () => {};
 
-// Plays a short clip of the focused home row card into a frame the card renders.
+// Plays a short clip or the trailer of the focused home row card into a frame the card renders.
 // Nothing here is React: the cards subscribe by key and hear the phase they should
 // draw, idle, attached (frame wanted, artwork still showing) or playing (reveal).
 //
-// A preview goes idle, pending (the dwell), resolving (next up, media info and the
-// URL), attached (element in the frame, stream opening) and playing. Every step
+// A preview goes idle, pending (the dwell), resolving (next up or the trailer, media
+// info and the URL), attached (element in the frame, stream opening) and playing. Every step
 // after an await checks the request it belongs to is still the current one, so a
 // stop can never be overtaken by the start it interrupted.
 export const createMediaPreviewController = ({getSettings, api, onThemeMusicHold, platform = getPlatform()}) => {
@@ -77,7 +82,7 @@ export const createMediaPreviewController = ({getSettings, api, onThemeMusicHold
 
 	const applyAudio = (video) => {
 		video.muted = !audioEnabled;
-		video.volume = audioEnabled ? 1 : 0;
+		video.volume = audioEnabled ? volumeLevel((getSettings() || {}).previewVolume) : 0;
 	};
 
 	// Everything a preview took is handed back here, in an order that frees the
@@ -97,6 +102,7 @@ export const createMediaPreviewController = ({getSettings, api, onThemeMusicHold
 			video.onloadedmetadata = null;
 			video.onresize = null;
 			video.onplaying = null;
+			video.ontimeupdate = null;
 			video.onended = null;
 			video.onerror = null;
 			if (was.releaseStream) {
@@ -146,14 +152,23 @@ export const createMediaPreviewController = ({getSettings, api, onThemeMusicHold
 
 		video.onloadedmetadata = () => coverVideoInBox(video, frame);
 		video.onresize = video.onloadedmetadata;
+		// The element can say playing a moment before its picture moves, which on Fire TV
+		// is a black box, so the card waits for the position to advance first.
+		let playingFrom = null;
 		video.onplaying = () => {
-			if (!isActive(id) || entry.phase !== 'attached') return;
+			if (isActive(id) && entry.phase === 'attached') playingFrom = video.currentTime;
+		};
+		video.ontimeupdate = () => {
+			if (!isActive(id) || entry.phase !== 'attached' || playingFrom === null || video.currentTime === playingFrom) return;
 			entry.phase = 'playing';
 			clearTimer('open');
-			timers.cap = setTimeout(() => {
-				timers.cap = null;
-				if (isActive(id)) stop('cap');
-			}, PREVIEW_PLAY_CAP_MS);
+			// A trailer plays to its end, only a clip is cut short.
+			if (!entry.trailer) {
+				timers.cap = setTimeout(() => {
+					timers.cap = null;
+					if (isActive(id)) stop('cap');
+				}, PREVIEW_PLAY_CAP_MS);
+			}
 			coverVideoInBox(video, frame);
 			entry.announced = true;
 			announce(true);
@@ -172,6 +187,8 @@ export const createMediaPreviewController = ({getSettings, api, onThemeMusicHold
 		entry.releaseStream = trailerModule.attachTrailerStream(video, entry.url, {
 			Hls,
 			startTime: entry.startTime,
+			audioLanguage: entry.audioLanguage,
+			videoOnly: entry.videoOnly,
 			onError: () => fail('gave up on the manifest')
 		});
 		entry.streamAttached = true;
@@ -198,34 +215,57 @@ export const createMediaPreviewController = ({getSettings, api, onThemeMusicHold
 		try {
 			const serverApi = previewApiFor(entry.item, api);
 			entry.serverApi = serverApi;
-			const [target, loadedVideoModule, loadedTrailerModule, caps] = await Promise.all([
-				resolvePreviewTarget(serverApi, entry.item),
+			const loadTrailerModule = trailerModule ? Promise.resolve(trailerModule) : import('../../services/youtubeTrailer');
+			const [picked, loadedVideoModule, loadedTrailerModule, caps] = await Promise.all([
+				entry.trailer
+					? loadTrailerModule.then((youtube) => resolveTrailerSource(serverApi, entry.item, youtube))
+					: resolvePreviewTarget(serverApi, entry.item).then((target) => target && {target}),
 				videoModule || import('@moonfin/platform-webos/video'),
-				trailerModule || import('../../services/youtubeTrailer'),
+				loadTrailerModule,
 				platform === 'webos' ? getDeviceCapabilities().catch(() => null) : null
 			]);
 			if (!isActive(id)) return;
 			videoModule = loadedVideoModule;
 			trailerModule = loadedTrailerModule;
 			const server = previewServerOf(entry.item);
-			if (!target || !server.serverUrl || !server.token) {
-				stop('unavailable');
-				return;
+			if (picked && picked.youTubeId) {
+				// A small card takes the balanced pick, and a TV whose player keeps failing
+				// YouTube's manifest goes straight to the file.
+				const stream = await trailerModule.fetchVideoStream(picked.youTubeId, false, '', trailerModule.nativeManifestSkipped());
+				if (!isActive(id)) return;
+				if (!stream || !stream.url) {
+					stop('unavailable');
+					return;
+				}
+				entry.url = stream.url;
+				entry.videoOnly = stream.videoOnly || null;
+				entry.audioLanguage = stream.audioLanguage || '';
+			} else {
+				const target = picked && picked.target;
+				if (!target || !server.serverUrl || !server.token) {
+					stop('unavailable');
+					return;
+				}
+				const source = target.MediaSources[0];
+				entry.playSessionId = newPlaySessionId();
+				entry.startTime = entry.trailer ? 0 : previewStartSeconds(target);
+				entry.url = server.serverType === 'plex' ? await serverApi.getPreviewStreamUrl({
+					itemId: target.Id,
+					mediaSourceId: source.Id,
+					playSessionId: entry.playSessionId
+				}) : buildMediaPreviewUrl({
+					serverUrl: server.serverUrl,
+					serverType: server.serverType,
+					token: server.token,
+					deviceId: getDeviceId(),
+					playSessionId: entry.playSessionId,
+					itemId: target.Id,
+					mediaSourceId: isStreamlessStaticSource(target, source.Id) ? undefined : source.Id,
+					audioStreamIndex: pickPreviewAudioIndex(source, getSettings() || {}),
+					segmentContainer: previewSegmentContainer(platform, caps)
+				});
+				if (!isActive(id)) return;
 			}
-			const source = target.MediaSources[0];
-			entry.playSessionId = newPlaySessionId();
-			entry.startTime = previewStartSeconds(target);
-			entry.url = buildMediaPreviewUrl({
-				serverUrl: server.serverUrl,
-				serverType: server.serverType,
-				token: server.token,
-				deviceId: getDeviceId(),
-				playSessionId: entry.playSessionId,
-				itemId: target.Id,
-				mediaSourceId: source.Id,
-				audioStreamIndex: pickPreviewAudioIndex(source, getSettings() || {}),
-				segmentContainer: previewSegmentContainer(platform, caps)
-			});
 			entry.phase = 'attached';
 			timers.open = setTimeout(() => {
 				timers.open = null;
@@ -246,13 +286,15 @@ export const createMediaPreviewController = ({getSettings, api, onThemeMusicHold
 	const schedule = (key, item) => {
 		if (key) focused = {key, item};
 		if (current && current.key === key) return;
-		const qualifies = enabled && !!key && supportsMediaPreview(item);
+		const trailer = isOutsideTitle(item) || mediaPreviewMode(getSettings()) === 'trailer';
+		const qualifies = enabled && !!key && supportsMediaPreview(item, trailer ? 'trailer' : 'media') && !isMusicPlaying();
 		if (current) stop(qualifies ? 'replaced' : 'blur');
 		if (!qualifies) return;
 		requestId += 1;
 		current = {
 			key,
 			item,
+			trailer,
 			requestId,
 			phase: 'pending',
 			serverApi: null,
@@ -263,13 +305,15 @@ export const createMediaPreviewController = ({getSettings, api, onThemeMusicHold
 			announced: false,
 			playSessionId: null,
 			startTime: 0,
-			url: null
+			url: null,
+			videoOnly: null,
+			audioLanguage: ''
 		};
 		const entry = current;
 		timers.dwell = setTimeout(() => {
 			timers.dwell = null;
 			if (isActive(entry.requestId)) resolve(entry);
-		}, PREVIEW_DWELL_MS);
+		}, previewDwellMs());
 	};
 
 	const cancel = (key) => {
