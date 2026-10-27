@@ -983,13 +983,22 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			unregisterAppStateRef.current = registerAppStateObserver(
 				() => {
 					console.log('[Player] App resumed');
-					if (playback.consumeBackgroundStopFired()) {
+					const stoppedOnServer = playback.consumeBackgroundStopFired();
+					const suspended = suspendedRef.current;
+					suspendedRef.current = null;
+					const reload = () => reloadPlaybackRef.current?.().then((reloaded) => {
+						if (!reloaded) setError($L('Playback failed. The file format may not be supported.'));
+					});
+					// A stream the server builds ends with the background stop, so it is opened again rather than restored
+					if (suspended && stoppedOnServer && playback.getCurrentSession()?.playMethod !== playback.PlayMethod.DirectPlay) {
+						reload();
+						return;
+					}
+					if (stoppedOnServer) {
 						// the session was stopped on the server while we were
 						// backgrounded, so bring it back before we resume playback
 						resumeReportingRef.current?.();
 					}
-					const suspended = suspendedRef.current;
-					suspendedRef.current = null;
 					if (suspended) {
 						avplayRestore(suspended.url, suspended.positionMs).then((ok) => {
 							if (ok) {
@@ -998,11 +1007,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 									playback.reportProgress(positionRef.current, {isPaused: false, eventName: 'unpause'});
 								}
 							} else {
-								// the transcode session likely expired while backgrounded
 								console.warn('[Player] AVPlay restore failed, reloading stream');
-								reloadPlaybackRef.current?.().then((reloaded) => {
-									if (!reloaded) setError($L('Playback failed. The file format may not be supported.'));
-								});
+								reload();
 							}
 						});
 						return;
