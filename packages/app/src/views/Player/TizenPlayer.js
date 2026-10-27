@@ -913,20 +913,23 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			url,
 			playMethod: options.playMethod || session?.playMethod,
 			mediaSource: options.mediaSource || session?.mediaSource,
-			resumeTicks: seekPositionTicks
+			resumeTicks: seekPositionTicks,
+			shouldAbort: options.shouldAbort
 		});
+		if (options.shouldAbort?.()) return false;
 
 		startTimeUpdatePolling();
+		return true;
 	}, [startTimeUpdatePolling, stopTimeUpdatePolling, openAndPrepare]);
 
 	// every stream reload restarts playback and session reporting the same way
-	const restartFromResult = useCallback(async (result, positionTicks) => {
+	const restartFromResult = useCallback(async (result, positionTicks, shouldAbort) => {
 		if (!result?.url) return false;
 		positionRef.current = positionTicks;
 		if (result.playMethod) setPlayMethod(result.playMethod);
 		setIsHdrContent(isHdrOutput(result.mediaSource, result.playMethod === playback.PlayMethod.Transcode));
 		if (result.playSessionId) playSessionRef.current = result.playSessionId;
-		await startAVPlayback(result.url, positionTicks, {playMethod: result.playMethod, mediaSource: result.mediaSource});
+		if (!await startAVPlayback(result.url, positionTicks, {playMethod: result.playMethod, mediaSource: result.mediaSource, shouldAbort})) return null;
 		playback.reportStart(positionRef.current);
 		playback.startProgressReporting(
 			() => positionRef.current,
@@ -2043,8 +2046,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				stereoUpmixEnabled: settings.stereoUpmixEnabled
 			});
 			// Back or another item while the stream was asked for leaves nothing to reload
-			if (generation !== loadGenerationRef.current) return null;
-			return await restartFromResult(result, positionRef.current);
+			const superseded = () => generation !== loadGenerationRef.current;
+			if (superseded()) return null;
+			return await restartFromResult(result, positionRef.current, superseded);
 		} catch (err) {
 			console.error('[Player] Stream reload failed:', err);
 			return false;
