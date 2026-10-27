@@ -75,6 +75,11 @@ describe('moveGroupTo', () => {
 		expect(mockQueueRequests.previousItem).toHaveBeenCalledTimes(1);
 	});
 
+	test('leaves the group be when it already plays the item', () => {
+		inGroupAt(1).current.moveGroupTo('aaaaaaaa000000000000000000000002');
+		Object.values(mockQueueRequests).forEach((fn) => expect(fn).not.toHaveBeenCalled());
+	});
+
 	test('jumps to an entry further along', () => {
 		inGroupAt(1).current.moveGroupTo('aaaaaaaa000000000000000000000004');
 		expect(mockQueueRequests.setPlaylistItem).toHaveBeenCalledWith('p4');
