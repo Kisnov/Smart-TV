@@ -395,6 +395,19 @@ describe('the next up card', () => {
 		expect(result.current.showNextEpisode).toBe(false);
 	});
 
+	test('a seek back out of the credits takes their card down until playback reaches them again', () => {
+		const {result, at} = setupNextUp(
+			{replaceSkipOutroWithNextUp: true, outroAction: 'ask'},
+			{mediaSegments: {list: [], creditsStart: 80 * SECOND}}
+		);
+		at(82);
+		expect(result.current.showSkipCredits).toBe(true);
+		at(50);
+		expect(result.current.showSkipCredits).toBe(false);
+		at(82);
+		expect(result.current.showSkipCredits).toBe(true);
+	});
+
 	test('with autoplay off the card comes up as before, with no countdown', () => {
 		const {result, at} = setupNextUp({autoPlay: false});
 		at(75);
