@@ -35,6 +35,7 @@ import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
 import {GRID_DIRECTIONS, IMAGE_SIZES, IMAGE_TYPES, capitalize, createGridKeyDown, createRowsLeftKeyDown, createToolbarKeyDown, cycleValue, focusOverhang, horizontalCellPad, stopPropagation} from '../../utils/gridChrome';
 import {HOME_ICON, Letters, LibraryDock, LibraryTitle, ModernBar, ModernLetters, SEARCH_ICON, SETTINGS_ICON, SORT_ICON} from './LibraryHeaders';
 import LibrarySkeleton from './LibrarySkeleton';
+import LoadFailedNotice from '../../components/LoadFailedNotice';
 
 import css from './Library.module.less';
 
@@ -250,6 +251,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 	const [allItems, setAllItems] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
+	// The first page failed, so the empty grid says so rather than "No items found".
+	const [loadFailed, setLoadFailed] = useState(false);
+	const [reloadKey, setReloadKey] = useState(0);
 	const [totalCount, setTotalCount] = useState(0);
 	// What the ratings filter dropped from the fetched pages, so the count shown leaves it out.
 	const [blockedCount, setBlockedCount] = useState(0);
@@ -441,6 +445,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 		if (!append) {
 			fetchGenerationRef.current++;
+			setLoadFailed(false);
 		}
 		const generation = fetchGenerationRef.current;
 
@@ -605,13 +610,18 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				showPage(newItems);
 				setTotalCount(result.TotalRecordCount || 0);
 			}
-		} catch (err) { console.error('[Library] loadItems error:', err); } finally {
+		} catch (err) {
+			console.error('[Library] loadItems error:', err);
+			if (!append && generation === fetchGenerationRef.current) setLoadFailed(true);
+		} finally {
 			setIsLoading(false);
 			loadingMoreRef.current = false;
 		}
 	}, [isPlaylistLibrary, effectiveApi, library, genreFilter, studioFilter, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, isFolderView, currentFolderId, currentFolderCollectionType, isMusicLibrary, musicContentType, bookGridView, getItemTypeForLibrary, getExcludeItemTypes, settings.groupItemsIntoCollections, isGenreMode]);
 
 	loadItemsRef.current = loadItems;
+
+	const retryLoad = useCallback(() => setReloadKey((key) => key + 1), []);
 
 	// Grouping covers the whole library, so the rest of it loads in the
 	// background the way scrolling to the end would have.
@@ -701,7 +711,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			initialFocusDoneRef.current = false;
 			loadItemsRef.current(0, false);
 		}
-	}, [library, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, musicContentType, bookGridView, isFolderView, currentFolderId, genreFilter, studioFilter, isBrowseHome, settings.groupItemsIntoCollections]);
+	}, [library, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, musicContentType, bookGridView, isFolderView, currentFolderId, genreFilter, studioFilter, isBrowseHome, settings.groupItemsIntoCollections, reloadKey]);
 
 	// The values the library actually holds, read once per library so opening
 	// the filter panel does not wait on the network.
@@ -1633,7 +1643,11 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							/>
 						</div>
 					) : items.length === 0 ? (
-						<div className={css.empty}>{$L('No items found')}</div>
+						loadFailed ? (
+							<LoadFailedNotice spotlightId='library-load-retry' onRetry={retryLoad} autoFocus={!showSortPanel && !showSettingsPanel} />
+						) : (
+							<div className={css.empty}>{$L('No items found')}</div>
+						)
 					) : groupedActive ? (
 						<div className={css.groupRows} ref={groupRowsRef} onKeyDownCapture={isDocked ? handleRowsKeyDownDocked : undefined}>
 							{groups.map((group, index) => (

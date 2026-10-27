@@ -23,6 +23,9 @@ const useFavoriteTabs = ({api, sortBy, sortOrder, unifiedMode, enabled = true}) 
 	const [itemsByKey, setItemsByKey] = useState(emptyBuckets);
 	const [countsByKey, setCountsByKey] = useState(emptyCounts);
 	const [isLoading, setIsLoading] = useState(true);
+	// Every request failed, so the screen can say so rather than "No favorites yet".
+	const [loadFailed, setLoadFailed] = useState(false);
+	const [reloadKey, setReloadKey] = useState(0);
 
 	// A sort change starts a fresh load while the last one may still be in flight,
 	// so a stale response is thrown away rather than landing on top of the new list.
@@ -42,6 +45,7 @@ const useFavoriteTabs = ({api, sortBy, sortOrder, unifiedMode, enabled = true}) 
 		pagingRef.current = {};
 		fetchedRef.current = {};
 		setIsLoading(true);
+		setLoadFailed(false);
 
 		const run = async () => {
 			try {
@@ -80,6 +84,7 @@ const useFavoriteTabs = ({api, sortBy, sortOrder, unifiedMode, enabled = true}) 
 				}));
 
 				if (cancelled || loadId !== loadIdRef.current) return;
+				if (results.every((result) => result === null)) setLoadFailed(true);
 
 				const buckets = emptyBuckets();
 				const counts = emptyCounts();
@@ -92,6 +97,9 @@ const useFavoriteTabs = ({api, sortBy, sortOrder, unifiedMode, enabled = true}) 
 				});
 				setItemsByKey(buckets);
 				setCountsByKey(counts);
+			} catch (err) {
+				console.error('Failed to load favorites:', err);
+				if (!cancelled && loadId === loadIdRef.current) setLoadFailed(true);
 			} finally {
 				if (!cancelled && loadId === loadIdRef.current) setIsLoading(false);
 			}
@@ -100,7 +108,9 @@ const useFavoriteTabs = ({api, sortBy, sortOrder, unifiedMode, enabled = true}) 
 		run();
 
 		return () => { cancelled = true; };
-	}, [api, sortBy, sortOrder, unifiedMode, enabled]);
+	}, [api, sortBy, sortOrder, unifiedMode, enabled, reloadKey]);
+
+	const retry = useCallback(() => setReloadKey((key) => key + 1), []);
 
 	// The next page of one tab, asked for as its grid runs out. Multi server mode
 	// already has everything in hand.
@@ -151,7 +161,7 @@ const useFavoriteTabs = ({api, sortBy, sortOrder, unifiedMode, enabled = true}) 
 	const tabs = visibleTabs(itemsByKey);
 	const totalCount = FAVORITE_TABS.reduce((sum, tab) => sum + (countsByKey[tab.key] || 0), 0);
 
-	return {tabs, itemsByKey, countsByKey, totalCount, isLoading, loadMore};
+	return {tabs, itemsByKey, countsByKey, totalCount, isLoading, loadFailed, retry, loadMore};
 };
 
 export default useFavoriteTabs;
