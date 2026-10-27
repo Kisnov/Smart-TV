@@ -2029,6 +2029,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				maxBitrate: selectedQuality || settings.maxBitrate,
 				mediaSourceId,
 				audioStreamIndex: selectedAudioIndex != null ? selectedAudioIndex : undefined,
+				subtitleStreamIndex: burnInSubtitleRef.current != null ? burnInSubtitleRef.current : undefined,
 				item,
 				stereoUpmixEnabled: settings.stereoUpmixEnabled
 			});
