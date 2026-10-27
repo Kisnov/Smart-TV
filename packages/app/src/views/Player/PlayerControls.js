@@ -486,7 +486,7 @@ const PlayerControls = ({
 							))}
 							{!isAudioMode && isTrickplayOn(settings) && (
 								<TrickplayPreview
-									itemId={item.Id}
+									item={item}
 									mediaSourceId={mediaSourceId}
 									positionTicks={displayTime * 10000000}
 									durationTicks={durationMs * 10000}
