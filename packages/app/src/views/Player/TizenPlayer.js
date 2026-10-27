@@ -987,9 +987,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					const suspended = suspendedRef.current;
 					suspendedRef.current = null;
 					const reload = () => reloadPlaybackRef.current?.().then((reloaded) => {
-						if (!reloaded) {
+						if (reloaded === false) {
 							setError($L('Playback failed. The file format may not be supported.'));
-						} else if (!suspended.wasPlaying) {
+						} else if (reloaded && !suspended.wasPlaying) {
 							// the reopened stream starts playing, so a paused one is paused again
 							avplayPause();
 							setIsPaused(true);
@@ -1992,7 +1992,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (hasPlayedRef.current && !hasReopenedRef.current && playMethod !== playback.PlayMethod.Transcode) {
 			hasReopenedRef.current = true;
 			console.warn('[Player] Playback died after running, reopening the same stream');
-			if (await reloadPlaybackRef.current?.()) return;
+			if (await reloadPlaybackRef.current?.() !== false) return;
 		}
 
 		if (!hasTriedTranscode && playMethod !== playback.PlayMethod.Transcode) {
@@ -2031,6 +2031,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Reload the current item from its last position, used when a suspended
 	// session cant be restored after the app returns to the foreground
 	const reloadCurrentPlayback = useCallback(async () => {
+		const generation = loadGenerationRef.current;
 		try {
 			const result = await playback.getPlaybackInfo(item.Id, {
 				startPositionTicks: positionRef.current,
@@ -2041,6 +2042,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				item,
 				stereoUpmixEnabled: settings.stereoUpmixEnabled
 			});
+			// Back or another item while the stream was asked for leaves nothing to reload
+			if (generation !== loadGenerationRef.current) return null;
 			return await restartFromResult(result, positionRef.current);
 		} catch (err) {
 			console.error('[Player] Stream reload failed:', err);
@@ -2057,6 +2060,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Control Actions (AVPlay-based)
 	// ==============================
 	const teardownPlayback = useCallback(async () => {
+		loadGenerationRef.current++;
 		cancelNextEpisodeCountdown();
 		stopTimeUpdatePolling();
 		await playback.reportStop(positionRef.current);
