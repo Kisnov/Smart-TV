@@ -8,11 +8,16 @@ import {getLogoUrl} from '../../utils/helpers';
 import * as connectionPool from '../../services/connectionPool';
 import * as seerrApi from '../../services/seerrApi';
 import browseReducer, {browseInitialState, mergeRowsById} from './browseReducer';
-import {BROWSE_ROW_LOADERS, buildLoaderContext} from './browseRowLoaders';
+import {BROWSE_ROW_LOADERS, buildLoaderContext, loadDeferredSections, loadSinceYouWatched} from './browseRowLoaders';
 import {genericCollectionLabel, mergeRecentRows} from '../../utils/mergeRecentRows';
 import {normalizeLatestMediaItems} from '../../utils/latestMediaRowNormalizer';
-import {EXCLUDED_COLLECTION_TYPES, filterItemsByExcludedGenres} from './browseFilters';
+import {EXCLUDED_COLLECTION_TYPES, filterItemsByExcludedGenres, matchesContentType} from './browseFilters';
 import {featuredConfigKey} from './featuredConfig';
+import {withExternalSlides} from './featuredExternal';
+import {readFeaturedSources} from './featuredSources';
+import {shuffleArray} from '../Details/detailsMedia';
+import {withoutBlockedItems} from '../../services/parentalControls';
+import {activeSyncProfile} from '../../context/SettingsContext';
 import {
 	CACHE_TTL_LIBRARIES, CACHE_TTL_VOLATILE, VOLATILE_REFRESH_COOLDOWN_MS,
 	cancelPendingCacheSave, clearBrowseCache, clearMemoryCache, isCacheValid, loadBrowseCache, memoryCache, saveBrowseCache
@@ -54,6 +59,16 @@ const useBrowseData = ({
 	const settingsRef = useRef(settings);
 	settingsRef.current = settings;
 
+	const recommendations = useMemo(
+		() => ({seerrEnabled, seerrAuthenticated, recommendationsSupported}),
+		[seerrEnabled, seerrAuthenticated, recommendationsSupported]
+	);
+	const recommendationsRef = useRef(recommendations);
+	recommendationsRef.current = recommendations;
+	const loaderContextRef = useRef(null);
+	// The picked rows waiting for Home to come near them, and the load they belong to.
+	const deferredRef = useRef(null);
+
 	const fetchFreshFeaturedItems = useCallback(async (fallbackItems = null) => {
 		const s = settingsRef.current;
 		const configKey = featuredConfigKey(s, unifiedMode);
@@ -67,57 +82,65 @@ const useBrowseData = ({
 			dispatch({type: 'SET_FEATURED_ITEMS', items});
 		};
 		const sourceType = s.mediaBarSourceType || 'library';
-		// The saved picks can name a library access has since been revoked for, so what the policy
-		// no longer allows is dropped before they are trusted.
-		const libraryIds = await retainPermitted(api, s.mediaBarLibraryIds || []);
+		// The saved picks sync across servers and can name a library access has since been revoked
+		// for, so only what this server still offers and the policy still allows is trusted.
+		const views = unifiedMode || !s.mediaBarLibraryIds?.length ? null : (await api.getLibraries().catch(() => null))?.Items;
+		const onThisServer = (s.mediaBarLibraryIds || []).filter((id) => !views || views.some((view) => view.Id === id));
+		const libraryIds = await retainPermitted(api, onThisServer);
 		const collectionIds = s.mediaBarCollectionIds || [];
 		const hasSourceFilter = (sourceType === 'collection' && collectionIds.length > 0) || libraryIds.length > 0;
+		// Kids Mode hides every outside list on Home, and the lists come through the plugin.
+		const externalIds = s.useMoonfinPlugin && !isKidsMode(s) ? s.mediaBarExternalLists || [] : [];
+		const mixInExternal = (picked) => withExternalSlides(picked, externalIds, s, {serverUrl, accessToken});
 
 		try {
 			let items = [];
+			const count = s.featuredItemCount;
 
-			if (s.useMoonfinPlugin) {
-				const mediaBarResult = await seerrApi.getMoonfinMediaBar(serverUrl, accessToken, 'tv');
+			// Lists picked on their own fill the bar alone. When they come back empty the bar
+			// falls back to what it shows with nothing picked.
+			if (externalIds.length > 0 && !hasSourceFilter) {
+				items = await mixInExternal([]);
+			}
+
+			if (items.length === 0 && s.useMoonfinPlugin) {
+				// The plugin answers from the synced picks, so it has to read the profile this TV syncs with.
+				const mediaBarResult = await seerrApi.getMoonfinMediaBar(serverUrl, accessToken, activeSyncProfile(s.syncProfile));
 				if (mediaBarResult?.Items?.length) {
 					items = mediaBarResult.Items;
 				}
 			}
 
 			if (items.length === 0) {
+				// What the bar can show: a title with a backdrop that no setting keeps off it.
+				const isUsable = (item) => item.Type !== 'BoxSet' && item.BackdropImageTags?.length > 0 &&
+					matchesContentType(item, s.featuredContentType) &&
+					filterItemsByExcludedGenres([item], s.excludedGenres).length > 0 && withoutBlockedItems([item]).length > 0;
+				const pickFrom = (pool) => shuffleArray(pool.filter(isUsable)).slice(0, count);
 				if (sourceType === 'collection' && collectionIds.length > 0) {
-					const results = await Promise.all(
-						collectionIds.map(cid => api.getCollectionItems(cid, 50).catch(() => null))
-					);
-					const allItems = [];
-					results.forEach(r => { if (r?.Items) allItems.push(...r.Items); });
-					items = allItems
-						.filter(item => item.Type !== 'BoxSet' && item.BackdropImageTags?.length)
-						.sort(() => Math.random() - 0.5)
-						.slice(0, s.featuredItemCount);
+					items = pickFrom(await readFeaturedSources(collectionIds, (cid) => api.getCollectionItems(cid, 50), isUsable, count));
 				} else if (unifiedMode) {
-					items = await connectionPool.getRandomItemsFromAllServers(s.featuredContentType, s.featuredItemCount, libraryIds);
+					items = await connectionPool.getRandomItemsFromAllServers(s.featuredContentType, count, libraryIds);
 				} else if (libraryIds.length > 0) {
-					const perLib = Math.ceil((s.featuredItemCount * 2) / libraryIds.length);
-					const results = await Promise.all(
-						libraryIds.map(lid => api.getRandomItems(s.featuredContentType, perLib, lid).catch(() => null))
-					);
-					const allItems = [];
-					results.forEach(r => { if (r?.Items) allItems.push(...r.Items); });
-					items = allItems.sort(() => Math.random() - 0.5).slice(0, s.featuredItemCount);
+					items = pickFrom(await readFeaturedSources(libraryIds, (lid) => api.getRandomItems(s.featuredContentType, count * 2, lid), isUsable, count));
 				} else {
-					const randomItems = await api.getRandomItems(s.featuredContentType, s.featuredItemCount);
+					const randomItems = await api.getRandomItems(s.featuredContentType, count);
 					items = randomItems?.Items || [];
 				}
 			}
 
+			if (externalIds.length > 0 && hasSourceFilter) {
+				items = await mixInExternal(items);
+			}
+
 			if (items.length > 0) {
 				const filteredItems = filterItemsByExcludedGenres(
-					items.filter(item => item.Type !== 'BoxSet'),
+					items.filter(item => item.Type !== 'BoxSet' && matchesContentType(item, s.featuredContentType)),
 					s.excludedGenres
 				);
 				const featuredWithLogos = filteredItems.map(item => ({
 					...item,
-					LogoUrl: getLogoUrl(getItemServerUrl(item), item, {maxWidth: 800, quality: 90})
+					LogoUrl: item.LogoUrl || getLogoUrl(getItemServerUrl(item), item, {maxWidth: 800, quality: 90})
 				}));
 				publish(featuredWithLogos);
 				return featuredWithLogos;
@@ -244,11 +267,21 @@ const useBrowseData = ({
 
 	useEffect(() => cancelPendingCacheSave, []);
 
-	// Only the "since you watched" rows read the Seerr state, and it settles a moment after launch,
-	// so Home only loads again for it when one of those rows is on.
-	const recommendationState = homeRowsConfig.some((row) => row.enabled && row.id.startsWith('sinceyouwatched'))
-		? `${seerrEnabled}|${seerrAuthenticated}|${recommendationsSupported}`
-		: '';
+	// Only the Since you watched rows read the Seerr state, and it settles a moment after launch,
+	// so those rows are all that load again when it does.
+	useEffect(() => {
+		if (loaderContextRef.current) loadSinceYouWatched(loaderContextRef.current);
+	}, [recommendations]);
+
+	const loadSectionsNear = useCallback((rowIds) => {
+		const deferred = deferredRef.current;
+		const due = deferred ? rowIds.map((id) => deferred.sections.get(id)).filter(Boolean) : [];
+		if (due.length === 0) return;
+		due.forEach((section) => deferred.sections.delete(section.id));
+		loadDeferredSections(deferred.ctx, due, (id) => {
+			if (deferredRef.current === deferred) dispatch({type: 'SECTIONS_DONE', sections: [id]});
+		});
+	}, []);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -271,6 +304,8 @@ const useBrowseData = ({
 		};
 
 		const loadData = async () => {
+			loaderContextRef.current = null;
+			deferredRef.current = null;
 			dispatch({type: 'SET_PENDING_SECTIONS', sections: []});
 			// Recommendation rows are only built by fetchAllData, so treat an enabled one
 			// as dynamic config. Otherwise enabling it shows nothing until the cache expires.
@@ -541,14 +576,14 @@ const useBrowseData = ({
 					settings,
 					homeRowsConfig,
 					eligibleLibraries,
-					seerrEnabled,
-					seerrAuthenticated,
-					recommendationsSupported,
+					recommendations: () => recommendationsRef.current,
 					appendRows
 				});
 				const loaderSections = BROWSE_ROW_LOADERS.map(({sections}) => sections(loaderContext));
 				if (!cancelled) {
-					dispatch({type: 'SET_PENDING_SECTIONS', sections: [].concat(...loaderSections)});
+					loaderContextRef.current = loaderContext;
+					deferredRef.current = {ctx: loaderContext, sections: new Map(loaderContext.deferredPluginSections.map((section) => [section.id, section]))};
+					dispatch({type: 'SET_PENDING_SECTIONS', sections: [].concat(...loaderSections, [...deferredRef.current.sections.keys()])});
 				}
 				dispatch({type: 'SET_LOADING', value: false});
 				if (!cancelled) {
@@ -608,7 +643,6 @@ const useBrowseData = ({
 		settings.sinceYouWatchedSourceType,
 		settings.sinceYouWatchedIncludeWatched,
 		settings.tmdbApiKey,
-		recommendationState,
 		settings.rewatchIncludeMovies,
 		settings.rewatchIncludeShows,
 		settings.rewatchIncludeCollections,
@@ -631,7 +665,8 @@ const useBrowseData = ({
 		pendingSections: state.pendingSections,
 		setBrowseMode,
 		fetchFreshFeaturedItems,
-		refreshVolatileData
+		refreshVolatileData,
+		loadSectionsNear
 	};
 };
 

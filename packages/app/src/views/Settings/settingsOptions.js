@@ -227,6 +227,18 @@ export const getHomeRowsStyleOptions = () => [
 	{ value: 'v1', label: $L('Classic') }
 ];
 
+export const getHomeBackdropStyleOptions = () => [
+	{ value: 'off', label: $L('Off') },
+	{ value: 'fullScreen', label: $L('Full Screen') },
+	{ value: 'corner', label: $L('Corner') }
+];
+
+export const getMediaPreviewModeOptions = () => [
+	{ value: 'off', label: $L('Off') },
+	{ value: 'media', label: $L('Media Preview') },
+	{ value: 'trailer', label: $L('Trailer Preview') }
+];
+
 export const getLibraryStyleOptions = () => [
 	{ value: 'classic', label: $L('Classic') },
 	{ value: 'modern', label: $L('Modern') },
@@ -671,7 +683,12 @@ export const getSeasonalThemeOptions = () => [
 	{ value: 'petals', label: $L('Spring Petals') },
 	{ value: 'fireflies', label: $L('Fireflies') },
 	{ value: 'leaves', label: $L('Falling Leaves') },
-	{ value: 'halloween', label: $L('Halloween') }
+	{ value: 'halloween', label: $L('Halloween') },
+	{ value: 'valentines', label: $L("Valentine's Day") },
+	{ value: 'easter', label: $L('Easter') },
+	{ value: 'pride', label: $L('Pride') },
+	{ value: 'lunar', label: $L('Lunar New Year') },
+	{ value: 'diwali', label: $L('Diwali') }
 ];
 
 export const getSeasonalDensityOptions = () => [

@@ -10,6 +10,7 @@ import {formatClockTime, formatDayLabel} from '../../utils/clock';
 import {KEYS, pageDirection} from '../../utils/keys';
 import {animateScrollTop, pointerHover, stopScrollAnimation} from '../../utils/focusScroll';
 import {rem, rootScale} from '../../utils/rootScale';
+import {getImageUrl} from '../../utils/helpers';
 import {createLiveTvGuideStore} from '../../services/liveTvGuideStore';
 import {getLiveTvLastChannelId, loadLiveTvLastChannel} from '../../services/liveTvLastChannel';
 import {
@@ -83,6 +84,7 @@ const channelSpotlightId = (channelId) => `guide-ch-${channelId}`;
 const cellSpotlightId = (channelId, index) => `guide-cell-${channelId}-${index}`;
 const barSpotlightId = (index) => `guide-bar-${index}`;
 const chipSpotlightId = (index) => `guide-chip-${index}`;
+const PLEX_MISSING_FILTERS = ['sports', 'news', 'kids'];
 
 const isLoadingCells = (cells) => cells.length === 1 && cells[0].kind === CELL_KINDS.loading;
 
@@ -106,8 +108,8 @@ const focusWhenMounted = (spotlightId, {attempts = 12, defer = false} = {}) => {
 const buildDateOptions = () => {
 	const options = [];
 	const today = new Date();
-	today.setHours(0, 0, 0, 0);
-	for (let i = -7; i <= 14; i++) options.push(new Date(today.getTime() + i * 86400000));
+	// Stepped by calendar day, since a day across a daylight saving change isn't 24 hours.
+	for (let i = -7; i <= 14; i++) options.push(new Date(today.getFullYear(), today.getMonth(), today.getDate() + i));
 	return options;
 };
 
@@ -198,14 +200,14 @@ const GuideHeroHost = ({store, emitter, focusRef, serverUrl, clockDisplay, versi
 
 	const heroProps = useMemo(() => {
 		const logoUrl = channel?.ImageTags?.Primary
-			? `${serverUrl}/Items/${channel.Id}/Images/Primary?maxHeight=209&tag=${channel.ImageTags.Primary}`
+			? getImageUrl(serverUrl, channel.Id, 'Primary', {maxHeight: 209, tag: channel.ImageTags.Primary})
 			: null;
 		const artwork = preview ? (artworkSource(preview) || store.cachedArtworkFor(preview.Id)) : null;
 		let programImageUrl = null;
 		if (artwork) {
 			programImageUrl = artwork.isThumb
-				? `${serverUrl}/Items/${artwork.itemId}/Images/Thumb?maxWidth=157&tag=${artwork.tag}`
-				: `${serverUrl}/Items/${artwork.itemId}/Images/Primary?maxHeight=209&maxWidth=157&tag=${artwork.tag}`;
+				? getImageUrl(serverUrl, artwork.itemId, 'Thumb', {maxWidth: 157, tag: artwork.tag})
+				: getImageUrl(serverUrl, artwork.itemId, 'Primary', {maxWidth: 157, maxHeight: 209, tag: artwork.tag});
 		}
 		const episodeTitle = preview ? episodeTitleOf(preview) : '';
 		const episodeSuffix = episodeTitle && episodeTitle !== preview?.Name ? ` - ${episodeTitle}` : '';
@@ -234,7 +236,11 @@ const GuideHeroHost = ({store, emitter, focusRef, serverUrl, clockDisplay, versi
 };
 
 const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
-	const {api, serverUrl} = useAuth();
+	const {api, serverUrl, serverType} = useAuth();
+	// Plex's guide carries no sports, news or kids flags, so those would always come up empty.
+	const guideFilters = useMemo(() => (serverType === 'plex'
+		? GUIDE_FILTERS.filter((filter) => !PLEX_MISSING_FILTERS.includes(filter.key))
+		: GUIDE_FILTERS), [serverType]);
 	const {settings, updateSetting} = useSettings();
 	const clockDisplay = settings.clockDisplay;
 
@@ -712,6 +718,7 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 		} else if (code === KEYS.LEFT) {
 			consume();
 			onNavigationKey();
+			focusWhenMounted(chipSpotlightId(0));
 		}
 	}, [focusChannelRow, focusProgramFromChannel, focusWindowBar, rowsPerViewport]);
 
@@ -1138,7 +1145,7 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 									now={clockNow}
 									layout={layout}
 									logoUrl={channel.ImageTags?.Primary
-										? `${serverUrl}/Items/${channel.Id}/Images/Primary?maxHeight=${ROW_HEIGHT}&tag=${channel.ImageTags.Primary}`
+										? getImageUrl(serverUrl, channel.Id, 'Primary', {maxHeight: ROW_HEIGHT, tag: channel.ImageTags.Primary})
 										: null}
 									onFocusChannel={handleFocusChannel}
 									onKeyDownChannel={handleKeyDownChannel}
@@ -1173,7 +1180,7 @@ const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 		<div className={css.page} ref={pageRef}>
 			<FilterRailContainer className={css.filterRail} spotlightId="livetv-filters">
 				<div ref={filterRailRef} className={css.filterRailScroller}>
-					{GUIDE_FILTERS.map((filter, index) => (
+					{guideFilters.map((filter, index) => (
 						<SpottableButton
 							key={filter.key}
 							className={`${css.chip} ${store.filter === filter.key ? css.chipSelected : ''}`}
