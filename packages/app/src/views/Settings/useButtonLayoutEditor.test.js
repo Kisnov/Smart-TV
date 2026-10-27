@@ -16,7 +16,9 @@ const openPlayerButtons = () => {
 describe('the Player Buttons list', () => {
 	it('lists Episodes right after Chapters, switched on', () => {
 		const {result} = openPlayerButtons();
-		const [chapters, episodes] = result.current.tempButtons;
+		const buttons = result.current.tempButtons;
+		const at = buttons.findIndex((button) => button.id === 'chapters');
+		const [chapters, episodes] = buttons.slice(at, at + 2);
 		expect([chapters.id, episodes.id]).toEqual(['chapters', 'episodes']);
 		expect(episodes.enabled).toBe(true);
 	});
@@ -27,7 +29,7 @@ describe('the Player Buttons list', () => {
 		act(() => result.current.toggleLayoutButton('episodes'));
 		act(() => result.current.commitButtonLayout());
 		const saved = updateSettings.mock.calls[0][0];
-		expect(saved[OSD_ORDER_KEY].slice(0, 2)).toEqual(['episodes', 'chapters']);
+		expect(saved[OSD_ORDER_KEY].slice(0, 3)).toEqual(['favorite', 'episodes', 'chapters']);
 		expect(saved[OSD_HIDDEN_KEY]).toEqual(['episodes']);
 	});
 });
