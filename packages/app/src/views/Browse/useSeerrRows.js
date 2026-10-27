@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 
 import {getSeerrHomeRowConfigs, fetchSeerrHomeRow, normalizeMediaItem, SEERR_SECTION_TO_CONFIG} from '../../utils/seerrHomeRows';
 import {loadSliderHomeRow} from '../../utils/seerrSliders';
@@ -11,8 +11,12 @@ import {withoutSeerrAdult} from '../../utils/seerrAdultFilter';
 const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, serverUrl, blockAdult}) => {
 	const [seerrRows, setSeerrRows] = useState([]);
 	const [pending, setPending] = useState([]);
+	const shownBlockAdultRef = useRef(blockAdult);
 
 	useEffect(() => {
+		// Rows loaded before the NSFW filter went on can hold what it hides, so they go at once.
+		if (blockAdult && !shownBlockAdultRef.current) setSeerrRows([]);
+		shownBlockAdultRef.current = blockAdult;
 		if (!seerrEnabled || !seerrAuthenticated) {
 			setSeerrRows([]);
 			setPending([]);

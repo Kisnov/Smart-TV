@@ -1,4 +1,5 @@
-import {hydrateRecentlyAddedItems} from './seerrHydration';
+import hydrateRequestMediaItems, {hydrateRecentlyAddedItems, hydrateWatchlistItems} from './seerrHydration';
+import {withoutSeerrAdult} from './seerrAdultFilter';
 import {normalizeMediaItem} from './seerrHomeRows';
 import seerrApi from '../services/seerrApi';
 
@@ -31,5 +32,15 @@ describe('hydrateRecentlyAddedItems', () => {
 		const [item] = await hydrateRecentlyAddedItems([{id: 7, tmdbId: 603, mediaType: 'movie', status: 5}]);
 		expect(item).toMatchObject({id: 603, mediaType: 'movie'});
 		expect(item.title).toBeUndefined();
+	});
+});
+
+describe('the adult flag', () => {
+	test('comes along from the details, so the NSFW filter still sees it', async () => {
+		seerrApi.getMovie.mockResolvedValue({title: 'Quiet Title', posterPath: '/q.jpg', adult: true});
+		const watchlist = await hydrateWatchlistItems([{id: 1, mediaType: 'movie'}]);
+		expect(withoutSeerrAdult(watchlist, true)).toEqual([]);
+		const requests = await hydrateRequestMediaItems([{type: 'movie', media: {tmdbId: 1}}]);
+		expect(withoutSeerrAdult(requests, true, (request) => request.media)).toEqual([]);
 	});
 });
