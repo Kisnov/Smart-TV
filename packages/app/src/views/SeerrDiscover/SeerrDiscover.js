@@ -480,6 +480,8 @@ const SeerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSelectSt
 	}, []);
 
 	useEffect(() => {
+		// Turning the NSFW filter off and on again quickly must not let the first load land last.
+		let cancelled = false;
 		const loadInitialData = async () => {
 			if (!isAuthenticated) return;
 			setIsLoading(true);
@@ -511,6 +513,7 @@ const SeerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSelectSt
 				]);
 
 				const hydratedMyRequests = await hydrateRequestMediaItems(myRequestsData.results || []);
+				if (cancelled) return;
 				// Filtered before the cut so each row still fills, while paging below goes by what was sent.
 				const media = (data) => withoutSeerrAdult(data.results || [], blockAdult);
 
@@ -548,7 +551,7 @@ const SeerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSelectSt
 			} catch (err) {
 				console.error('Failed to load Seerr data:', err);
 			} finally {
-				setIsLoading(false);
+				if (!cancelled) setIsLoading(false);
 			}
 		};
 
@@ -557,6 +560,9 @@ const SeerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSelectSt
 		} else {
 			setIsLoading(false);
 		}
+		return () => {
+			cancelled = true;
+		};
 	}, [isAuthenticated, contextUser, blockAdult]);
 
 	// The sliders wait for this screen's own rows, since those replace every row when they land. A
