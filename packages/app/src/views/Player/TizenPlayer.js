@@ -828,6 +828,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		} finally {
 			clearTimeout(prepareTimer);
 		}
+		if (shouldAbort?.()) return;
 		avplayReadyRef.current = true;
 
 		// some firmware resets display state during prepare
@@ -853,6 +854,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (startDelayMs > 0) {
 			await new Promise((resolve) => setTimeout(resolve, startDelayMs));
 		}
+		if (shouldAbort?.()) return;
 
 		playIssued = true;
 		playbackMovingRef.current = false;
