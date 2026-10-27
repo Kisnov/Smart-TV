@@ -3,6 +3,7 @@ import {fetchWithTimeout} from '../utils/fetchTimeout';
 import {mediaServerQueue} from '../utils/requestQueue';
 import {normalizeWatchlistBody} from './seerrApi.watchlistShape';
 import {sharePending} from '../utils/sharePending';
+import {isPlexUrl} from '../utils/plexUrls';
 
 let moonfinMode = false;
 let jellyfinServerUrl = null;
@@ -25,6 +26,8 @@ export const isMoonfinMode = () => moonfinMode;
 
 const fetchRequest = async (params) => {
 	const {url, method = 'GET', headers = {}, body, timeout = 15000} = params;
+	// Plex never has the plugin, so its requests are answered here instead of going out.
+	if (isPlexUrl(url)) return {success: true, status: 404, headers: {}, body: ''};
 
 	try {
 		const response = await mediaServerQueue.run(() => fetchWithTimeout(url, {
@@ -540,6 +543,7 @@ export const subscribeMoonfinSettingsStream = (serverUrl, token, onEvent, onErro
 	if (!sUrl || !sToken) {
 		throw new Error('Server URL and token required');
 	}
+	if (isPlexUrl(sUrl)) throw new Error('Plex servers have no settings stream');
 
 	let closed = false;
 	const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -859,6 +863,16 @@ export const upcomingMovies = async (page = 1) => {
 export const upcomingTv = async (page = 1) => {
 	return request(`/discover/tv/upcoming?page=${page}`);
 };
+
+// The sliders a Seerr admin arranged for its Discover page, in their order.
+export const getDiscoverSliders = async () => {
+	const sliders = await request('/settings/discover');
+	return Array.isArray(sliders) ? sliders : [];
+};
+
+// One page of a slider's results. Its path already carries any query the slider's type needs.
+export const getDiscoverSliderPage = async (pathWithQuery, page = 1) =>
+	request(`/${pathWithQuery}${pathWithQuery.indexOf('?') >= 0 ? '&' : '?'}page=${page}`);
 
 export const getGenreSliderMovies = async () => {
 	return request('/discover/genreslider/movie');
@@ -1195,6 +1209,8 @@ export default {
 	upcomingTv,
 	getGenreSliderMovies,
 	getGenreSliderTv,
+	getDiscoverSliders,
+	getDiscoverSliderPage,
 	discoverFiltered,
 	discoverByGenre,
 	discoverByNetwork,

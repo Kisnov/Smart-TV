@@ -1,9 +1,9 @@
 import {useState, useCallback, useEffect, useLayoutEffect, useMemo, lazy, Suspense, useRef} from 'react';
 import {isKidsMode, blockedPanels, allowedPanel} from '../utils/kidsMode';
 import {
-	hashPin, pinMatches, lockoutRemaining, registerFailedAttempt, clearedLockout, tooManyAttempts,
-	SIGN_IN_PIN
-} from '../utils/pinLockout';
+	PIN_ACCEPTED, isSignInPinEnabled, markPinForgotten, refreshSignInPin, resetForgottenPin, signInPinMessage, takeForgottenPin,
+	takeProvedSignIn, verifySignInPin
+} from '../utils/signInPin';
 import ThemeDecorator from '@enact/sandstone/ThemeDecorator';
 import {Panels, Panel} from '@enact/sandstone/Panels';
 import Spottable from '@enact/spotlight/Spottable';
@@ -20,6 +20,7 @@ import * as jellyfinApi from '../services/jellyfinApi';
 import {adoptLegacyBlockedRatings, loadParentalControls, parentalScopeKey, setParentalScope} from '../services/parentalControls';
 import {libraryIdOf, seerrDetailStub} from '../utils/seerrTarget';
 import {setTmdbThumbsAvailable} from '../utils/tmdbThumb';
+import {configureIncompleteRecordings} from '../services/incompleteRecordings';
 import serverLogger from '../services/serverLogger';
 import * as remoteControl from '../services/remoteControl';
 import {isBackKey, KEYS} from '../utils/keys';
@@ -66,6 +67,7 @@ import SpottableInput from '../components/SpottableInput/SpottableInput';
 import TVKeyboard from '../components/TVKeyboard/TVKeyboard';
 import {isTvKeyboardVisible, closeTvKeyboard} from '../components/TVKeyboard/keyboardBus';
 import useInactivityTimer from '../hooks/useInactivityTimer';
+import useSignInPin from '../hooks/useSignInPin';
 import {useThemeMusic} from '../hooks/useThemeMusic';
 import {useAccessSchedule} from '../hooks/useAccessSchedule';
 import {shiftedNow} from '../utils/clock';
@@ -87,7 +89,6 @@ const Player = lazy(() => import('../views/Player'));
 const Favorites = lazy(() => import('../views/Favorites'));
 const Genres = lazy(() => import('../views/Genres'));
 const GenreBrowse = lazy(() => import('../views/GenreBrowse'));
-const Person = lazy(() => import('../views/Person'));
 const LiveTV = lazy(() => import('../views/LiveTV'));
 const Recordings = lazy(() => import('../views/Recordings'));
 const SeerrDiscover = lazy(() => import('../views/SeerrDiscover'));
@@ -155,21 +156,20 @@ const PANELS = {
 	PLAYER: 6,
 	FAVORITES: 7,
 	GENRES: 8,
-	PERSON: 9,
-	LIVETV: 10,
-	SEERR_DISCOVER: 11,
-	SEERR_REQUESTS: 12,
-	GENRE_BROWSE: 13,
-	RECORDINGS: 14,
-	SEERR_BROWSE: 15,
-	SEERR_PERSON: 16,
-	ADD_SERVER: 17,
-	ADD_USER: 18,
-	GAMES: 19,
-	GAME_DETAILS: 20,
-	GAME_PLAYER: 21,
-	SEERR_COLLECTION: 22,
-	GAME_SYSTEM: 23
+	LIVETV: 9,
+	SEERR_DISCOVER: 10,
+	SEERR_REQUESTS: 11,
+	GENRE_BROWSE: 12,
+	RECORDINGS: 13,
+	SEERR_BROWSE: 14,
+	SEERR_PERSON: 15,
+	ADD_SERVER: 16,
+	ADD_USER: 17,
+	GAMES: 18,
+	GAME_DETAILS: 19,
+	GAME_PLAYER: 20,
+	SEERR_COLLECTION: 21,
+	GAME_SYSTEM: 22
 };
 
 const AppContent = (props) => {
@@ -256,7 +256,6 @@ const AppContent = (props) => {
 	const [selectedGameSystem, setSelectedGameSystem] = useState(null);
 	const [selectedGame, setSelectedGame] = useState(null);
 	const [gameStartFresh, setGameStartFresh] = useState(false);
-	const [selectedPerson, setSelectedPerson] = useState(null);
 	const [selectedGenre, setSelectedGenre] = useState(null);
 	const [genreFilter, setGenreFilter] = useState(null);
 	const [studioFilter, setStudioFilter] = useState(null);
@@ -282,6 +281,7 @@ const AppContent = (props) => {
 		else if (signingIn || user?.Id !== musicUserRef.current) remoteControl.runPlayerCommand('stop');
 	}, [backgroundMusic, user?.Id, panelIndex]);
 	const [trailerPreviewActive, setTrailerPreviewActive] = useState(false);
+	const [trailerHidesChrome, setTrailerHidesChrome] = useState(false);
 	const [panelHistory, setPanelHistory] = useState([]);
 	const [seerrBrowse, setSeerrBrowse] = useState(null);
 	const [seerrPerson, setSeerrPerson] = useState(null);
@@ -298,7 +298,19 @@ const AppContent = (props) => {
 	const [shuffleOriginSpotlightId, setShuffleOriginSpotlightId] = useState('navbar-shuffle');
 	const [pinCodeInput, setPinCodeInput] = useState('');
 	const [pinCodeError, setPinCodeError] = useState('');
-	const [isPinUnlocked, setIsPinUnlocked] = useState(false);
+	// Each sign in, switch of account and return to the app is a new check, and the gate stays up
+	// until that check has passed.
+	const [pinCheckCount, setPinCheckCount] = useState(0);
+	const [pinPassed, setPinPassed] = useState(null);
+	const [pinChecked, setPinChecked] = useState(null);
+	const [pinVerifying, setPinVerifying] = useState(false);
+	// Whether the check under way follows a sign in with the account's password or Quick Connect,
+	// which lets Forgot PIN clear the PIN, and whether Forgot PIN is what sent the viewer to sign in.
+	const pinProofRef = useRef({session: null, proved: false, forgotten: false});
+	// Signing out ends the check, so signing back in to the same account starts a new one.
+	useEffect(() => {
+		if (!isAuthenticated) setPinCheckCount((count) => count + 1);
+	}, [isAuthenticated]);
 	const [setupWizardActive, setSetupWizardActive] = useState(false);
 	const setupWizardBackRef = useRef(null);
 	const cleanupHandlersRef = useRef(null);
@@ -307,6 +319,8 @@ const AppContent = (props) => {
 	const detailsItemStackRef = useRef([]);
 	// Play from a card's menu opens the item's screen, which starts it once it knows what to play.
 	const [detailsAutoPlay, setDetailsAutoPlay] = useState(false);
+	// A Smart Hub tile that opened the app, held until there's someone signed in to open it for.
+	const [deepLink, setDeepLink] = useState(null);
 	const [seerrCollection, setSeerrCollection] = useState(null);
 	const prevUserIdRef = useRef(null);
 	const [photoViewerItem, setPhotoViewerItem] = useState(null);
@@ -317,15 +331,12 @@ const AppContent = (props) => {
 	const {updateInfo, formattedNotes, dismiss: dismissUpdate} = useVersionCheck(
 		isAuthenticated && settings.updateNotificationsEnabled !== false ? 3000 : null
 	);
-	// A PIN saved before this client started hashing is still stored as itself, so both are
-	// offered and the plain one is written back as a hash the first time it is entered.
-	const storedPin = useMemo(() => ({
-		hash: settings.pinCodeHash,
-		plain: typeof settings.pinCode === 'string' && /^\d{4}$/.test(settings.pinCode)
-			? settings.pinCode
-			: '0000'
-	}), [settings.pinCodeHash, settings.pinCode]);
-	const isPinGateActive = isAuthenticated && settings.pinCodeProtection === true && !isPinUnlocked;
+	const {userId, record: signInPin, account: pinAccount, latest: latestSignInPin, save: saveSignInPin} = useSignInPin();
+	const pinSession = isAuthenticated && userId ? `${userId}:${pinCheckCount}` : null;
+	const pinPending = Boolean(pinSession) && pinPassed !== pinSession;
+	const isPinGateActive = pinPending && isSignInPinEnabled(signInPin);
+	// Until the server has said whether the account has a PIN, nothing behind the gate shows.
+	const isPinChecking = pinPending && !isPinGateActive && pinChecked !== pinSession;
 	const screensaverTimeout = Number(settings.screensaverTimeout || 90);
 	const screensaverEnabled = Boolean(
 		settings.screensaverEnabled &&
@@ -351,7 +362,10 @@ const AppContent = (props) => {
 	}, [showScreensaver]);
 
 	useEffect(() => {
-		const handleTrailerPreview = (e) => setTrailerPreviewActive(!!e.detail?.active);
+		const handleTrailerPreview = (e) => {
+			setTrailerPreviewActive(!!e.detail?.active);
+			setTrailerHidesChrome(!!e.detail?.hidesChrome);
+		};
 		window.addEventListener('moonfin:trailerPreview', handleTrailerPreview);
 		return () => window.removeEventListener('moonfin:trailerPreview', handleTrailerPreview);
 	}, []);
@@ -374,6 +388,13 @@ const AppContent = (props) => {
 		serverLogger.setClientLogSupported(pluginInfo?.clientLogSupported === true);
 	}, [pluginInfo]);
 
+	useEffect(() => {
+		configureIncompleteRecordings({
+			supported: !!settings.useMoonfinPlugin && pluginInfo?.incompleteRecordingsSupported === true,
+			canManage: user?.Policy?.EnableLiveTvManagement === true
+		});
+	}, [pluginInfo, settings.useMoonfinPlugin, user]);
+
 	// The cards read this without the Seerr context, so a title the server doesn't hold
 	// can grow into the plugin's titled thumb.
 	useEffect(() => {
@@ -390,23 +411,39 @@ const AppContent = (props) => {
 		serverLogger.setRecording(settings.diagnosticLoggingEnabled === true);
 	}, [settings.diagnosticLoggingEnabled]);
 
+	// A TV that never saw the account's PIN learns of it here, and one an administrator removed stops
+	// being asked for.
 	useEffect(() => {
-		if (!isAuthenticated) {
-			setIsPinUnlocked(false);
-			setPinCodeInput('');
-			setPinCodeError('');
-			return;
-		}
-		if (settings.pinCodeProtection === true) {
-			setIsPinUnlocked(false);
-			setPinCodeInput('');
-			setPinCodeError('');
-			return;
-		}
-		setIsPinUnlocked(true);
 		setPinCodeInput('');
 		setPinCodeError('');
-	}, [isAuthenticated, settings.pinCodeProtection, user?.Id]);
+		if (!pinSession) return undefined;
+		if (pinProofRef.current.session !== pinSession) {
+			const proved = takeProvedSignIn(pinAccount?.serverUrl, userId);
+			const forgotten = takeForgottenPin(pinAccount?.serverUrl, userId);
+			pinProofRef.current = {session: pinSession, proved, forgotten: forgotten && proved};
+		}
+		let cancelled = false;
+		const before = latestSignInPin();
+		refreshSignInPin(before, pinAccount).then(async (next) => {
+			if (cancelled) return;
+			if (next !== before) saveSignInPin(next);
+			if (isSignInPinEnabled(next) && pinProofRef.current.forgotten) {
+				pinProofRef.current.forgotten = false;
+				const outcome = await resetForgottenPin(next, pinAccount, userId);
+				if (cancelled) return;
+				if (outcome.record) {
+					saveSignInPin(outcome.record);
+					setPinPassed(pinSession);
+				} else {
+					setPinCodeError(outcome.refused);
+				}
+			} else if (!isSignInPinEnabled(next)) {
+				setPinPassed(pinSession);
+			}
+			setPinChecked(pinSession);
+		});
+		return () => { cancelled = true; };
+	}, [pinSession, pinAccount, userId, latestSignInPin, saveSignInPin]);
 
 	useEffect(() => {
 		if (isAuthenticated && serverUrl && accessToken) {
@@ -680,11 +717,7 @@ const AppContent = (props) => {
 				releaseVideoElements();
 				setPlayingItem(null);
 				setPanelHistory([]);
-				if (isAuthenticated && settings.pinCodeProtection === true) {
-					setIsPinUnlocked(false);
-					setPinCodeInput('');
-					setPinCodeError('');
-				}
+				setPinCheckCount((count) => count + 1);
 				if (isAuthenticated) {
 					setPanelIndex(PANELS.BROWSE);
 				}
@@ -725,7 +758,7 @@ const AppContent = (props) => {
 				cleanupHandlersRef.current();
 			}
 		};
-	}, [isAuthenticated, performAppCleanup, releaseVideoElements, revalidateSession, settings.pinCodeProtection]);
+	}, [isAuthenticated, performAppCleanup, releaseVideoElements, revalidateSession]);
 
 	useEffect(() => {
 		if (!isAuthenticated || !user?.Id) {
@@ -812,7 +845,7 @@ const AppContent = (props) => {
 				e.preventDefault();
 				e.stopPropagation();
 
-				if (isPinGateActive || timesUp) {
+				if (isPinGateActive || isPinChecking || timesUp) {
 					return;
 				}
 
@@ -884,7 +917,7 @@ const AppContent = (props) => {
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [panelIndex, handleBack, performAppCleanup, settings.exitConfirmation, showAccountModal, showServerMessages, showExitDialog, showSettingsPanel, showShuffleOverlay, reading, unreadableBook, isPinGateActive, timesUp, setupWizardActive, updateInfo, dismissUpdate, syncPlayDialogOpen, closeSyncPlay]);
+	}, [panelIndex, handleBack, performAppCleanup, settings.exitConfirmation, showAccountModal, showServerMessages, showExitDialog, showSettingsPanel, showShuffleOverlay, reading, unreadableBook, isPinGateActive, isPinChecking, timesUp, setupWizardActive, updateInfo, dismissUpdate, syncPlayDialogOpen, closeSyncPlay]);
 
 	// The account stays saved, so it can be chosen again from the picker once its hours are back.
 	const handleTimesUpSwitchUser = useCallback(() => {
@@ -967,6 +1000,21 @@ const AppContent = (props) => {
 	}, [handleSelectItem]);
 
 	const handleAutoPlayed = useCallback(() => setDetailsAutoPlay(false), []);
+
+	useEffect(() => {
+		const onDeepLink = (e) => setDeepLink(e.detail || null);
+		window.addEventListener('moonfin:deepLink', onDeepLink);
+		return () => window.removeEventListener('moonfin:deepLink', onDeepLink);
+	}, []);
+
+	// The tiles are Continue Watching and Next Up, so they go where those cards go on Home. A tile
+	// left from another server is dropped.
+	useEffect(() => {
+		if (!deepLink?.id || !isAuthenticated || !settingsLoaded || !user || pinPending || timesUp) return;
+		setDeepLink(null);
+		if (deepLink.serverId && user.ServerId && deepLink.serverId !== user.ServerId) return;
+		handleSelectItem({Id: deepLink.id, Type: deepLink.type === 'episode' ? 'Episode' : 'Movie'}, settings.continueWatchingDefaultAction === 'play');
+	}, [deepLink, isAuthenticated, settingsLoaded, user, pinPending, timesUp, handleSelectItem, settings.continueWatchingDefaultAction]);
 
 	const handleViewPhoto = useCallback((item, siblings) => {
 		setPhotoViewerItem(item);
@@ -1066,16 +1114,18 @@ const AppContent = (props) => {
 		}
 		// Music left playing behind the screens reports its stop before the new item opens.
 		if (backgroundMusic) await remoteControl.releasePlayer();
-		if (isSyncPlayInGroup) {
+		// Plex has no SyncPlay, so a Plex item neither joins a group nor opens it.
+		const itemOnPlex = (item._serverType || serverType) === 'plex';
+		if (isSyncPlayInGroup && !itemOnPlex) {
 			syncPlaySetNewQueue([item.Id]);
-		} else if (settings.syncplayEnabled !== false && settings.syncplayAutoOpen) {
+		} else if (!itemOnPlex && settings.syncplayEnabled !== false && settings.syncplayAutoOpen) {
 			openSyncPlay();
 		}
 		setPlayingItem(item);
 		setPlaybackOptions(options || null);
 		setIsResume(!!resume);
 		navigateTo(PANELS.PLAYER);
-	}, [navigateTo, isSyncPlayInGroup, openSyncPlay, settings.syncplayAutoOpen, settings.syncplayEnabled, syncPlaySetNewQueue, backgroundMusic, openBook]);
+	}, [navigateTo, isSyncPlayInGroup, openSyncPlay, serverType, settings.syncplayAutoOpen, settings.syncplayEnabled, syncPlaySetNewQueue, backgroundMusic, openBook]);
 
 	const playSyncPlayItem = useCallback((item) => {
 		if (panelIndex === PANELS.PLAYER && playingItem?.Id === item.Id) return;
@@ -1293,16 +1343,12 @@ const AppContent = (props) => {
 		navigateTo(PANELS.GENRE_BROWSE);
 	}, [navigateTo]);
 
-	// Nouveau draws a person on the detail screen itself, so they open there rather than on the
-	// separate screen the other styles send them to.
+	// A cast entry comes without a type, so it's marked as a person to open in whichever detail style is chosen.
 	const handleSelectPerson = useCallback((person) => {
-		if (settings.detailScreenStyle === 'v4') {
-			handleSelectItem(person);
-			return;
-		}
-		setSelectedPerson(person);
-		navigateTo(PANELS.PERSON);
-	}, [navigateTo, settings.detailScreenStyle, handleSelectItem]);
+		if (!person?.Id) return;
+		const item = person.Type ? person : {...person, Type: 'Person'};
+		handleSelectItem(item);
+	}, [handleSelectItem]);
 
 	const handleSelectPersonFromPlayer = useCallback((person) => {
 		if (!person?.Id) return;
@@ -1310,14 +1356,10 @@ const AppContent = (props) => {
 		setPlayingItem(null);
 		setPlaybackOptions(null);
 		setIsResume(false);
-		if (settings.detailScreenStyle === 'v4') {
-			setSelectedItem(person);
-			navigateTo(PANELS.DETAILS, false);
-			return;
-		}
-		setSelectedPerson(person);
-		navigateTo(PANELS.PERSON, false);
-	}, [navigateTo, settings.detailScreenStyle]);
+		const item = person.Type ? person : {...person, Type: 'Person'};
+		setSelectedItem(item);
+		navigateTo(PANELS.DETAILS, false);
+	}, [navigateTo]);
 
 	const handleOpenRecordings = useCallback(() => {
 		navigateTo(PANELS.RECORDINGS);
@@ -1338,7 +1380,6 @@ const AppContent = (props) => {
 		setPanelHistory([]);
 		setSelectedItem(null);
 		setSelectedLibrary(null);
-		setSelectedPerson(null);
 		setSelectedGenre(null);
 		setGenreFilter(null);
 		setStudioFilter(null);
@@ -1347,6 +1388,15 @@ const AppContent = (props) => {
 		window.dispatchEvent(new CustomEvent('moonfin:browseRefresh'));
 		setPanelIndex(PANELS.BROWSE);
 	}, []);
+
+	// Home pressed in the navigation while Home is showing draws a new media bar set.
+	const handleNavHome = useCallback(() => {
+		if (panelIndex === PANELS.BROWSE) {
+			window.dispatchEvent(new CustomEvent('moonfin:browseRefresh', {detail: {newMediaBar: true}}));
+			return;
+		}
+		handleHome();
+	}, [panelIndex, handleHome]);
 
 	const showRemoteMessage = useCallback((text, header) => {
 		setRemoteMessage({key: Date.now(), title: header?.trim() || $L('Remote message'), body: text});
@@ -1550,39 +1600,46 @@ const AppContent = (props) => {
 		}
 	}, [pinCodeError]);
 
-	const handlePinSubmit = useCallback(() => {
-		const refocus = () => Spotlight.focus('[data-spotlight-id="app-pin-input"]');
-
-		// Asked before the guess is looked at, so waiting is the only way through and reopening
-		// the gate hands back no fresh guesses.
-		const waiting = lockoutRemaining(settings, SIGN_IN_PIN);
-		if (waiting > 0) {
-			setPinCodeInput('');
-			setPinCodeError(tooManyAttempts(waiting));
-			refocus();
-			return;
-		}
-
-		if (pinMatches(pinCodeInput, storedPin)) {
-			setIsPinUnlocked(true);
-			setPinCodeInput('');
-			setPinCodeError('');
-			// Store it as a hash from here on, and let a correct PIN clear the count. There is no
-			// way to reset a forgotten one on a television, so a lockout that outlived the right
-			// PIN would be a trap.
-			updateSettings({
-				pinCodeHash: settings.pinCodeHash || hashPin(pinCodeInput),
-				...clearedLockout(SIGN_IN_PIN)
-			});
-			return;
-		}
-
-		const {wait, changes} = registerFailedAttempt(settings, SIGN_IN_PIN);
-		updateSettings(changes);
+	const handlePinSubmit = useCallback(async () => {
+		if (pinVerifying || !pinSession) return;
+		const session = pinSession;
+		const before = latestSignInPin();
+		setPinVerifying(true);
+		const result = await verifySignInPin(before, pinCodeInput, pinAccount);
+		setPinVerifying(false);
+		if (result.record !== before) saveSignInPin(result.record);
 		setPinCodeInput('');
-		setPinCodeError(wait > 0 ? tooManyAttempts(wait) : $L('Incorrect PIN'));
-		refocus();
-	}, [pinCodeInput, storedPin, settings, updateSettings]);
+		if (result.outcome === PIN_ACCEPTED) {
+			setPinCodeError('');
+			setPinPassed(session);
+			return;
+		}
+		setPinCodeError(signInPinMessage(result));
+		Spotlight.focus('[data-spotlight-id="app-pin-input"]');
+	}, [pinVerifying, pinSession, pinCodeInput, pinAccount, latestSignInPin, saveSignInPin]);
+
+	// Right after signing in with the password or Quick Connect the PIN just clears. Otherwise the
+	// account goes back to its sign in, and the PIN clears once that proves who it is.
+	const handleForgotPin = useCallback(async () => {
+		if (pinVerifying || !pinSession) return;
+		if (pinProofRef.current.session === pinSession && pinProofRef.current.proved) {
+			const session = pinSession;
+			setPinVerifying(true);
+			const outcome = await resetForgottenPin(latestSignInPin(), pinAccount, userId);
+			setPinVerifying(false);
+			if (outcome.record) {
+				saveSignInPin(outcome.record);
+				setPinPassed(session);
+			} else {
+				setPinCodeError(outcome.refused);
+			}
+			return;
+		}
+		markPinForgotten(pinAccount?.serverUrl, userId, user?.Name);
+		leaveSession();
+		setPanelHistory([]);
+		setPanelIndex(PANELS.LOGIN);
+	}, [pinVerifying, pinSession, pinAccount, userId, user, latestSignInPin, saveSignInPin, leaveSession]);
 
 	const handlePinInputKeyDown = useCallback((e) => {
 		const code = e.keyCode || e.which;
@@ -1616,6 +1673,14 @@ const AppContent = (props) => {
 		);
 	}
 
+	if (isPinChecking) {
+		return (
+			<div className={css.loading}>
+				<LoadingSpinner />
+			</div>
+		);
+	}
+
 	if (isPinGateActive) {
 		return (
 			<div className={css.app} {...props}>
@@ -1642,6 +1707,13 @@ const AppContent = (props) => {
 								spotlightId='app-pin-submit'
 							>
 								{$L('Unlock')}
+							</SpottableButton>
+							<SpottableButton
+								className={`${css.pinButton} ${css.pinButtonQuiet}`}
+								onClick={handleForgotPin}
+								spotlightId='app-pin-forgot'
+							>
+								{$L('Forgot PIN?')}
 							</SpottableButton>
 						</div>
 					</div>
@@ -1703,7 +1775,7 @@ const AppContent = (props) => {
 				<Sidebar
 					libraries={libraries}
 					hasLiveTv={hasLiveTv}
-					onHome={handleHome}
+					onHome={handleNavHome}
 					onSearch={handleOpenSearch}
 					onShuffle={handleShuffle}
 					onGenres={handleOpenGenres}
@@ -1718,13 +1790,14 @@ const AppContent = (props) => {
 					onFriends={handleOpenFriends}
 					music={navMusic}
 					onOpenMusic={handleOpenMusic}
+					hideForTrailer={trailerHidesChrome}
 				/>
 			) : showNavBar ? (
 				<NavBar
 					activeView={getActiveView()}
 					libraries={libraries}
 					hasLiveTv={hasLiveTv}
-					onHome={handleHome}
+					onHome={handleNavHome}
 					onSearch={handleOpenSearch}
 					onShuffle={handleShuffle}
 					onGenres={handleOpenGenres}
@@ -1739,6 +1812,7 @@ const AppContent = (props) => {
 					onFriends={handleOpenFriends}
 					music={navMusic}
 					onOpenMusic={handleOpenMusic}
+					hideForTrailer={trailerHidesChrome}
 				/>
 			) : null}
 			<ItemMenuProvider onPlay={handlePlayFromMenu} onOpenItem={handleSelectItem} backRef={itemMenuBackRef}>
@@ -1783,7 +1857,7 @@ const AppContent = (props) => {
 						</Panel>
 						<Panel>
 							{panelIndex === PANELS.SEARCH && (
-								<Search remoteSearch={remoteSearch} onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectPerson={handleSelectPerson} onSelectGame={handleSelectGame} onPlayChannel={handlePlayChannel} />
+								<Search remoteSearch={remoteSearch} musicBar={backgroundMusic} onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectPerson={handleSelectPerson} onSelectGame={handleSelectGame} onPlayChannel={handlePlayChannel} />
 							)}
 						</Panel>
 						<Panel>
@@ -1806,11 +1880,6 @@ const AppContent = (props) => {
 						<Panel>
 							{panelIndex === PANELS.GENRES && (
 								<Genres onSelectGenre={handleSelectGenre} onHome={handleHome} backHandlerRef={backHandlerRef} />
-							)}
-						</Panel>
-						<Panel>
-							{panelIndex === PANELS.PERSON && (
-								<Person personId={selectedPerson?.Id} onSelectItem={handleSelectItem} onSelectSeerrItem={handleSelectSeerrItem} onSelectSeerrPerson={handleSelectSeerrPerson} />
 							)}
 						</Panel>
 						<Panel>
@@ -2002,6 +2071,7 @@ const AppContent = (props) => {
 							onBlurItemThemeMusic={themeMusic.cancelDelayed}
 							onLeaveThemeMusic={themeMusic.stopThemeMusic}
 							onHoldThemeMusic={themeMusic.holdThemeMusic}
+							trailerHidesChrome={trailerHidesChrome}
 						/>
 					</HomeLayer>
 				)}
