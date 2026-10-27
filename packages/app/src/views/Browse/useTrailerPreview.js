@@ -1,10 +1,11 @@
 import {useState, useEffect, useCallback, useRef} from 'react';
 import {buildQueryString} from '../../utils/urlCompat';
+import {isPlexServer, withPlexToken} from '../../utils/plexUrls';
 import {stopPlaybackForTrailer} from '../../utils/trailerPlayback';
 import {claimSharedVideo, isMusicPlaying, ownsSharedVideo, releaseSharedVideo} from '../../utils/sharedVideoOwner';
 import {coverVideoInBox} from '../../utils/videoCover';
 import {volumeLevel} from '../../utils/volumeLevel';
-import {createApiForServer, getApiKey, getServerUrl as getDefaultServerUrl} from '../../services/jellyfinApi';
+import {createApiForServer, getApiKey, getServerType, getServerUrl as getDefaultServerUrl} from '../../services/jellyfinApi';
 import serverLogger from '../../services/serverLogger';
 import {afterHomeReady} from '../../utils/homeReady';
 import css from './Browse.module.less';
@@ -22,7 +23,7 @@ const LOCAL_TRAILER_STREAM_PARAMS = {
 // Shared trailer preview engine for the home banners. Resolves a local or
 // youtube trailer for the current item, plays a muted preview into a container
 // the caller renders, and reveals it after a short delay.
-export default function useTrailerPreview({currentItem, isVisible, enabled, preferMuted, volume, showCaptions = false, captionLanguage = '', api, getItemServerUrl, onEnded}) {
+export default function useTrailerPreview({currentItem, isVisible, enabled, preferMuted, volume, showCaptions = false, captionLanguage = '', api, getItemServerUrl, onEnded, hidesChrome = false}) {
 	const [trailerActive, setTrailerActive] = useState(false);
 	// Set from the playing event, a few seconds before trailerActive reveals the video, so the
 	// banners can hold their carousel while the trailer is already audible.
@@ -126,7 +127,10 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 		if (!item?.Id) return [];
 
 		const initialTrailers = Array.isArray(item.RemoteTrailers) ? item.RemoteTrailers : [];
-		if (initialTrailers.length > 0) return initialTrailers;
+		// A slide from an outside list isn't on the server, so what it came with is all there is.
+		if (initialTrailers.length > 0 || item._external) return initialTrailers;
+		const youtube = await import('../../services/youtubeTrailer');
+		if (youtube.searchesForTrailer(item, getServerType())) return youtube.searchedTrailers(item);
 
 		try {
 			const serverApi = item._serverUrl && item._serverAccessToken
@@ -141,7 +145,7 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 	}, [api]);
 
 	const getLocalTrailerStreamUrlForItem = useCallback(async (item) => {
-		if (!item?.Id) return null;
+		if (!item?.Id || item._external) return null;
 
 		try {
 			const serverApi = item._serverUrl && item._serverAccessToken
@@ -151,18 +155,23 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 
 			const trailers = await serverApi.getLocalTrailers(item.Id);
 			const trailerItems = Array.isArray(trailers?.Items) ? trailers.Items : Array.isArray(trailers) ? trailers : [];
-			const trailerId = trailerItems.find((t) => t?.Id)?.Id;
-			if (!trailerId) return null;
+			const trailer = trailerItems.find((t) => t?.Id);
+			if (!trailer) return null;
 
 			const resolvedServerUrl = item._serverUrl || getItemServerUrl(item) || getDefaultServerUrl();
 			if (!resolvedServerUrl) return null;
 
 			const resolvedToken = item._serverAccessToken || getApiKey();
+			// A Plex trailer plays straight from its own file.
+			if (isPlexServer(resolvedServerUrl)) {
+				const part = trailer.MediaSources?.[0]?.DirectStreamUrl;
+				return part ? withPlexToken(`${resolvedServerUrl}${part}`, resolvedToken) : null;
+			}
 			const params = {
 				...LOCAL_TRAILER_STREAM_PARAMS,
 				...(resolvedToken ? {ApiKey: resolvedToken} : {})
 			};
-			return `${resolvedServerUrl}/Videos/${encodeURIComponent(trailerId)}/stream?${buildQueryString(params)}`;
+			return `${resolvedServerUrl}/Videos/${encodeURIComponent(trailer.Id)}/stream?${buildQueryString(params)}`;
 		} catch {
 			return null;
 		}
@@ -484,13 +493,15 @@ export default function useTrailerPreview({currentItem, isVisible, enabled, pref
 
 	// A playing trailer is the screen doing something, but it takes no key
 	// presses, so the inactivity timer would sit there counting down and cut it
-	// off. Announce it so the screensaver holds off until it ends.
+	// off. Announce it so the screensaver holds off until it ends. A full screen bar
+	// also clears the navigation and the peeking row away while it has focus.
+	const chromeHidden = trailerActive && hidesChrome;
 	useEffect(() => {
-		window.dispatchEvent(new CustomEvent('moonfin:trailerPreview', {detail: {active: trailerActive}}));
+		window.dispatchEvent(new CustomEvent('moonfin:trailerPreview', {detail: {active: trailerActive, hidesChrome: chromeHidden}}));
 		return () => {
 			window.dispatchEvent(new CustomEvent('moonfin:trailerPreview', {detail: {active: false}}));
 		};
-	}, [trailerActive]);
+	}, [trailerActive, chromeHidden]);
 
 	useEffect(() => {
 		const handleVisibility = () => {

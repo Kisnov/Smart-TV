@@ -7,6 +7,7 @@ import {VirtualGridList} from '@enact/sandstone/VirtualList';
 import {useAuth} from '../../context/AuthContext';
 import {createApiForServer} from '../../services/jellyfinApi';
 import MusicBrowse from '../MusicBrowse';
+import BookBrowse from '../BookBrowse';
 import BackdropLayer from '../../components/BackdropLayer';
 import TileGrid from '../../components/TileGrid';
 import {getImageUrl, getPrimaryImageId, formatDuration} from '../../utils/helpers';
@@ -18,6 +19,7 @@ import MediaRow from '../../components/MediaRow';
 import {LIBRARY_GROUP_OPTIONS, groupLibraryItems} from '../../utils/libraryGroupBy';
 import {PLAYLIST_SAMPLE_SIZE, groupPlaylists, playlistCategoryFromItems, playlistNeedsItemCheck, playlistSummaryCategory} from '../../utils/playlistGrouping';
 import {isScrolledAway} from '../../utils/quickReturn';
+import {combinedTypes, isBookLibraryType} from '../../utils/bookLibrary';
 import RatingsRow from '../../components/RatingsRow';
 import SpottableInput from '../../components/SpottableInput/SpottableInput';
 import {useStorage} from '../../hooks/useStorage';
@@ -83,6 +85,10 @@ const FAVORITE_ITEMS = 'favoriteItems';
 
 const FOLDER_DETAIL_TYPES = ['Series', 'BoxSet', 'Playlist', 'MusicAlbum', 'MusicArtist'];
 
+// The plain folders a folder view lists ahead of everything else. The server counts a series as a
+// folder too, so sorting on IsFolder would put every show ahead of every movie.
+const DIRECTORY_TYPES = 'Folder,CollectionFolder,UserView,PhotoAlbum';
+
 // The inset the stylesheet keeps either side of the grid, both sides added up.
 const GRID_INSET = 174;
 // The Docked panel's width, matched in the stylesheet. The grid keeps its own inset beside it.
@@ -95,6 +101,9 @@ const FOCUS_SETTLE_MS = 150;
 // Opening an item takes the library off screen and it's built again on the way back, so the item
 // that was opened is noted here to come back to.
 let returnTo = null;
+// The same for a book grid the item was opened from, so Back comes to the grid rather than the
+// book library.
+let bookGridReturn = null;
 
 const PLAYED_FILTERS = [
 	{key: 'all', label: $L('All')},
@@ -115,7 +124,7 @@ const QUALITY_FILTERS = [
 	{key: 'sd', label: $L('SD')},
 	{key: 'hd', label: $L('HD')},
 	{key: 'uhd', label: $L('4K'), jellyfinOnly: true},
-	{key: 'threeD', label: $L('3D')}
+	{key: 'threeD', label: $L('3D'), plexless: true}
 ];
 
 // A tag list can run to thousands of entries, and each one costs a focusable
@@ -215,6 +224,7 @@ const GridList = memo(VirtualGridList);
 const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto, onHome, onPlay, onSearch, backHandlerRef}) => {
 	const {api, serverUrl, serverType} = useAuth();
 	const {settings, updateSetting} = useSettings();
+	const libraryServerType = library?._serverType || serverType;
 
 	const effectiveApi = useMemo(() => {
 		if (library?._serverUrl && library?._serverAccessToken) {
@@ -228,6 +238,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	}, [library, serverUrl]);
 
 	const isMusicLibrary = library?.CollectionType?.toLowerCase() === 'music';
+	const isBookLibrary = isBookLibraryType(library?.CollectionType);
+	const [restoredBookGrid] = useState(() => (bookGridReturn?.libraryId === library?.Id ? bookGridReturn : null));
+	useEffect(() => { bookGridReturn = null; }, []);
 	const isSeriesLibrary = library?.CollectionType?.toLowerCase() === 'tvshows';
 	const activeSortOptions = isMusicLibrary
 		? MUSIC_SORT_OPTIONS
@@ -248,12 +261,22 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const [featureFilters, setFeatureFilters] = useState([]);
 	const [qualityFilters, setQualityFilters] = useState([]);
 	const [videoSourceFilters, setVideoSourceFilters] = useState([]);
-	const [genreFilters, setGenreFilters] = useState([]);
+	const [genreFilters, setGenreFilters] = useState(() => restoredBookGrid?.genreFilters || []);
 	const [ratingFilters, setRatingFilters] = useState([]);
 	const [tagFilters, setTagFilters] = useState([]);
 	const [yearFilters, setYearFilters] = useState([]);
 	const [audioLanguageFilters, setAudioLanguageFilters] = useState([]);
 	const [subtitleLanguageFilters, setSubtitleLanguageFilters] = useState([]);
+	// Plex can't filter on these, so a choice carried over from another server's library is dropped.
+	useEffect(() => {
+		if (libraryServerType !== 'plex') return;
+		const none = (current) => (current.length ? [] : current);
+		setLikedFilter('all');
+		setSeriesFilter('all');
+		setFeatureFilters(none);
+		setVideoSourceFilters(none);
+		setQualityFilters((current) => (current.includes('threeD') ? current.filter((key) => key !== 'threeD') : current));
+	}, [libraryServerType]);
 	const [facetValues, setFacetValues] = useState(null);
 	const [expandedSection, setExpandedSection] = useState(SORT_SECTION);
 	const [facetLimit, setFacetLimit] = useState(FACET_PAGE);
@@ -261,6 +284,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const [musicContentType, setMusicContentType] = useState('albums');
 	const [focusedItem, setFocusedItem] = useState(null);
 	const [musicGridView, setMusicGridView] = useState(null);
+	const [bookGridView, setBookGridView] = useState(() => restoredBookGrid?.view || null);
 	const libraryId = library?.Id || (genreFilter ? `genre-${genreFilter}` : studioFilter ? `studio-${studioFilter}` : 'default');
 	const [imageSize, setImageSize] = useStorage(`library_imageSize_${libraryId}`, 'medium');
 	const [imageType, setImageType] = useStorage(`library_imageType_${libraryId}`, isSquareDefault ? 'square' : 'poster');
@@ -269,7 +293,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const [folderView, setFolderView] = useStorage(`library_folderView_${libraryId}`, 'off');
 	const [sortKey, setSortKey] = useStorage(`library_sortKey_${libraryId}`, 'SortName');
 	const [sortOrder, setSortOrder] = useStorage(`library_sortOrder_${libraryId}`, '');
-	const [searchQuery, setSearchQuery] = useState('');
+	const [searchQuery, setSearchQuery] = useState(() => restoredBookGrid?.search || '');
 	const [cardText, setCardText] = useStorage(`library_cardText_${libraryId}`, 'on');
 	const [letterNav, setLetterNav] = useStorage(`library_letterNav_${libraryId}`, 'on');
 	const showCardText = cardText !== 'off';
@@ -283,8 +307,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const isFolderView =
 	isMixedContentLibrary ||
 	folderViewMode === 'on' ||
-	(folderViewMode !== 'off' && folderView === 'on');
-	const [folderStack, setFolderStack] = useState([]);
+	(folderViewMode !== 'off' && folderView === 'on') ||
+	Boolean(bookGridView?.folders);
+	const [folderStack, setFolderStack] = useState(() => restoredBookGrid?.folderStack || []);
 	const currentFolderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : library?.Id;
 	const currentFolderCollectionType = folderStack.length > 0 ? folderStack[folderStack.length - 1].collectionType?.toLowerCase() : null;
 	const isGenreMode = !!genreFilter;
@@ -293,11 +318,15 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 	const loadingMoreRef = useRef(false);
 	const apiFetchIndexRef = useRef(0);
+	// How many plain folders lead a folder view, which the item pages start after.
+	const directoryCountRef = useRef(0);
 	const initialFocusDoneRef = useRef(false);
 	const loadItemsRef = useRef(null);
 	const fetchGenerationRef = useRef(0);
 
 	const isMusicBrowseHome = isMusicLibrary && !isFilterMode && !isFolderView && !musicGridView;
+	const isBookBrowseHome = isBookLibrary && !isFilterMode && !isFolderView && !bookGridView;
+	const isBrowseHome = isMusicBrowseHome || isBookBrowseHome;
 
 	const isMovieLibrary = library?.CollectionType?.toLowerCase() === 'movies';
 	const canGroup = (isMovieLibrary || isSeriesLibrary) && !isFolderView;
@@ -382,13 +411,14 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			case 'playlists':
 				return 'Playlist';
 			case 'books':
-				return 'Book';
+			case 'audiobooks':
+				return bookGridView?.types || 'Book';
 			case 'trailers':
 				return 'Trailer';
 			default:
 				return '';
 		}
-	}, [library, musicContentType, settings.groupItemsIntoCollections]);
+	}, [library, musicContentType, bookGridView, settings.groupItemsIntoCollections]);
 
 	const getExcludeItemTypes = useCallback(() => {
 		const groupCollections = Boolean(settings.groupItemsIntoCollections);
@@ -460,26 +490,38 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			});
 
 			if (isFolderView) {
-				const params = {
+				const shared = {
 					ParentId: currentFolderId,
-					StartIndex: startIndex,
-					Limit: 150,
-					SortBy: `IsFolder,${sortOption.field}`,
 					SortOrder: effectiveOrder,
-					EnableTotalRecordCount: true,
-					Fields: 'PrimaryImageAspectRatio,SortName,Path,ChildCount,MediaSourceCount,ProductionYear,ImageTags,OfficialRating,CommunityRating,CriticRating,RunTimeTicks,UserData'
+					Fields: 'PrimaryImageAspectRatio,SortName,Path,ChildCount,MediaSourceCount,ProductionYear,ImageTags,OfficialRating,CommunityRating,CriticRating,RunTimeTicks,UserData',
+					...(filters.length > 0 ? {Filters: filters.join(',')} : {}),
+					...extraParams
 				};
-				if (filters.length > 0) params.Filters = filters.join(',');
-				Object.assign(params, extraParams);
-				const result = await effectiveApi.getItems(params);
+				const firstPage = startIndex === 0;
+				const [result, directories] = await Promise.all([
+					effectiveApi.getItems({
+						...shared,
+						StartIndex: firstPage ? 0 : startIndex - directoryCountRef.current,
+						Limit: 150,
+						SortBy: sortOption.field,
+						ExcludeItemTypes: DIRECTORY_TYPES,
+						EnableTotalRecordCount: true
+					}),
+					firstPage ? effectiveApi.getItems({...shared, SortBy: 'SortName', IncludeItemTypes: DIRECTORY_TYPES, EnableTotalRecordCount: false}) : null
+				]);
 				let newItems = result.Items || [];
 				if (currentFolderCollectionType === 'movies' || currentFolderCollectionType === 'tvshows') {
 					newItems = newItems.filter(i => i.Type !== 'BoxSet');
 				}
 				if (generation !== fetchGenerationRef.current) return;
+				if (firstPage) {
+					const folders = directories?.Items || [];
+					directoryCountRef.current = folders.length;
+					newItems = folders.concat(newItems);
+				}
 				apiFetchIndexRef.current = append ? apiFetchIndexRef.current + newItems.length : newItems.length;
 				showPage(newItems);
-				setTotalCount(result.TotalRecordCount || 0);
+				setTotalCount((result.TotalRecordCount || 0) + directoryCountRef.current);
 			} else {
 				const params = {
 					StartIndex: startIndex,
@@ -536,8 +578,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 					result = await effectiveApi.getAlbumArtists(artistParams);
 				} else if (isMusicLibrary && musicContentType === 'artists') {
 					result = await effectiveApi.getArtists(artistParams);
-				} else if (isMusicLibrary && musicContentType === 'genres') {
+				} else if ((isMusicLibrary && musicContentType === 'genres') || bookGridView?.genres) {
 					result = await effectiveApi.getMusicGenres({
+						...(bookGridView ? {IncludeItemTypes: bookGridView.types} : {}),
 						ParentId: library?.Id,
 						StartIndex: startIndex,
 						Limit: 150,
@@ -566,7 +609,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			setIsLoading(false);
 			loadingMoreRef.current = false;
 		}
-	}, [isPlaylistLibrary, effectiveApi, library, genreFilter, studioFilter, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, isFolderView, currentFolderId, currentFolderCollectionType, isMusicLibrary, musicContentType, getItemTypeForLibrary, getExcludeItemTypes, settings.groupItemsIntoCollections, isGenreMode]);
+	}, [isPlaylistLibrary, effectiveApi, library, genreFilter, studioFilter, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, isFolderView, currentFolderId, currentFolderCollectionType, isMusicLibrary, musicContentType, bookGridView, getItemTypeForLibrary, getExcludeItemTypes, settings.groupItemsIntoCollections, isGenreMode]);
 
 	loadItemsRef.current = loadItems;
 
@@ -644,7 +687,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	}, [scrollToGroupRow]);
 
 	useEffect(() => {
-		if (isMusicBrowseHome) {
+		if (isBrowseHome) {
 			setIsLoading(false);
 			return;
 		}
@@ -658,14 +701,14 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			initialFocusDoneRef.current = false;
 			loadItemsRef.current(0, false);
 		}
-	}, [library, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, musicContentType, isFolderView, currentFolderId, genreFilter, studioFilter, isMusicBrowseHome, settings.groupItemsIntoCollections]);
+	}, [library, sortKey, sortOrder, favoritesOnly, playedFilter, likedFilter, seriesFilter, featureFilters, qualityFilters, videoSourceFilters, genreFilters, ratingFilters, tagFilters, yearFilters, audioLanguageFilters, subtitleLanguageFilters, musicContentType, bookGridView, isFolderView, currentFolderId, genreFilter, studioFilter, isBrowseHome, settings.groupItemsIntoCollections]);
 
 	// The values the library actually holds, read once per library so opening
 	// the filter panel does not wait on the network.
 	useEffect(() => {
 		let cancelled = false;
 		setFacetValues(null);
-		if (!effectiveApi?.getQueryFilters || isMusicBrowseHome) return undefined;
+		if (!effectiveApi?.getQueryFilters || isBrowseHome) return undefined;
 		effectiveApi.getQueryFilters(library?.Id, getItemTypeForLibrary())
 			.then(values => {
 				if (!cancelled) setFacetValues(values);
@@ -674,7 +717,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		return () => {
 			cancelled = true;
 		};
-	}, [effectiveApi, library, isMusicBrowseHome, getItemTypeForLibrary]);
+	}, [effectiveApi, library, isBrowseHome, getItemTypeForLibrary]);
 
 	// Favorites is the albums grid with the filter on rather than a type of its own, and every
 	// favorite is the same filter over every type. A genre tile opens the albums grid filtered
@@ -690,6 +733,23 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		initialFocusDoneRef.current = false;
 	}, []);
 
+	// The book library's See All and its series, genre and folder cards. A series with no folder of
+	// its own is looked for by name, and a folder series opens at its folder with Back going home.
+	const handleOpenBookGrid = useCallback((target) => {
+		setBookGridView({
+			types: target.types || combinedTypes(library),
+			genres: Boolean(target.genres),
+			folders: Boolean(target.folder),
+			baseDepth: target.folder?.Id ? 1 : 0
+		});
+		setFolderStack(target.folder?.Id ? [{id: target.folder.Id, name: target.folder.Name}] : []);
+		setGenreFilters(target.genre ? [target.genre] : []);
+		setSearchQuery(target.search || '');
+		setAllItems([]);
+		apiFetchIndexRef.current = 0;
+		initialFocusDoneRef.current = false;
+	}, [library]);
+
 	const handleItemClick = useCallback((ev) => {
 		const itemIndex = ev.currentTarget?.dataset?.index;
 		if (itemIndex === undefined) return;
@@ -697,6 +757,10 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		const index = parseInt(itemIndex, 10);
 		const item = itemsRef.current[index];
 		if (item) {
+			if (bookGridView?.genres && item.Type === 'Genre') {
+				handleOpenBookGrid({genre: item.Name});
+				return;
+			}
 			if (isFolderView && item.IsFolder && !FOLDER_DETAIL_TYPES.includes(item.Type)) {
 				setFolderStack(prev => [...prev, {id: item.Id, name: item.Name, collectionType: item.CollectionType}]);
 				return;
@@ -705,10 +769,11 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				onViewPhoto(item, itemsRef.current);
 			} else {
 				returnTo = {libraryId, itemId: item.Id, index};
+				bookGridReturn = bookGridView ? {libraryId, view: bookGridView, folderStack, genreFilters, search: searchQuery} : null;
 				onSelectItem?.(item);
 			}
 		}
-	}, [isFolderView, onSelectItem, onViewPhoto, libraryId]);
+	}, [isFolderView, onSelectItem, onViewPhoto, libraryId, bookGridView, folderStack, genreFilters, searchQuery, handleOpenBookGrid]);
 
 	const {getScrollTo: getGridScrollTo, quickReturn, scrollTo: scrollGridTo} = useQuickReturnGrid('library-grid');
 
@@ -740,7 +805,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		return () => clearTimeout(id);
 	}, [searchQuery, allItems.length, totalCount, isLoading, loadItems]);
 
-	// Back past the panels: leave the search box, drop out of a music grid, then
+	// Back past the panels: leave the search box, drop out of a music or book grid, then
 	// climb the folder stack. The global back handling runs in a capture
 	// listener, so the search answers here rather than in a key handler of its
 	// own, which would never see the press.
@@ -756,6 +821,17 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			setFavoritesOnly(false);
 			return true;
 		}
+		if (bookGridView) {
+			if (folderStack.length > bookGridView.baseDepth) {
+				setFolderStack(prev => prev.slice(0, -1));
+			} else {
+				setBookGridView(null);
+				setFolderStack([]);
+				setGenreFilters([]);
+				setSearchQuery('');
+			}
+			return true;
+		}
 		if (isFolderView && folderStack.length > 0) {
 			setFolderStack(prev => prev.slice(0, -1));
 			return true;
@@ -768,13 +844,13 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			return false;
 		}
 		return quickReturn();
-	}, [musicGridView, isFolderView, folderStack, quickReturn, groupedActive, scrollToGroupRow]);
+	}, [musicGridView, bookGridView, isFolderView, folderStack, quickReturn, groupedActive, scrollToGroupRow]);
 
 	// Where focus lands as a panel opens. Show and Group open theirs on the row they name.
 	const [sortFocusId, setSortFocusId] = useState(SORT_FOCUS_ID);
 	const [settingsFocusId, setSettingsFocusId] = useState(SETTINGS_FOCUS_ID);
 
-	// There is one back slot, and the music browse screen claims it while it's up. Nothing
+	// There is one back slot, and the music or book browse screen claims it while it's up. Nothing
 	// here would be true there anyway, since it only shows with no grid, panel or folder stack.
 	const {
 		showSortPanel, showSettingsPanel,
@@ -785,7 +861,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		sortFocusId,
 		settingsFocusId,
 		onBack: handleBackBeyondPanels,
-		enabled: !isMusicBrowseHome
+		enabled: !isBrowseHome
 	});
 	// The grid takes focus once a list has landed, but not while a panel is up, since that's
 	// the viewer still picking. A pick that closes the panel runs this before the reload has
@@ -1341,7 +1417,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const showVideoFilters = !isMusicLibrary && !isPlaylistLibrary;
 	// Emby's items query has no 4K flag and its series status holds only
 	// continuing and ended, so those options stay out of the panel there.
-	const supported = (options) => options.filter(o => !o.jellyfinOnly || serverType !== 'emby');
+	// Plex can't filter on series status, likes, subtitles, trailers, extras, theme media, 3D or disc source.
+	const onPlex = libraryServerType === 'plex';
+	const supported = (options) => options.filter(o => (!o.jellyfinOnly || libraryServerType !== 'emby') && !(onPlex && o.plexless));
 	const folderName = folderStack.length > 0 ? folderStack[folderStack.length - 1].name : library?.Name;
 	const displayName = genreFilter || studioFilter || library?.Name || '';
 	const titleProps = {isFolderView, folderStack, rootName: library?.Name, displayName, shownCount, onBreadcrumb: handleFolderBreadcrumb};
@@ -1374,6 +1452,22 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			<div className={css.page}>
 				<div className={css.empty}>{$L('No library selected')}</div>
 			</div>
+		);
+	}
+
+	if (isBookBrowseHome) {
+		return (
+			<BookBrowse
+				key={library.Id}
+				library={library}
+				api={effectiveApi}
+				serverUrl={effectiveServerUrl}
+				onSelectItem={onSelectItem}
+				onOpenGrid={handleOpenBookGrid}
+				onPlay={onPlay}
+				onSearch={onSearch}
+				backHandlerRef={backHandlerRef}
+			/>
 		);
 	}
 
@@ -1688,7 +1782,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							))
 						))}
 
-						{renderSection('liked', $L('My Rating'), chosenLabel(LIKED_FILTERS, likedFilter), () => (
+						{!onPlex && renderSection('liked', $L('My Rating'), chosenLabel(LIKED_FILTERS, likedFilter), () => (
 							LIKED_FILTERS.map((option) => (
 								<SpottableButton
 									key={option.key}
@@ -1705,7 +1799,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							))
 						))}
 
-						{isSeriesLibrary && renderSection('series', $L('Series Status'), chosenLabel(SERIES_FILTERS, seriesFilter), () => (
+						{isSeriesLibrary && !onPlex && renderSection('series', $L('Series Status'), chosenLabel(SERIES_FILTERS, seriesFilter), () => (
 							supported(SERIES_FILTERS).map((option) => (
 								<SpottableButton
 									key={option.key}
@@ -1722,11 +1816,11 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							))
 						))}
 
-						{showVideoFilters && renderOptionSection('features', $L('Features'), supported(FEATURE_FILTERS), featureFilters, handleFeatureToggle, 'feature')}
+						{showVideoFilters && !onPlex && renderOptionSection('features', $L('Features'), supported(FEATURE_FILTERS), featureFilters, handleFeatureToggle, 'feature')}
 
 						{showVideoFilters && renderOptionSection('quality', $L('Quality'), supported(QUALITY_FILTERS), qualityFilters, handleQualityToggle, 'quality')}
 
-						{showVideoFilters && renderOptionSection('source', $L('Source'), VIDEO_SOURCE_FILTERS, videoSourceFilters, handleVideoSourceToggle, 'source')}
+						{showVideoFilters && !onPlex && renderOptionSection('source', $L('Source'), VIDEO_SOURCE_FILTERS, videoSourceFilters, handleVideoSourceToggle, 'source')}
 
 						{!genreFilter && renderFacetSection('genres', $L('Genres'), facetValues?.genres, genreFilters, handleGenreToggle)}
 						{renderFacetSection('ratings', $L('Parental Rating'), facetValues?.officialRatings, ratingFilters, handleRatingToggle)}
