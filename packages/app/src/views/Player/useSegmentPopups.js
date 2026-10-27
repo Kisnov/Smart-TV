@@ -91,6 +91,8 @@ const useSegmentPopups = ({
 		skipSegmentRef.current = skipSegment;
 	}, [skipSegment]);
 	const hasTriggeredNextEpisodeRef = useRef(false);
+	// Back on the card keeps it down for the rest of the episode, whatever seeks come after.
+	const nextUpDismissedRef = useRef(false);
 
 	// --- Countdown ---
 
@@ -202,6 +204,7 @@ const useSegmentPopups = ({
 		newestLandingRef.current = null;
 		backHeldUntilRef.current = 0;
 		hasTriggeredNextEpisodeRef.current = false;
+		nextUpDismissedRef.current = false;
 	}, [clearSkipPrompt]);
 
 	// --- Segment checking (call from timeupdate) ---
@@ -217,7 +220,7 @@ const useSegmentPopups = ({
 			creditsStart ?? Infinity,
 			runTimeRef.current > 0 ? runTimeRef.current - nearEndTicks : Infinity
 		);
-		if (ticks < nextUpFrom) hasTriggeredNextEpisodeRef.current = false;
+		if (ticks < nextUpFrom && !nextUpDismissedRef.current) hasTriggeredNextEpisodeRef.current = false;
 
 		// Set while a skip button is on screen, so the next episode card can hold back.
 		let skipPromptVisible = false;
@@ -415,6 +418,7 @@ const useSegmentPopups = ({
 		// Next episode / skip credits popup
 		if (back) {
 			consume();
+			nextUpDismissedRef.current = true;
 			cancelNextEpisodeCountdown();
 			return true;
 		}

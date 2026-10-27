@@ -293,7 +293,7 @@ describe('the next up card', () => {
 	beforeEach(() => jest.useFakeTimers());
 	afterEach(() => jest.useRealTimers());
 
-	const setupNextUp = (settings = {}) => {
+	const setupNextUp = (settings = {}, props = {}) => {
 		const onPlayNext = jest.fn();
 		const {result} = renderHook(() => useSegmentPopups({
 			mediaSegments: null,
@@ -305,7 +305,8 @@ describe('the next up card', () => {
 			hideControls: () => {},
 			showControls: () => {},
 			onPlayNext,
-			onPausePlayback: () => {}
+			onPausePlayback: () => {},
+			...props
 		}));
 		const at = (seconds) => act(() => result.current.checkSegments(seconds * SECOND));
 		return {result, at, onPlayNext};
@@ -355,6 +356,9 @@ describe('the next up card', () => {
 		});
 		expect(consumed).toBe(true);
 		at(97);
+		expect(result.current.showNextEpisode).toBe(false);
+		at(50);
+		at(95);
 		expect(result.current.showNextEpisode).toBe(false);
 	});
 
