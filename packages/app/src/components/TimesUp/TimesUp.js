@@ -12,7 +12,6 @@ const FOCUS_ID = 'times-up-switch';
 
 const Container = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -71,7 +70,7 @@ const TimesUp = ({nextAccess, now, clockDisplay, onSwitchUser}) => {
 
 	return (
 		<div className={css.overlay}>
-			<Container className={css.card}>
+			<Container className={css.card} spotlightRestrict="self-only">
 				<h1 className={css.title}>{$L('Time\'s up')}</h1>
 				<p className={css.message}>{$L('This account isn\'t available right now.')}</p>
 				{next ? <p className={css.next}>{next}</p> : null}

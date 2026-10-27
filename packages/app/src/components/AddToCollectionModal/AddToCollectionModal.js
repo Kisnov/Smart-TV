@@ -11,7 +11,6 @@ import css from './AddToCollectionModal.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -131,7 +130,7 @@ const AddToCollectionModal = ({open, itemId, api, onClose, onSuccess}) => {
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={css.dialog} spotlightId="collection-modal">
+			<DialogContainer className={css.dialog} spotlightId="collection-modal" spotlightRestrict="self-only">
 				<h2 className={css.title}>{creating ? $L('New Collection') : $L('Add to Collection')}</h2>
 
 				{loading && (

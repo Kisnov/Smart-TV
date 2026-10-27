@@ -9,7 +9,6 @@ import css from './MusicFilterPanel.module.less';
 const SpottableButton = Spottable('div');
 const PanelContainer = SpotlightContainerDecorator({
 	enterTo: 'last-focused',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -48,6 +47,7 @@ const MusicFilterPanel = ({settings, onUpdateSetting, onClose}) => {
 				className={css.panel}
 				spotlightId={MUSIC_FOCUS_IDS.panel}
 				onClick={stopPropagation}
+				spotlightRestrict="self-only"
 			>
 				<h2 className={css.title}>{$L('Sort & Filter')}</h2>
 

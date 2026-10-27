@@ -14,7 +14,6 @@ import css from './SyncPlayDialog.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -198,6 +197,7 @@ const SyncPlayDialog = ({open, onClose, playingItemId, onWatch}) => {
 				className={css.dialog}
 				spotlightId="syncplay-dialog"
 				onClick={(e) => e.stopPropagation()} // eslint-disable-line react/jsx-no-bind
+				spotlightRestrict="self-only"
 			>
 				<div className={css.header}>
 					<h2 className={css.title}>{$L('SyncPlay')}</h2>

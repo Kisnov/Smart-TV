@@ -42,7 +42,7 @@ import css from './Library.module.less';
 const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
 const ToolbarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
-const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
+const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused'}, 'div');
 
 // Every sort ends on SortName so items the server ranks equally keep a stable
 // order between pages, which a bare key leaves to whatever the database returns.

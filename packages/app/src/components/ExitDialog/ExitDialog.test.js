@@ -20,15 +20,22 @@ jest.mock('@enact/spotlight/Spottable', () => (type) => {
 	const React = require('react');
 	return ({spotlightId, children, ...props}) => React.createElement(type, props, children); // eslint-disable-line no-unused-vars
 });
+// The decorator registers a container with the restrict its spotlightRestrict prop carries and
+// drops one given in its config, so the stand-in shows the prop.
 jest.mock('@enact/spotlight/SpotlightContainerDecorator', () => (config, type) => {
 	const React = require('react');
-	return ({spotlightId, children, ...props}) => React.createElement(type, props, children); // eslint-disable-line no-unused-vars
+	return ({spotlightId, spotlightRestrict, children, ...props}) => React.createElement(type, {...props, 'data-restrict': spotlightRestrict}, children); // eslint-disable-line no-unused-vars
 });
 jest.mock('@enact/spotlight', () => ({focus: jest.fn(), getCurrent: jest.fn()}));
 jest.mock('../../utils/appLifecycle', () => ({exitApp: jest.fn()}));
 jest.mock('../../platform', () => ({isVega: () => false, getPlatform: () => 'tizen'}));
 
 describe('ExitDialog', () => {
+	test('holds focus inside through the prop the decorator honours', () => {
+		render(<ExitDialog open onCancel={() => {}} />);
+		expect(document.querySelector('[data-restrict]').getAttribute('data-restrict')).toBe('self-only');
+	});
+
 	test('closing puts focus back on what held it before', () => {
 		const card = document.createElement('div');
 		document.body.appendChild(card);

@@ -16,7 +16,6 @@ import css from './Details.module.less';
 
 const OverflowContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -351,7 +350,7 @@ const DetailActionButtons = ({
 			</HorizontalContainer>
 			{menuOpen && (
 				<div className={css.overflowMenu}>
-					<OverflowContainer className={css.overflowList} spotlightId="details-overflow-menu">
+					<OverflowContainer className={css.overflowList} spotlightId="details-overflow-menu" spotlightRestrict="self-only">
 						{menuButtons.map((btn) => <Fragment key={btn.id}>{btn.render()}</Fragment>)}
 					</OverflowContainer>
 				</div>

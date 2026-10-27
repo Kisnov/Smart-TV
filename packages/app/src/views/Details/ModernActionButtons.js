@@ -15,7 +15,6 @@ import css from './ModernDetailContent.module.less';
 
 const MenuContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -163,7 +162,7 @@ const ModernActionButtons = (props) => {
 			</RowContainer>
 			{menuOpen && (
 				<div className={css.overflowMenu}>
-					<MenuContainer className={css.overflowPanel} spotlightId="details-overflow-menu">
+					<MenuContainer className={css.overflowPanel} spotlightId="details-overflow-menu" spotlightRestrict="self-only">
 						<div className={css.overflowTitle}>{$L('More Actions')}</div>
 						<div className={css.overflowList}>
 							{behindMenu.map((btn) => <Fragment key={btn.id}>{btn.render()}</Fragment>)}

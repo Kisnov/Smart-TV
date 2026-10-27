@@ -16,7 +16,6 @@ import css from './SeerrIssueThread.module.less';
 
 const ThreadContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -142,7 +141,7 @@ const SeerrIssueThread = ({issue: initialIssue, canManage, myUserId, onClose, on
 
 	return (
 		<div className={css.overlay}>
-			<ThreadContainer className={css.dialog} spotlightId="issue-thread">
+			<ThreadContainer className={css.dialog} spotlightId="issue-thread" spotlightRestrict="self-only">
 				<div className={css.header}>
 					<div className={css.headerText}>
 						<h2 className={css.title}>{title}</h2>
