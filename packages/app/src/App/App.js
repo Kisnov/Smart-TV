@@ -1163,8 +1163,10 @@ const AppContent = (props) => {
 	// were part way through carries on from where it stopped.
 	const handlePlayNext = useCallback((item, options) => {
 		// In a group the group moves on, and its queue update brings this player along. Played on
-		// here alone, the group's commands for the last item would land on this one.
-		if (isSyncPlayInGroup && item.MediaType !== 'Audio' && item.Type !== 'TvChannel') {
+		// here alone, the group's commands for the last item would land on this one. Plex has no
+		// SyncPlay, so a Plex item plays on here as it would outside a group.
+		const itemOnPlex = (item._serverType || serverType) === 'plex';
+		if (isSyncPlayInGroup && !itemOnPlex && item.MediaType !== 'Audio' && item.Type !== 'TvChannel') {
 			syncPlayMoveGroupTo(item.Id);
 			return;
 		}
@@ -1182,7 +1184,7 @@ const AppContent = (props) => {
 			return null;
 		});
 		setIsResume(options?.resume === true);
-	}, [isSyncPlayInGroup, syncPlayMoveGroupTo]);
+	}, [isSyncPlayInGroup, serverType, syncPlayMoveGroupTo]);
 
 	const handlePlayerEnd = useCallback(() => {
 		// Episodes played on from inside the player (next episode, the episode browser) leave the
