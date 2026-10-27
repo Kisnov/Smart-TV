@@ -131,6 +131,13 @@ describe('MediaCard in other rows', () => {
 	});
 });
 
+it('holds the artwork back while its row is far from focus', () => {
+	const {rerender} = render(<MediaCard item={seerrMovie()} serverUrl="http://server" rowImageType="poster" deferImage />);
+	expect(document.querySelector('img').hasAttribute('src')).toBe(false);
+	rerender(<MediaCard item={seerrMovie()} serverUrl="http://server" rowImageType="poster" />);
+	expect(document.querySelector('img').getAttribute('src')).toBe(POSTER);
+});
+
 // A controller that records what the card asks of it and lets a test move the phase.
 const fakeController = () => {
 	const listeners = {};
@@ -212,12 +219,19 @@ describe('MediaCard with the media preview', () => {
 
 	it('asks nothing for a card that can\'t be previewed', () => {
 		const controller = fakeController();
-		drawWithPreview(seerrMovie(), controller);
+		drawWithPreview(seerrMovie({Id: 'cal-radarr-603', _external: true, _calendarDate: '2026-11-01T00:00:00Z'}), controller);
 
 		fireEvent.focus(previewCard());
 
 		expect(controller.subscribe).not.toHaveBeenCalled();
 		expect(controller.calls).toEqual([]);
+	});
+
+	it('lets a Seerr title take part, since it plays its trailer', () => {
+		const controller = fakeController();
+		drawWithPreview(seerrMovie(), controller);
+
+		expect(controller.subscribe).toHaveBeenCalledWith('media-row-film', expect.any(Function));
 	});
 
 	it('is inert without a provider', () => {

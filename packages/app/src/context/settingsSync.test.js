@@ -14,7 +14,7 @@ jest.mock('../services/seerrApi', () => ({saveMoonfinProfile: jest.fn(() => Prom
 import {saveMoonfinProfile} from '../services/seerrApi';
 import {
 	SYNCABLE_KEYS, SYNC_PROFILES, __pushQueue, activeSyncProfile, defaultSettings, flushSettingsPush,
-	localToProfile, profileToLocal, resolveFromEnvelope
+	localToProfile, migrateKeyboardStyle, profileToLocal, resolveFromEnvelope, sameSyncedValue
 } from './SettingsContext';
 import {__resetHomeLayoutPassthrough, homeRowsFromProfile} from '../utils/homeLayout';
 
@@ -96,7 +96,7 @@ describe('profileToLocal', () => {
 	});
 
 	test('takes the newer seasonal effects as they are', () => {
-		for (const effect of ['christmas', 'petals', 'fireflies', 'halloween']) {
+		for (const effect of ['christmas', 'petals', 'fireflies', 'halloween', 'valentines', 'easter', 'pride', 'lunar', 'diwali']) {
 			expect(profileToLocal({seasonalSurprise: effect}).seasonalTheme).toBe(effect);
 		}
 	});
@@ -314,14 +314,128 @@ describe('SYNCABLE_KEYS', () => {
 
 	test('includes the media preview switches', () => {
 		expect(SYNCABLE_KEYS).toContain('episodePreviewEnabled');
+		expect(SYNCABLE_KEYS).toContain('mediaPreviewMode');
 		expect(SYNCABLE_KEYS).toContain('previewAudioEnabled');
 	});
 });
 
+describe('the backdrop toggles', () => {
+	test('take and send the home and details backdrops under the server names', () => {
+		expect(profileToLocal({homeBackdropEnabled: false, detailsBackdropEnabled: false}))
+			.toEqual({showHomeBackdrop: false, detailsBackdropEnabled: false});
+		expect(localToProfile({...defaultSettings, showHomeBackdrop: false}, ['showHomeBackdrop']))
+			.toEqual({homeBackdropEnabled: false});
+	});
+
+	test('the home backdrop style travels under its own key beside the switch', () => {
+		expect(SYNCABLE_KEYS).toContain('homeBackdropStyle');
+		expect(defaultSettings.homeBackdropStyle).toBe('fullScreen');
+		expect(localToProfile({...defaultSettings, homeBackdropStyle: 'corner'}, ['showHomeBackdrop', 'homeBackdropStyle']))
+			.toEqual({homeBackdropEnabled: true, homeBackdropStyle: 'corner'});
+		expect(profileToLocal({homeBackdropEnabled: true, homeBackdropStyle: 'corner'}))
+			.toEqual({showHomeBackdrop: true, homeBackdropStyle: 'corner'});
+	});
+});
+
+describe('the library style', () => {
+	test('defaults to classic', () => {
+		expect(defaultSettings.libraryStyle).toBe('classic');
+	});
+
+	test('takes and sends each style under its own name', () => {
+		['classic', 'modern', 'docked'].forEach((style) => {
+			expect(profileToLocal({libraryStyle: style})).toEqual({libraryStyle: style});
+			expect(localToProfile({...defaultSettings, libraryStyle: style}, ['libraryStyle'])).toEqual({libraryStyle: style});
+		});
+	});
+
+	test('keeps the style it has when the profile names one this app has no way to draw', () => {
+		expect(profileToLocal({libraryStyle: 'grid'})).toEqual({});
+	});
+});
+
+describe('the music library style', () => {
+	test('defaults to immersive', () => {
+		expect(defaultSettings.musicLibraryStyle).toBe('immersive');
+	});
+
+	test('takes and sends each style under its own name', () => {
+		['classic', 'quickAccess', 'immersive'].forEach((style) => {
+			expect(profileToLocal({musicLibraryStyle: style})).toEqual({musicLibraryStyle: style});
+			expect(localToProfile({...defaultSettings, musicLibraryStyle: style}, ['musicLibraryStyle'])).toEqual({musicLibraryStyle: style});
+		});
+	});
+
+	test('keeps the style it has when the profile names one this app has no way to draw', () => {
+		expect(profileToLocal({musicLibraryStyle: 'bookstore'})).toEqual({});
+	});
+});
+
+describe('the book library style', () => {
+	test('defaults to bookstore', () => {
+		expect(defaultSettings.bookLibraryStyle).toBe('bookstore');
+	});
+
+	test('takes and sends each style under its own name', () => {
+		['classic', 'readingRoom', 'bookstore'].forEach((style) => {
+			expect(profileToLocal({bookLibraryStyle: style})).toEqual({bookLibraryStyle: style});
+			expect(localToProfile({...defaultSettings, bookLibraryStyle: style}, ['bookLibraryStyle'])).toEqual({bookLibraryStyle: style});
+		});
+	});
+
+	test('keeps the style it has when the profile names one this app has no way to draw', () => {
+		expect(profileToLocal({bookLibraryStyle: 'immersive'})).toEqual({});
+	});
+});
+
+describe('the keyboard style', () => {
+	test('defaults to docked', () => {
+		expect(defaultSettings.keyboardStyle).toBe('docked');
+		expect(defaultSettings).not.toHaveProperty('preferSystemImeKeyboard');
+	});
+
+	test('takes and sends each style under its own name', () => {
+		['native', 'classic', 'glass', 'docked'].forEach((style) => {
+			expect(profileToLocal({keyboardStyle: style})).toEqual({keyboardStyle: style});
+			expect(localToProfile({...defaultSettings, keyboardStyle: style}, ['keyboardStyle'])).toEqual({keyboardStyle: style});
+		});
+	});
+
+	test('keeps the style it has when the profile names one this app has no way to draw', () => {
+		expect(profileToLocal({keyboardStyle: 'floating'})).toEqual({});
+	});
+
+	test('turns a stored Prefer System Keyboard into the native style once', () => {
+		const stored = {preferSystemImeKeyboard: true};
+		expect(migrateKeyboardStyle(stored)).toBe(true);
+		expect(stored).toEqual({keyboardStyle: 'native'});
+		expect(migrateKeyboardStyle(stored)).toBe(false);
+		expect(stored).toEqual({keyboardStyle: 'native'});
+	});
+
+	test('leaves a picked style alone and lets the switch turned off take the default', () => {
+		const picked = {preferSystemImeKeyboard: true, keyboardStyle: 'glass'};
+		expect(migrateKeyboardStyle(picked)).toBe(true);
+		expect(picked).toEqual({keyboardStyle: 'glass'});
+		const off = {preferSystemImeKeyboard: false};
+		expect(migrateKeyboardStyle(off)).toBe(true);
+		expect(off).toEqual({});
+		expect(migrateKeyboardStyle({})).toBe(false);
+	});
+});
+
 describe('the media preview switches', () => {
-	test('default to off with sound on', () => {
+	test('default to off with sound on, landing on Media Preview once turned on', () => {
 		expect(defaultSettings.episodePreviewEnabled).toBe(false);
+		expect(defaultSettings.mediaPreviewMode).toBe('media');
 		expect(defaultSettings.previewAudioEnabled).toBe(true);
+	});
+
+	test('the mode travels under its own key beside the switch', () => {
+		const keys = ['episodePreviewEnabled', 'mediaPreviewMode'];
+		expect(localToProfile({...defaultSettings, episodePreviewEnabled: true, mediaPreviewMode: 'trailer'}, keys))
+			.toEqual({episodePreviewEnabled: true, mediaPreviewMode: 'trailer'});
+		expect(profileToLocal({episodePreviewEnabled: true, mediaPreviewMode: 'trailer'}).mediaPreviewMode).toBe('trailer');
 	});
 
 	test('travel under the server keys as they are', () => {
@@ -546,6 +660,61 @@ describe('resolveFromEnvelope', () => {
 	});
 });
 
+describe('the per row image types', () => {
+	test('go out under the server row names with Continue Watching on its own key', () => {
+		const profile = localToProfile({
+			homeRowImageTypes: {'latest-media': 'thumb', genres: 'thumb', resume: 'banner', nextup: 'logo'}
+		}, ['homeRowImageTypes']);
+
+		expect(profile.homeRowImageTypes).toBe('latestmedia:thumb,genres:thumb,nextup:logo');
+		expect(profile.homeImageTypeContinueWatching).toBe('banner');
+	});
+
+	test('still go out when the last row is cleared', () => {
+		const profile = localToProfile({homeRowImageTypes: {}}, ['homeRowImageTypes']);
+
+		expect(profile.homeRowImageTypes).toBe('');
+		expect(profile.homeImageTypeContinueWatching).toBe('');
+	});
+
+	test('stay home when another key changed', () => {
+		const profile = localToProfile({homeRowImageTypes: {genres: 'thumb'}, showClock: true}, ['showClock']);
+
+		expect(profile).not.toHaveProperty('homeRowImageTypes');
+		expect(profile).not.toHaveProperty('homeImageTypeContinueWatching');
+	});
+
+	test("come back under this app's row ids, skipping what it doesn't know", () => {
+		const local = profileToLocal({
+			homeRowImageTypes: 'LatestMedia:Thumb,genres:thumb,resume:poster,nosuch:square,rewatch,,imdb_top_250_movies:banner',
+			homeImageTypeContinueWatching: 'Poster'
+		});
+
+		expect(local.homeRowImageTypes).toEqual({
+			'latest-media': 'thumb',
+			genres: 'thumb',
+			'imdb-top250-movies': 'banner',
+			resume: 'poster'
+		});
+	});
+
+	test("take Continue Watching alone when there's no list", () => {
+		expect(profileToLocal({homeImageTypeContinueWatching: 'thumb'}).homeRowImageTypes).toEqual({resume: 'thumb'});
+		expect(profileToLocal({homeImageTypeContinueWatching: ''})).not.toHaveProperty('homeRowImageTypes');
+	});
+
+	test('resolve the list and Continue Watching from their own layers', () => {
+		const resolved = resolveFromEnvelope(
+			{global: {homeImageTypeContinueWatching: 'banner'}, tv: {homeRowImageTypes: 'genres:thumb'}},
+			{homeRowImageTypes: 'nextup:thumb', homeImageTypeContinueWatching: 'Poster'}
+		);
+
+		expect(resolved.homeRowImageTypes).toEqual({genres: 'thumb', resume: 'banner'});
+		expect(resolveFromEnvelope({}, {homeRowImageTypes: 'genres:thumb'}).homeRowImageTypes).toEqual({genres: 'thumb'});
+		expect(resolveFromEnvelope({}, {})).not.toHaveProperty('homeRowImageTypes');
+	});
+});
+
 describe('the profile push queue', () => {
 	const creds = {current: {serverUrl: 'http://server', token: 'token'}};
 	const settingsFor = (syncProfile, changes) => ({...defaultSettings, syncProfile, ...changes});
@@ -622,6 +791,14 @@ describe('the profile push queue', () => {
 			['global', {navbarPosition: 'left'}, 'http://server', 'token']
 		]);
 	});
+});
+
+test('Home rows read back from the webOS database still match the server copy', () => {
+	const server = [{id: 'resume', name: 'Continue Watching', enabled: true, order: 0}];
+	const kept = [{_id: '1a', enabled: true, id: 'resume', name: 'Continue Watching', order: 0}];
+	expect(sameSyncedValue(server, kept)).toBe(true);
+	expect(sameSyncedValue(server, [{...kept[0], enabled: false}])).toBe(false);
+	expect(sameSyncedValue(server, [...kept, {_id: '1b', id: 'nextup', enabled: true, order: 1}])).toBe(false);
 });
 
 describe('the video start delay', () => {
