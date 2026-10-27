@@ -1,12 +1,38 @@
 import {useState, useEffect, useLayoutEffect, useReducer, useRef} from 'react';
 import * as jellyfinApi from '../../services/jellyfinApi';
 import {plexTrickplayFrameUrl} from '../../utils/plexUrls';
-import {planSeekSheetIndexes, trickplayTile} from '../../utils/trickplaySheets';
+import {embyThumbnailInfo, planSeekSheetIndexes, trickplayTile} from '../../utils/trickplaySheets';
 import {VERTICAL_TRAVEL_TOP_MARGIN, planTrickplayPreview} from '../../utils/trickplayLayout';
+import {buildQueryString} from '../../utils/urlCompat';
 
 import css from './TrickplayPreview.module.less';
 
-export const getTrickplayManifest = async (itemId, mediaSourceId) => {
+// Core asks Emby for its frames at this width.
+const EMBY_FRAME_WIDTH = 320;
+
+// The item's own server in multi-server mode, otherwise the signed-in one.
+export const trickplayServer = (item) => (item?._serverUrl && item?._serverAccessToken
+	? {url: item._serverUrl, token: item._serverAccessToken, type: item._serverType || 'jellyfin'}
+	: {url: jellyfinApi.getServerUrl(), token: jellyfinApi.getApiKey(), type: jellyfinApi.getServerType()});
+
+const embyQuery = (server, params) => buildQueryString({...params, [jellyfinApi.getTokenParam('emby')]: server.token});
+
+// Emby keeps its previews as BIF files and serves them frame by frame, so the manifest here is
+// built from the thumbnail set, one width only.
+const getEmbyThumbnailManifest = async (itemId, mediaSourceId, server) => {
+	try {
+		const query = embyQuery(server, {Width: EMBY_FRAME_WIDTH, MediaSourceId: mediaSourceId});
+		const response = await fetch(`${server.url}/Items/${itemId}/ThumbnailSet?${query}`);
+		if (!response.ok) return null;
+		const info = embyThumbnailInfo(await response.json(), EMBY_FRAME_WIDTH);
+		return info ? {[info.Width]: info} : null;
+	} catch {
+		return null;
+	}
+};
+
+export const getTrickplayManifest = async (itemId, mediaSourceId, server = trickplayServer()) => {
+    if (server.type === 'emby') return getEmbyThumbnailManifest(itemId, mediaSourceId, server);
     if (jellyfinApi.getServerType() === 'plex') return jellyfinApi.api.getTrickplayManifest(itemId, mediaSourceId).catch(() => null);
     try {
         const serverUrl = jellyfinApi.getServerUrl();
@@ -29,15 +55,15 @@ export const getTrickplayManifest = async (itemId, mediaSourceId) => {
 // the controls asks the server once.
 const MANIFEST_CAP = 20;
 const manifests = new Map();
-const manifestKey = (itemId, mediaSourceId) => `${itemId}|${mediaSourceId}`;
+const manifestKey = (itemId, mediaSourceId, server) => `${server.url}|${itemId}|${mediaSourceId}`;
 
-const loadTrickplayManifest = (itemId, mediaSourceId) => {
-	const key = manifestKey(itemId, mediaSourceId);
+const loadTrickplayManifest = (itemId, mediaSourceId, server) => {
+	const key = manifestKey(itemId, mediaSourceId, server);
 	let entry = manifests.get(key);
 	if (!entry) {
 		if (manifests.size >= MANIFEST_CAP) manifests.delete(manifests.keys().next().value);
 		entry = {value: null};
-		entry.promise = getTrickplayManifest(itemId, mediaSourceId).then((manifest) => {
+		entry.promise = getTrickplayManifest(itemId, mediaSourceId, server).then((manifest) => {
 			entry.value = manifest;
 			return manifest;
 		});
@@ -47,8 +73,8 @@ const loadTrickplayManifest = (itemId, mediaSourceId) => {
 };
 
 // True once the item's manifest is in and has thumbnails, which is when scrubbing has a preview.
-export const hasTrickplayPreview = (itemId, mediaSourceId) =>
-	Boolean(manifests.get(manifestKey(itemId, mediaSourceId))?.value);
+export const hasTrickplayPreview = (item, mediaSourceId) =>
+	Boolean(manifests.get(manifestKey(item?.Id, mediaSourceId, trickplayServer(item)))?.value);
 
 // Sheets that have finished loading, and the ones still on their way with whoever is waiting on
 // them. Holding the Image keeps a pending load from being dropped before it lands.
@@ -93,6 +119,10 @@ const sheetUrl = (itemId, mediaSourceId, width, imageIndex, info) => (info?.Plex
 	? plexTrickplayFrameUrl(jellyfinApi.getServerUrl(), info, imageIndex)
 	: `${jellyfinApi.getServerUrl()}/Videos/${itemId}/Trickplay/${width}/${imageIndex}.jpg?MediaSourceId=${mediaSourceId}&ApiKey=${jellyfinApi.getApiKey()}`);
 
+const embyFrameUrl = (server, itemId, mediaSourceId, width, frame) => `${server.url}/Items/${itemId}/Images/Thumbnail?${embyQuery(server, {
+	maxWidth: width, tag: frame.imageTag, PositionTicks: frame.positionTicks, MediaSourceId: mediaSourceId, quality: 90
+})}`;
+
 // The sheet's crop scaled so the wanted thumbnail fills a box of the given size.
 const spriteStyle = (url, tile, width, height) => {
 	const scaleX = width / tile.width;
@@ -127,7 +157,7 @@ const OVERFLOW_MARGIN = 16;
 // and it shows only while scrubbing (visible). The tile at the scrub position keeps its last sheet
 // until the next has loaded, since a new crop over the old sheet would show the wrong moment.
 const TrickplayPreview = ({
-	itemId,
+	item,
 	mediaSourceId,
 	positionTicks,
 	durationTicks,
@@ -148,6 +178,9 @@ const TrickplayPreview = ({
 	const lastShownRef = useRef(null);
 	const lastPrefetchRef = useRef(null);
 	const rootRef = useRef(null);
+	const itemId = item?.Id;
+	const server = trickplayServer(item);
+	const {url: serverUrl, token: serverToken, type: serverType} = server;
 
 	useEffect(() => {
 		setInfo(null);
@@ -156,7 +189,7 @@ const TrickplayPreview = ({
 		lastPrefetchRef.current = null;
 		if (!itemId || !mediaSourceId) return undefined;
 		let cancelled = false;
-		loadTrickplayManifest(itemId, mediaSourceId).then((manifest) => {
+		loadTrickplayManifest(itemId, mediaSourceId, {url: serverUrl, token: serverToken, type: serverType}).then((manifest) => {
 			if (cancelled || !manifest) return;
 			const width = pickWidth(manifest, preferredWidth);
 			widthRef.current = width;
@@ -165,11 +198,13 @@ const TrickplayPreview = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [itemId, mediaSourceId, preferredWidth]);
+	}, [itemId, mediaSourceId, preferredWidth, serverUrl, serverToken, serverType]);
 
 	const positionMs = positionTicks / 10000;
 	const durationMs = durationTicks / 10000;
-	const urlFor = (imageIndex) => sheetUrl(itemId, mediaSourceId, widthRef.current, imageIndex, info);
+	const urlFor = (imageIndex) => (info?.Frames
+		? embyFrameUrl(server, itemId, mediaSourceId, widthRef.current, info.Frames[imageIndex])
+		: sheetUrl(itemId, mediaSourceId, widthRef.current, imageIndex, info));
 
 	// Warms the sheets around a position in the direction the viewer is heading.
 	const prefetch = (fromMs, forward) => {
@@ -184,7 +219,8 @@ const TrickplayPreview = ({
 
 	// The sheet under the playhead is kept loaded as playback goes along, since a scrub
 	// otherwise waits for its download, which a console on wireless can take seconds over.
-	const sheetUnderPlayhead = info && positionMs > 0 ? trickplayTile(info, positionMs)?.imageIndex : null;
+	// Emby's frames are a request each, so those wait for the controls or a scrub.
+	const sheetUnderPlayhead = info && !info.Frames && positionMs > 0 ? trickplayTile(info, positionMs)?.imageIndex : null;
 	useEffect(() => {
 		if (sheetUnderPlayhead == null) return;
 		whenSheetLoaded(urlFor(sheetUnderPlayhead));
