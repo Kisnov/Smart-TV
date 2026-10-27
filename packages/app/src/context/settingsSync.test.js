@@ -512,6 +512,7 @@ describe('choices Core spells differently', () => {
 		expect(profileToLocal({focusColor: 'darkBlue'}).focusBorderColor).toBe('#003366');
 		expect(profileToLocal({focusColor: 'eightBitGold'}).focusBorderColor).toBe('#ffcd75');
 		expect(profileToLocal({focusColor: '#ff2e92'}).focusBorderColor).toBe('#ff2e92');
+		expect(profileToLocal({focusColor: ''}).focusBorderColor).toBe('');
 	});
 
 	test('send the watched indicator that hides the unwatched count under Core name', () => {

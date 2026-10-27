@@ -160,12 +160,17 @@ const visualThemeChoice = renamedChoice({
 });
 
 // Core names its focus colors. Its 8-Bit Gold isn't offered here but still reads back as a color.
-const focusColorChoice = renamedChoice({
+const namedFocusColor = renamedChoice({
 	'#ffffff': 'white', '#000000': 'black', '#808080': 'gray', '#003366': 'darkBlue',
 	'#6a0dad': 'purple', '#008080': 'teal', '#000080': 'navy', '#36454f': 'charcoal',
 	'#8b4513': 'brown', '#8b0000': 'darkRed', '#006400': 'darkGreen', '#708090': 'slate',
 	'#4b0082': 'indigo', '#00a4dc': 'moonfinCyan', '#ff2e92': 'neonPulseMagenta', '#ffcd75': 'eightBitGold'
 });
+// '' is Theme Default, which only the TVs send.
+const focusColorChoice = {
+	toServer: namedFocusColor.toServer,
+	fromServer: v => (v === '' ? '' : namedFocusColor.fromServer(v))
+};
 
 // Both hide the unwatched count and keep the watched tick.
 const watchedIndicatorChoice = renamedChoice({
