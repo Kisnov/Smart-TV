@@ -2053,12 +2053,18 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				stereoUpmixEnabled: settings.stereoUpmixEnabled
 			});
 			if (superseded()) return null;
-			return await restartFromResult(result, positionRef.current, superseded);
+			const restarted = await restartFromResult(result, positionRef.current, superseded);
+			if (restarted) {
+				// a background stop or the old session's end left stall detection off
+				playback.startHealthMonitoring(handleUnhealthy);
+				healthMonitorRef.current = playback.getHealthMonitor();
+			}
+			return restarted;
 		} catch (err) {
 			console.error('[Player] Stream reload failed:', err);
 			return superseded() ? null : false;
 		}
-	}, [item, selectedQuality, settings.maxBitrate, settings.stereoUpmixEnabled, mediaSourceId, selectedAudioIndex, restartFromResult]);
+	}, [item, selectedQuality, settings.maxBitrate, settings.stereoUpmixEnabled, mediaSourceId, selectedAudioIndex, restartFromResult, handleUnhealthy]);
 
 	// Keep callback refs in sync
 	handleEndedCallbackRef.current = handleEnded;
