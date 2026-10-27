@@ -11,6 +11,7 @@ import {isStaticLibraryCard, modernCardMetrics, getEpisodeLabels, getCardDisplay
 import SeerrIcon from '../icons/SeerrIcon';
 import {showsWatchedCheck} from '../../utils/playedState';
 import {AnimeCardPill} from '../AnimeMarkerPills';
+import IncompleteBadge from '../IncompleteBadge';
 import {isUnownedSeerrTitle, seerrThumbUrl, seerrWideArtUrl, useTmdbThumbsAvailable} from '../../utils/tmdbThumb';
 import useItemMenuHold from '../../hooks/useItemMenuHold';
 import {useMediaPreviewSlot} from './MediaPreviewContext';
@@ -228,6 +229,7 @@ const ModernMediaCard = ({
 	onFocused,
 	showServerBadge = false,
 	eagerLoad = false,
+	deferImage = false,
 	spotlightId,
 	onSpotlightLeft,
 	onSpotlightRight,
@@ -405,13 +407,13 @@ const ModernMediaCard = ({
 			onSpotlightLeft={onSpotlightLeft}
 			onSpotlightRight={onSpotlightRight}
 		>
-			<div className={previewPhase !== 'idle' ? `${css.imageContainer} ${css.previewHost}` : css.imageContainer}>
+			<div className={previewPhase !== 'idle' ? `${css.imageContainer} ${css.previewHost}` : css.imageContainer} data-card-art>
 				{imageUrl ? (
 					<>
 						<img
 							className={css.image}
-							src={imageUrl}
-							alt={item?.Name}
+							src={deferImage ? undefined : imageUrl}
+							alt={deferImage ? '' : item?.Name}
 							loading={eagerLoad ? 'eager' : 'lazy'}
 							width={cardWidth}
 							height={imageHeight}
@@ -478,6 +480,7 @@ const ModernMediaCard = ({
 					</div>
 				)}
 
+				<IncompleteBadge itemId={item.Id} belowFavorite={item.UserData?.IsFavorite} />
 				<AnimeCardPill item={item} serverUrl={itemServerUrl} hasProgressBar={showIndicators && progress > 0} />
 			</div>
 

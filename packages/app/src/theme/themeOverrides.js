@@ -42,6 +42,7 @@ import nouveauCardsCss from '../views/Details/nouveau/cards/NouveauCards.module.
 import nouveauFooterCss from '../views/Details/nouveau/footer/NouveauDetailsFooter.module.less';
 import nouveauSectionsCss from '../views/Details/nouveau/sections/NouveauSections.module.less';
 import trackListCss from '../components/DetailTrackList/DetailTrackList.module.less';
+import musicCss from '../views/MusicBrowse/MusicLibrary.module.less';
 import overviewCss from '../views/Details/ExpandableOverview.module.less';
 import tabBarCss from '../components/DetailsTabBar/DetailsTabBar.module.less';
 import backdropCss from '../components/BackdropLayer/BackdropLayer.module.less';
@@ -54,6 +55,7 @@ import ratingsCss from '../components/RatingsRow/RatingsRow.module.less';
 import itemMenuCss from '../components/ItemContextMenu/ItemContextMenu.module.less';
 import skeletonCss from '../components/Skeleton/Skeleton.module.less';
 import playlistSortFilterCss from '../components/PlaylistSortFilterBar/PlaylistSortFilterBar.module.less';
+import playbackInfoCss from '../views/Player/PlaybackInfoModal.module.less';
 
 const STYLE_ELEMENT_ID = 'moonfin-theme-overrides';
 
@@ -412,6 +414,23 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${trackListCss.trackRow}:focus`, `background: ${buttonFocused}; border-color: ${focusColor};`);
 	rule(`.${trackListCss.trackTitle}, .${trackListCss.discHeading}`, `color: ${onBackground};`);
 
+	// Music library, Quick Access and Immersive. A focused song row fills and inverts its ink, and
+	// a focused hero button fills.
+	rule(`.${musicCss.eyebrow}, .${musicCss.favoriteOn}`, `color: ${accent};`);
+	rule(`.${musicCss.primaryBtn}`, `background: ${accent}; color: ${onAccent};`);
+	rule(`.${musicCss.heroBtn}:focus`, `background: ${buttonFocused}; border-color: ${focusColor}; color: ${buttonInk};`);
+	rule(`.${musicCss.sectionTitle}, .${musicCss.trackTitle}`, `color: ${onSurface};`);
+	rule(`.${musicCss.seeAll}`, `color: ${os(0.7)};`);
+	rule(`.${musicCss.railItem}`, `color: ${os(0.86)};`);
+	rule(`.${musicCss.railSelected}`, `background: ${accentA(0.16)}; color: ${accent};`);
+	rule(`.${musicCss.headerBtn}:focus, .${musicCss.seeAll}:focus, .${musicCss.genreTile}:focus, .${musicCss.railItem}:focus, .${musicCss.quickTile}:focus, .${musicCss.filterPill}:focus`, `box-shadow: 0 0 0 3px ${focusColor};`);
+	rule(`.${musicCss.trackNumber}, .${musicCss.trackSubtitle}, .${musicCss.trackLength}`, `color: ${os(0.65)};`);
+	rule(`.${musicCss.trackActive}`, `background: ${accentA(0.16)};`);
+	rule(`.${musicCss.trackActive} .${musicCss.trackNumber}`, `color: ${accent};`);
+	rule(`.${musicCss.track}:focus`, `background: ${buttonFocused}; border-color: ${accentA(0.72)};`);
+	rule(`.${musicCss.track}:focus .${musicCss.trackTitle}`, `color: ${invertedStrong};`);
+	rule(`.${musicCss.track}:focus .${musicCss.trackNumber}, .${musicCss.track}:focus .${musicCss.trackSubtitle}, .${musicCss.track}:focus .${musicCss.trackLength}`, `color: ${invertedSoft};`);
+
 	// Detail screens, nouveau layout
 	rule(`.${nouveauCardsCss.card}:focus, .${nouveauCardsCss.landscapeDetails}:focus, .${nouveauCardsCss.person}:focus .${nouveauCardsCss.avatar}`, `border-color: ${focusColor};`);
 	rule(`.${nouveauCardsCss.progressFill}, .${nouveauCardsCss.nextUp}`, `background: ${accent};`);
@@ -424,6 +443,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${itemMenuCss.panel}`, `background: ${surfaceA(0.97)}; border-color: ${os(0.12)};`);
 	rule(`.${itemMenuCss.title}, .${itemMenuCss.row}, .${itemMenuCss.button}`, `color: ${onBackground};`);
 	rule(`.${itemMenuCss.row}:focus, .${itemMenuCss.button}:focus`, `background: ${os(0.1)}; border-color: ${focusColor};`);
+	rule(`.${playbackInfoCss.panel}`, `background-color: ${surfaceA(0.9)};`);
 	rule(`.${tabBarCss.tab}`, `color: ${os(0.75)};`);
 	rule(`.${tabBarCss.tabActive}`, `background: ${accent}; color: ${onAccent};`);
 	rule(`.${tabBarCss.tab}:focus`, `border-color: ${focusColor};`);
@@ -438,7 +458,6 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${browseCss.ayaIndicator}`, `background: ${os(0.3)};`);
 	rule(`.${browseCss.ayaIndicatorActive}`, `background: ${onSurface};`);
 	rule(`.${backdropCss.globalBackdropOverlay}`, `background: ${toCssColor(c.scrim)};`);
-	rule(`.${browseCss.featuredGradient}`, `background: -webkit-linear-gradient(top, ${scrim(0.3)} 0%, ${scrim(0.1)} 40%, ${scrim(0.8)} 100%); background: linear-gradient(to bottom, ${scrim(0.3)} 0%, ${scrim(0.1)} 40%, ${scrim(0.8)} 100%);`);
 	rule(`.${browseCss.detailPlaceholder} p, .${browseCss.empty}`, `color: ${os(0.7)};`);
 	// The card takes the media bar's own overlay color at three quarters of its
 	// opacity, outlined with the theme's card border.
@@ -484,6 +503,8 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	// Cards, both row styles
 	for (const cardCss of [mediaCardCss, modernCardCss]) {
 		rule(`.${cardCss.image}, .${cardCss.placeholder}, .${cardCss.imageContainer}, .${cardCss.genreOverlay}`, `border-radius: ${cardRadius};`);
+		// Artists stay round whatever corners the theme gives the other cards.
+		if (cardCss.circle) rule(`.${cardCss.circle} .${cardCss.image}, .${cardCss.circle} .${cardCss.placeholder}, .${cardCss.circle} .${cardCss.imageContainer}`, 'border-radius: 50%;');
 		rule(`.${cardCss.image}, .${cardCss.placeholder}`, `border: ${b.cardBorder.width}px solid ${toCssColor(b.cardBorder.color)};`);
 		rule(`.${cardCss.card}:focus .${cardCss.image}`, `border-color: ${focusColor}; border-width: 4px; box-shadow: ${glowOr('0 8px 24px rgba(0, 0, 0, 0.6)')};`);
 		rule(`.${cardCss.previewFrame}`, `border-radius: ${cardRadius};`);

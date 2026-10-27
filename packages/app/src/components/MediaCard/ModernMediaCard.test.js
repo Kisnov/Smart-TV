@@ -244,13 +244,20 @@ describe('ModernMediaCard with the media preview', () => {
 
 	it('asks nothing for a card that can\'t be previewed', () => {
 		const controller = fakeController();
-		drawWithPreview(seerrShow(), controller);
+		drawWithPreview(seerrShow({Id: 'cal-radarr-603', _external: true, _calendarDate: '2026-11-01T00:00:00Z'}), controller);
 
 		fireEvent.focus(card());
 		fireEvent.click(card());
 
 		expect(controller.subscribe).not.toHaveBeenCalled();
 		expect(controller.calls).toEqual([]);
+	});
+
+	it('lets a Seerr title take part, since it plays its trailer', () => {
+		const controller = fakeController();
+		drawWithPreview(seerrShow(), controller);
+
+		expect(controller.subscribe).toHaveBeenCalledWith('media-row-film', expect.any(Function));
 	});
 
 	it('is inert without a provider', () => {
@@ -262,4 +269,11 @@ describe('ModernMediaCard with the media preview', () => {
 
 		expect(frame()).toBeNull();
 	});
+});
+
+it('holds the artwork back while its row is far from focus', () => {
+	const {rerender} = render(<ModernMediaCard item={seerrShow()} serverUrl="http://server" deferImage />);
+	expect(document.querySelector('img').hasAttribute('src')).toBe(false);
+	rerender(<ModernMediaCard item={seerrShow()} serverUrl="http://server" />);
+	expect(document.querySelector('img').getAttribute('src')).toBe(POSTER);
 });
