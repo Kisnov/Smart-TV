@@ -261,7 +261,6 @@ export const defaultSettings = {
 	nextUpBehavior: 'extended',
 	nextUpCountdownStyle: 'both',
 	nextUpTimeout: 7,
-	nextUpAdvance: 'countdown',
 	stillWatchingBehavior: 'medium',
 	skipForwardLength: 30000,
 	unpauseRewind: 0,

@@ -26,10 +26,15 @@ const setup = () => {
 		onPlayNext,
 		onPausePlayback: () => {}
 	}));
-	// Runs an episode to its end, where the next one starts by itself.
+	// Runs an episode to its end, where the ended handler starts the next one unless the prompt holds it.
 	const playOut = () => {
 		act(() => result.current.resetPopups());
 		act(() => result.current.checkSegments(NEAR_END));
+		let held = false;
+		act(() => {
+			held = result.current.shouldHoldForStillWatching();
+		});
+		if (!held) onPlayNext({Id: 'next'});
 	};
 	return {result, playOut, onPlayNext};
 };
@@ -282,7 +287,7 @@ describe('the skip prompt', () => {
 	});
 });
 
-describe('next up when the episode ends', () => {
+describe('the next up card', () => {
 	const SECOND = 10000000;
 
 	beforeEach(() => jest.useFakeTimers());
@@ -293,7 +298,7 @@ describe('next up when the episode ends', () => {
 		const {result} = renderHook(() => useSegmentPopups({
 			mediaSegments: null,
 			nextEpisode: {Id: 'next'},
-			settings: {autoPlay: true, nextUpBehavior: 'extended', nextUpTimeout: 10, nextUpAdvance: 'end', stillWatchingBehavior: 'short_', ...settings},
+			settings: {autoPlay: true, nextUpBehavior: 'extended', nextUpTimeout: 10, stillWatchingBehavior: 'short_', ...settings},
 			runTimeRef: {current: 100 * SECOND},
 			activeModal: null,
 			controlsVisible: false,
@@ -351,27 +356,6 @@ describe('next up when the episode ends', () => {
 		expect(consumed).toBe(true);
 		at(97);
 		expect(result.current.showNextEpisode).toBe(false);
-	});
-
-	test('the end of the file asks whether anyone is still watching after the set number of episodes', () => {
-		const {result} = setupNextUp();
-		const held = [];
-		for (let i = 0; i < 3; i++) {
-			act(() => result.current.resetPopups());
-			act(() => {
-				held.push(result.current.shouldHoldForStillWatching());
-			});
-		}
-		expect(held).toEqual([false, false, true]);
-		expect(result.current.askStillWatching).toBe(true);
-	});
-
-	test('the countdown mode still moves on when its countdown runs out', () => {
-		const {result, at, onPlayNext} = setupNextUp({nextUpAdvance: 'countdown'});
-		at(75);
-		expect(result.current.showNextEpisode).toBe(true);
-		act(() => jest.advanceTimersByTime(10000));
-		expect(onPlayNext).toHaveBeenCalledWith({Id: 'next'});
 	});
 
 	test('with autoplay off the card comes up as before, with no countdown', () => {
