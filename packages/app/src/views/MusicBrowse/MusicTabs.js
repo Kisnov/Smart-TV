@@ -11,8 +11,9 @@ const TAB_LIST = [{id: OVERVIEW_TAB, label: $L('Overview')}, ...MUSIC_CATEGORIES
 
 // The pill tabs. The arrows move the highlight along them without leaving the screen, Select
 // or a click opens the one highlighted, and the highlight goes back to `current`, the screen
-// they sit on, once focus leaves them. `activeSpotlightId` names whichever pill is highlighted.
-const MusicTabs = ({onOpenGrid, current = OVERVIEW_TAB, spotlightId = MUSIC_FOCUS_IDS.tabs, activeSpotlightId}) => {
+// they sit on, once focus leaves them. `activeSpotlightId` names whichever pill is highlighted,
+// and `pills` swaps in another set of them, as the book library's strip does.
+const MusicTabs = ({onOpenGrid, current = OVERVIEW_TAB, spotlightId = MUSIC_FOCUS_IDS.tabs, activeSpotlightId, pills = TAB_LIST}) => {
 	const [highlight, setHighlight] = useState(current);
 
 	useEffect(() => setHighlight(current), [current]);
@@ -32,7 +33,7 @@ const MusicTabs = ({onOpenGrid, current = OVERVIEW_TAB, spotlightId = MUSIC_FOCU
 	return (
 		<div className={css.tabs} onBlur={handleBlur}>
 			<DetailsTabBar
-				tabs={TAB_LIST}
+				tabs={pills}
 				activeId={highlight}
 				onSelect={setHighlight}
 				onActivate={handleActivate}

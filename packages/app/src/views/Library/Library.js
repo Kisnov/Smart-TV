@@ -85,6 +85,8 @@ let returnTo = null;
 let bookGridReturn = null;
 // And for the music screen an item was opened or played from.
 let musicScreenReturn = null;
+// And for the book library screen.
+let bookScreenReturn = null;
 
 const PLAYED_FILTERS = [
 	{key: 'all', label: $L('All')},
@@ -273,9 +275,14 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 	const [restoredBookGrid] = useState(() => (bookGridReturn?.libraryId === library?.Id ? bookGridReturn : null));
 	// The music category screen that's open, from musicScreenFor.
 	const [musicScreen, setMusicScreen] = useState(() => (musicScreenReturn?.libraryId === library?.Id ? musicScreenReturn.screen : null));
+	// The book library screen that's open, from bookScreens, kept with its library so another one
+	// opens at its own root.
+	const [bookScreenOf, setBookScreenOf] = useState(() => (bookScreenReturn?.libraryId === library?.Id ? bookScreenReturn : null));
+	const bookScreen = bookScreenOf && bookScreenOf.libraryId === library?.Id ? bookScreenOf.screen : null;
 	useEffect(() => {
 		bookGridReturn = null;
 		musicScreenReturn = null;
+		bookScreenReturn = null;
 	}, []);
 	const isSeriesLibrary = library?.CollectionType?.toLowerCase() === 'tvshows';
 	const isPlaylistLibrary = library?.CollectionType?.toLowerCase() === 'playlists';
@@ -833,6 +840,15 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		musicScreenReturn = {libraryId, screen: musicScreen};
 		onPlay?.(item, resume, options);
 	}, [libraryId, musicScreen, onPlay]);
+	const handleOpenBookScreen = useCallback((screen) => setBookScreenOf({libraryId, screen}), [libraryId]);
+	const handleBookScreenSelect = useCallback((item) => {
+		bookScreenReturn = {libraryId, screen: bookScreen};
+		onSelectItem?.(item);
+	}, [libraryId, bookScreen, onSelectItem]);
+	const handleBookScreenPlay = useCallback((item, resume, options) => {
+		bookScreenReturn = {libraryId, screen: bookScreen};
+		onPlay?.(item, resume, options);
+	}, [libraryId, bookScreen, onPlay]);
 
 	// The book library's See All and its series, genre and folder cards. A series with no folder of
 	// its own is looked for by name, and a folder series opens at its folder with Back going home.
@@ -873,10 +889,11 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				returnTo = {libraryId, itemId: item.Id, index, folderStack};
 				bookGridReturn = bookGridView ? {libraryId, view: bookGridView, genre: openedGenre, search: searchQuery} : null;
 				musicScreenReturn = musicScreen ? {libraryId, screen: musicScreen} : null;
+				bookScreenReturn = bookScreen ? {libraryId, screen: bookScreen} : null;
 				onSelectItem?.(item);
 			}
 		}
-	}, [isFolderView, onSelectItem, onViewPhoto, libraryId, bookGridView, folderStack, openedGenre, searchQuery, handleOpenBookGrid, musicScreen]);
+	}, [isFolderView, onSelectItem, onViewPhoto, libraryId, bookGridView, folderStack, openedGenre, searchQuery, handleOpenBookGrid, musicScreen, bookScreen]);
 
 	const {getScrollTo: getGridScrollTo, quickReturn, scrollTo: scrollGridTo} = useQuickReturnGrid('library-grid');
 
@@ -1591,9 +1608,11 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				library={library}
 				api={effectiveApi}
 				serverUrl={effectiveServerUrl}
-				onSelectItem={onSelectItem}
+				screen={bookScreen}
+				onOpenScreen={handleOpenBookScreen}
+				onSelectItem={handleBookScreenSelect}
 				onOpenGrid={handleOpenBookGrid}
-				onPlay={onPlay}
+				onPlay={handleBookScreenPlay}
 				onSearch={onSearch}
 				backHandlerRef={backHandlerRef}
 			/>

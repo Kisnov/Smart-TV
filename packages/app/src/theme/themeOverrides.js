@@ -46,6 +46,11 @@ import musicCss from '../views/MusicBrowse/MusicLibrary.module.less';
 import musicScreensCss from '../views/MusicBrowse/MusicScreens.module.less';
 import musicFilterCss from '../views/MusicBrowse/MusicFilterPanel.module.less';
 import musicChipsCss from '../views/MusicBrowse/MusicChips.module.less';
+import bookScreensCss from '../views/BookBrowse/BookScreens.module.less';
+import bookCardCss from '../views/BookBrowse/BookCard.module.less';
+import bookRailCss from '../views/BookBrowse/BookstoreRail.module.less';
+import classicBooksCss from '../views/BookBrowse/ClassicBooks.module.less';
+import readingRoomCss from '../views/BookBrowse/ReadingRoomBooks.module.less';
 import overviewCss from '../views/Details/ExpandableOverview.module.less';
 import tabBarCss from '../components/DetailsTabBar/DetailsTabBar.module.less';
 import backdropCss from '../components/BackdropLayer/BackdropLayer.module.less';
@@ -474,6 +479,55 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${mf.optionActive} .${mf.radio}`, `border-color: ${accent};`);
 	rule(`.${mf.optionActive} .${mf.check}`, `border-color: ${accent}; background: ${accent};`);
 	rule(`.${mf.radioFill}`, `background: ${accent};`);
+
+	// The book library screens. They share the music screens' header, pills, panels and lists above,
+	// and only the genre stations keep their own palette with white text.
+	const bs = bookScreensCss;
+	const bc = bookCardCss;
+	const br = bookRailCss;
+	rule(`.${classicBooksCss.page}, .${readingRoomCss.page}, .${br.page}`, `background: ${background};`);
+	rule(`.${bs.sectionTitle}, .${bs.seriesName}, .${bs.statValue}, .${bs.cardName}, .${bs.panelHeading}, .${bs.portraitName}`, `color: ${onSurface};`);
+	rule(`.${bs.overviewText}, .${bs.detailOverview}`, `color: ${os(0.75)};`);
+	rule(`.${bs.progressLine}, .${bs.statLabel}, .${bs.panelCount}`, `color: ${os(0.65)};`);
+	rule(`.${bs.track}`, `background: ${os(0.18)};`);
+	rule(`.${bs.trackFill}`, `background: ${accent};`);
+	rule(`.${bs.panel}, .${bs.stat}, .${bs.collectionCard}, .${bs.boardPanel}, .${bs.hero}`, `background: ${os(0.06)};`);
+	rule(`.${bs.stripCover}, .${bs.heroCover}, .${bs.tag}`, `background: ${os(0.08)};`);
+	rule(`.${bs.tag}`, `color: ${os(0.8)};`);
+	rule(`.${bs.collectionCard}:focus`, `border-color: ${focusColor}; box-shadow: ${glowOr('none')};`);
+	rule(`.${bs.portrait}:focus .${bs.face}`, `box-shadow: 0 0 0 4px ${focusColor};`);
+	rule(`.${bs.search}`, `background: ${os(0.08)}; color: ${onSurface};`);
+	rule(`.${bs.search}:focus`, `border-color: ${focusColor};`);
+	rule(`.${bs.detailPanel}`, `background: ${surface};`);
+	rule(`.${bs.subjects} .${chip}`, `background: ${os(0.09)}; color: ${os(0.8)};`);
+	rule(`.${bs.subjects} .${ms.chipCurrent}:not(:focus)`, `background: ${accentA(0.16)}; color: ${accent};`);
+	rule(`.${bs.subjects} .${chip}:focus`, `background: ${accent}; border-color: ${accent}; color: ${onAccent}; box-shadow: 0 0 14px 1px ${accentA(0.45)};`);
+	rule(`.${bc.cover}`, `background: ${os(0.08)}; border-radius: ${cardRadius};`);
+	rule(`.${bc.card}:focus .${bc.cover}`, `border-color: ${focusColor}; box-shadow: ${glowOr('none')};`);
+	rule(`.${bc.title}`, `color: ${os(0.9)};`);
+	rule(`.${bc.card}:focus .${bc.title}`, `color: ${onSurface};`);
+	rule(`.${bc.subtitle}`, `color: ${os(0.6)};`);
+	rule(`.${bc.placeholderIcon}`, `fill: ${os(0.35)};`);
+	rule(`.${bc.progress}`, `background: ${accent};`);
+	rule(`.${bc.numberBadge}`, `background: ${accent}; color: ${onAccent};`);
+	rule(`.${br.rail}`, `border-right-color: ${os(0.06)};`);
+	rule(`.${br.railTitle}, .${br.railRow}, .${br.continueTitle}`, `color: ${onSurface};`);
+	rule(`.${br.railSubtitle}`, `color: ${os(0.6)};`);
+	rule(`.${br.railHeader}`, `color: ${os(0.5)};`);
+	rule(`.${br.railRow} svg`, `fill: ${os(0.8)};`);
+	rule(`.${br.railRow}:focus`, `box-shadow: 0 0 0 3px ${focusColor};`);
+	rule(`.${br.railCount}, .${br.continueSubtitle}`, `color: ${os(0.62)};`);
+	rule(`.${br.railSelected}`, `background: ${accentA(0.16)};`);
+	rule(`.${br.railSelected} svg`, `fill: ${accent};`);
+	rule(`.${br.railSelected} .${br.railCount}`, `color: ${accent};`);
+	rule(`.${br.continueTile}`, `background: ${os(0.06)};`);
+	rule(`.${br.continueTile}:focus`, `box-shadow: 0 0 0 3px ${focusColor};`);
+	rule(`.${br.continueCover}, .${br.continueCoverAudio}`, `background: ${surfaceVariant};`);
+	rule(`.${br.continuePlaceholder}`, `fill: ${os(0.4)};`);
+	rule(`.${br.continueProgress}`, `background: ${os(0.14)};`);
+	rule(`.${br.continueProgress} div, .${br.continuePlay}`, `background: ${accent};`);
+	rule(`.${br.continuePlay} svg`, `fill: ${onAccent};`);
+	rule(`.${br.continueMeta}`, `color: ${os(0.68)};`);
 
 	// Detail screens, nouveau layout
 	rule(`.${nouveauCardsCss.card}:focus, .${nouveauCardsCss.landscapeDetails}:focus, .${nouveauCardsCss.person}:focus .${nouveauCardsCss.avatar}`, `border-color: ${focusColor};`);

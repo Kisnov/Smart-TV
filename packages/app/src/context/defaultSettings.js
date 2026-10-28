@@ -258,6 +258,7 @@ export const defaultSettings = {
 	showAlphabeticalFilters: false,
 	libraryStyle: 'classic',
 	bookLibraryStyle: 'bookstore',
+	showBookDiscoverTab: true,
 	musicLibraryStyle: 'immersive',
 	hideBackdropsInLibraries: false,
 	useSeriesThumbnails: false,
