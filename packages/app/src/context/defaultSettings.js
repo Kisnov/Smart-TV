@@ -256,6 +256,8 @@ export const defaultSettings = {
 	// Null until someone picks a size, so library grids follow the home card size.
 	libraryPosterSize: null,
 	playlistPosterSize: null,
+	// Follows the library size until one is picked on the Seerr browse screen, and doesn't sync.
+	seerrPosterSize: null,
 	// Not synced, so each device keeps its own.
 	showAlphabeticalFilters: false,
 	libraryStyle: 'classic',

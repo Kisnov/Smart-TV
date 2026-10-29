@@ -1,6 +1,6 @@
 import Spotlight from '@enact/spotlight';
 
-import {capitalize, createGridKeyDown, createPanelKeyDown, createRowsLeftKeyDown, createToolbarKeyDown, cycleValue, filterByStartLetter, libraryPosterSize, matchesStartLetter, pageGrid, stopPropagation} from './gridChrome';
+import {POSTER_HEIGHTS, POSTER_SIZE_OPTIONS, capitalize, createGridKeyDown, createPanelKeyDown, createRowsLeftKeyDown, createToolbarKeyDown, cycleValue, filterByStartLetter, libraryPosterSize, matchesStartLetter, pageGrid, seerrPosterSize, stopPropagation} from './gridChrome';
 import {KEYS} from './keys';
 
 jest.mock('@enact/spotlight', () => ({__esModule: true, default: {focus: jest.fn()}}));
@@ -329,6 +329,29 @@ describe('libraryPosterSize', () => {
 	test('anything it does not know reads as medium', () => {
 		expect(libraryPosterSize({libraryPosterSize: 'huge', homeRowsPosterSize: 'nonsense'}, false)).toBe('medium');
 		expect(libraryPosterSize({}, false)).toBe('medium');
+	});
+});
+
+describe('seerrPosterSize', () => {
+	test("follows the library size until it's picked", () => {
+		expect(seerrPosterSize({seerrPosterSize: null, libraryPosterSize: 'large', homeRowsPosterSize: 'default'})).toBe('large');
+		expect(seerrPosterSize({seerrPosterSize: null, libraryPosterSize: null, homeRowsPosterSize: 'xlarge'})).toBe('extraLarge');
+	});
+
+	test('a pick there leaves the library size alone', () => {
+		const settings = {seerrPosterSize: 'small', libraryPosterSize: 'large', homeRowsPosterSize: 'default'};
+
+		expect(seerrPosterSize(settings)).toBe('small');
+		expect(libraryPosterSize(settings)).toBe('large');
+		expect(seerrPosterSize({...settings, libraryPosterSize: 'medium'})).toBe('small');
+	});
+
+	test("a size it doesn't know follows the library size", () => {
+		expect(seerrPosterSize({seerrPosterSize: 'grandparents', libraryPosterSize: 'large'})).toBe('large');
+	});
+
+	test('every size it can pick has a poster height', () => {
+		for (const option of POSTER_SIZE_OPTIONS) expect(POSTER_HEIGHTS[option.key]).toBeGreaterThan(0);
 	});
 });
 

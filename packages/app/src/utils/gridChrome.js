@@ -3,6 +3,7 @@
 // handlers are built once per view rather than per render, since the only thing they close
 // over is the id they were given.
 
+import $L from '@enact/i18n/$L';
 import Spotlight from '@enact/spotlight';
 
 import {foldAccents} from './accentFolding';
@@ -52,6 +53,21 @@ export const libraryPosterSize = (settings, playlist) => {
 	const home = HOME_TO_GRID_SIZE[settings.homeRowsPosterSize] || settings.homeRowsPosterSize;
 	return IMAGE_SIZES.includes(home) ? home : 'medium';
 };
+
+// The Seerr browse grid follows the library size until a size is picked on that screen.
+export const seerrPosterSize = (settings) => (
+	IMAGE_SIZES.includes(settings.seerrPosterSize) ? settings.seerrPosterSize : libraryPosterSize(settings)
+);
+
+export const POSTER_SIZE_OPTIONS = [
+	{key: 'small', label: () => $L('Small')},
+	{key: 'medium', label: () => $L('Medium')},
+	{key: 'large', label: () => $L('Large')},
+	{key: 'extraLarge', label: () => $L('Extra Large')}
+];
+
+// A poster's image height at each grid size, with its width two thirds of that.
+export const POSTER_HEIGHTS = {small: 174, medium: 217, large: 261, extraLarge: 304};
 
 // How far a focused card grows, matched in the stylesheets.
 export const FOCUS_SCALE = 1.05;

@@ -8,6 +8,8 @@ import {useSeerr} from '../../context/SeerrContext';
 import {useSettings} from '../../context/SettingsContext';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import * as seerrApi from '../../services/seerrApi';
+import {POSTER_HEIGHTS, POSTER_SIZE_OPTIONS, seerrPosterSize} from '../../utils/gridChrome';
+import {CORE_ICON_PATHS} from '../Settings/settingsCoreIcons';
 import {buildSeerrDiscoverParams, getSeerrSortOptions, getSeerrTvStatusOptions, getSeerrMinRatingOptions, getSeerrMinVoteOptions, getSeerrRuntimeOptions, getSeerrReleaseOptions, hasSeerrDiscoverFilters} from '../../utils/seerrBrowseFilters';
 import {browseStateKey, readBrowseState, writeBrowseState} from './seerrBrowseState';
 
@@ -37,7 +39,13 @@ const MAX_PAGES = 25;
  */
 const SeerrBrowse = ({browseType, item, mediaType: initialMediaType, onSelectItem, backHandlerRef}) => {
 	const {isEnabled} = useSeerr();
-	const {settings} = useSettings();
+	const {settings, updateSetting} = useSettings();
+	const posterSize = seerrPosterSize(settings);
+	const posterHeight = POSTER_HEIGHTS[posterSize];
+	// The card's margin and the title and year under the poster ride on top of the poster size.
+	const gridItemSize = useMemo(() => (
+		{minWidth: Math.round(posterHeight * 2 / 3) + 20, minHeight: posterHeight + 70}
+	), [posterHeight]);
 	const stateKey = useMemo(
 		() => browseStateKey(browseType, item, initialMediaType),
 		[browseType, item, initialMediaType]
@@ -58,6 +66,7 @@ const SeerrBrowse = ({browseType, item, mediaType: initialMediaType, onSelectIte
 	const [initialLoadDone, setInitialLoadDone] = useState(false);
 	const [backdropUrl, setBackdropUrl] = useState('');
 	const [showFilterModal, setShowFilterModal] = useState(false);
+	const [showSettingsModal, setShowSettingsModal] = useState(false);
 	const [sortBy, setSortBy] = useState(saved?.sortBy || 'popularity.desc');
 	const [genreIds, setGenreIds] = useState(saved?.genreIds || []);
 	const [tvStatuses, setTvStatuses] = useState(saved?.tvStatuses || []);
@@ -250,6 +259,14 @@ const SeerrBrowse = ({browseType, item, mediaType: initialMediaType, onSelectIte
 		setShowFilterModal(true);
 	}, [loadFilterOptions]);
 
+	const handleOpenSettingsModal = useCallback(() => setShowSettingsModal(true), []);
+	const handleCloseSettingsModal = useCallback(() => setShowSettingsModal(false), []);
+
+	const handlePosterSizeSelect = useCallback((ev) => {
+		updateSetting('seerrPosterSize', ev.currentTarget.dataset.size);
+		setShowSettingsModal(false);
+	}, [updateSetting]);
+
 	useEffect(() => {
 		if (!backHandlerRef) return;
 		const handler = () => {
@@ -257,11 +274,15 @@ const SeerrBrowse = ({browseType, item, mediaType: initialMediaType, onSelectIte
 				setShowFilterModal(false);
 				return true;
 			}
+			if (showSettingsModal) {
+				setShowSettingsModal(false);
+				return true;
+			}
 			return false;
 		};
 		backHandlerRef.current = handler;
 		return () => { if (backHandlerRef.current === handler) backHandlerRef.current = null; };
-	}, [backHandlerRef, showFilterModal]);
+	}, [backHandlerRef, showFilterModal, showSettingsModal]);
 
 	useEffect(() => {
 		return () => {
@@ -319,7 +340,7 @@ const SeerrBrowse = ({browseType, item, mediaType: initialMediaType, onSelectIte
 				onFocus={updateBackdrop}
 				data-index={index}
 			>
-				<div className={css.posterWrapper}>
+				<div className={css.posterWrapper} style={{height: posterHeight}}>
 					{imageUrl ? (
 						<img
 							className={css.poster}
@@ -353,7 +374,7 @@ const SeerrBrowse = ({browseType, item, mediaType: initialMediaType, onSelectIte
 				</div>
 			</SpottableDiv>
 		);
-	}, [handleItemClick, updateBackdrop, loadItems, mediaType]);
+	}, [handleItemClick, updateBackdrop, loadItems, mediaType, posterHeight]);
 
 	const currentFilter = getFilterOptions().find(o => o.key === mediaType);
 
@@ -486,6 +507,15 @@ const SeerrBrowse = ({browseType, item, mediaType: initialMediaType, onSelectIte
 						</svg>
 						{$L('Sort & Filter')}
 					</SpottableButton>
+					<SpottableButton
+						className={css.filterButton}
+						onClick={handleOpenSettingsModal}
+						aria-label={$L('Seerr Settings')}
+					>
+						<svg viewBox="0 0 24 24">
+							<path d={CORE_ICON_PATHS.settings} />
+						</svg>
+					</SpottableButton>
 				</div>
 
 				<div className={css.gridContainer}>
@@ -502,7 +532,7 @@ const SeerrBrowse = ({browseType, item, mediaType: initialMediaType, onSelectIte
 							cbScrollTo={getScrollTo}
 							dataSize={items.length}
 							itemRenderer={renderItem}
-							itemSize={{minWidth: 180, minHeight: 340}}
+							itemSize={gridItemSize}
 							spacing={20}
 							spotlightId="seerr-browse-grid"
 						/>
@@ -672,6 +702,30 @@ const SeerrBrowse = ({browseType, item, mediaType: initialMediaType, onSelectIte
 							{$L('Clear Filters')}
 						</Button>
 					)}
+				</div>
+			</Popup>
+
+			<Popup
+				open={showSettingsModal}
+				onClose={handleCloseSettingsModal}
+				position="center"
+				scrimType="translucent"
+				noAutoDismiss
+			>
+				<div className={css.popupContent}>
+					<div className={css.modalTitle}>{$L('Seerr Settings')}</div>
+					<div className={css.modalSubtitle}>{$L('Poster Size')}</div>
+					{POSTER_SIZE_OPTIONS.map((option) => (
+						<Button
+							key={option.key}
+							className={css.popupOption}
+							selected={posterSize === option.key}
+							onClick={handlePosterSizeSelect}
+							data-size={option.key}
+						>
+							{option.label()}
+						</Button>
+					))}
 				</div>
 			</Popup>
 		</div>

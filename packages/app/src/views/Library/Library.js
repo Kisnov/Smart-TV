@@ -36,7 +36,7 @@ import {KEYS} from '../../utils/keys';
 import useSortSettingsPanels from '../../hooks/useSortSettingsPanels';
 import {useUserDataList} from '../../hooks/useUserDataSync';
 import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
-import {FOCUS_SCALE, createGridKeyDown, createRowsLeftKeyDown, createToolbarKeyDown, focusOverhang, horizontalCellPad, libraryPosterSize, matchesStartLetter, stopPropagation} from '../../utils/gridChrome';
+import {FOCUS_SCALE, POSTER_HEIGHTS, POSTER_SIZE_OPTIONS, createGridKeyDown, createRowsLeftKeyDown, createToolbarKeyDown, focusOverhang, horizontalCellPad, libraryPosterSize, matchesStartLetter, stopPropagation} from '../../utils/gridChrome';
 import {ARROW_DOWN_ICON, ARROW_UP_ICON, CLEAR_FILTERS_ICON, EXPAND_LESS_ICON, EXPAND_MORE_ICON, GROUP_ICON, HOME_ICON, Icon, Letters, LibraryDock, LibraryTitle, ModernBar, ModernLetters, SEARCH_ICON, SETTINGS_ICON, SHUFFLE_ICON, SORT_ICON} from './LibraryHeaders';
 import LibrarySkeleton from './LibrarySkeleton';
 
@@ -147,13 +147,6 @@ const IMAGE_TYPE_OPTIONS = [
 	{key: 'poster', label: () => $L('Poster')},
 	{key: 'thumbnail', label: () => $L('Thumbnail')},
 	{key: 'banner', label: () => $L('Banner')}
-];
-
-const POSTER_SIZE_OPTIONS = [
-	{key: 'small', label: () => $L('Small')},
-	{key: 'medium', label: () => $L('Medium')},
-	{key: 'large', label: () => $L('Large')},
-	{key: 'extraLarge', label: () => $L('Extra Large')}
 ];
 
 const PLAYLIST_TYPE_LABELS = {
@@ -1255,7 +1248,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 		? Math.round(bannerWidth / BANNER_ASPECT)
 		: isWideImage
 			? ({small: 128, medium: 160, large: 191, extraLarge: 223}[imageSize] || 160)
-			: ({small: 174, medium: 217, large: 261, extraLarge: 304}[imageSize] || 217);
+			: POSTER_HEIGHTS[imageSize];
 
 	// A subtitle anywhere in the library makes room for a second line on every
 	// card, so the rows stay level whether or not a given item has one.
