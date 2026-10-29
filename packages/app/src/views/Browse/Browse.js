@@ -184,7 +184,7 @@ const Browse = ({
 		: Math.max(0, settings.classicHomeRowsPadding ?? 30);
 
 	const {
-		isLoading, browseMode, allRowData, featuredItems: loadedFeaturedItems, pendingSections,
+		isLoading, browseMode, allRowData, featuredItems: loadedFeaturedItems, pendingSections, emptySections,
 		setBrowseMode, fetchFreshFeaturedItems, refreshVolatileData, loadSectionsNear
 	} = useBrowseData({
 		api,
@@ -259,13 +259,14 @@ const Browse = ({
 			pluginSectionsConfig,
 			settings: rowBuildSettings,
 			pendingSections,
-			pendingRows
+			pendingRows,
+			emptySections
 		});
 		const prev = prevFilteredRowsRef.current;
 		if (sameRowList(prev, result)) return prev;
 		prevFilteredRowsRef.current = result;
 		return result;
-	}, [allRowData, seerrRows, externalRows, homeRowsConfig, pluginSectionsConfig, rowBuildSettings, pendingSections, pendingRows]);
+	}, [allRowData, seerrRows, externalRows, homeRowsConfig, pluginSectionsConfig, rowBuildSettings, pendingSections, pendingRows, emptySections]);
 	// The rows can come back from a cache built before the watched state last moved, so what's
 	// known now is laid over them rather than fetched again.
 	const filteredRows = useUserDataRows(builtRows);
