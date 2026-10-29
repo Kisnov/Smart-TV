@@ -3,6 +3,7 @@ import $L from '@enact/i18n/$L';
 import Spotlight from '@enact/spotlight';
 import Spottable from '@enact/spotlight/Spottable';
 import SpottableInput from '../../components/SpottableInput/SpottableInput';
+import {useSettings} from '../../context/SettingsContext';
 import {useStorage} from '../../hooks/useStorage';
 import {isAudiobookLibrary} from '../../utils/bookLibrary';
 import {keepFocusInView} from '../../utils/focusScroll';
@@ -57,8 +58,9 @@ const Cover = ({book, className, style}) => (
 const DiscoverCard = memo(({book, width, spotlightId, onSelect}) => {
 	const handleClick = useCallback(() => onSelect(book), [book, onSelect]);
 	const square = book.source === 'librivox';
+	const {settings} = useSettings();
 	return (
-		<SpottableDiv className={cardCss.card} style={{width}} spotlightId={spotlightId} onClick={handleClick}>
+		<SpottableDiv className={settings.cardFocusZoom ? cardCss.card : `${cardCss.card} ${cardCss.noZoom}`} style={{width}} spotlightId={spotlightId} onClick={handleClick}>
 			<Cover book={book} className={cardCss.cover} style={{height: square ? width : width * 1.5}} />
 			<div className={cardCss.title}>{book.title}</div>
 			<div className={cardCss.subtitle}>{book.author || '\u00a0'}</div>

@@ -2,6 +2,7 @@ import {memo, useCallback} from 'react';
 import $L from '@enact/i18n/$L';
 import Spottable from '@enact/spotlight/Spottable';
 
+import {useSettings} from '../../context/SettingsContext';
 import useItemMenuHold from '../../hooks/useItemMenuHold';
 import {bookImageUrl, bookSubtitle, formatBookDuration, isAudiobookItem, isComicItem, playedPercent, remainingTicks} from '../../utils/bookLibrary';
 import {bookMenuItem} from './bookNavigation';
@@ -31,13 +32,15 @@ const BookCard = ({item, serverUrl, width, showFormat, spotlightId, onSelect, nu
 	const percent = playedPercent(item);
 	const remaining = audiobook ? remainingTicks(item) : null;
 	const subtitle = subtitleText ?? bookSubtitle(item);
+	const {settings} = useSettings();
+	const className = [css.card, finished && css.finished, !settings.cardFocusZoom && css.noZoom].filter(Boolean).join(' ');
 
 	const handleClick = useCallback(() => onSelect?.(item), [item, onSelect]);
 	const itemAt = useCallback(() => bookMenuItem(item), [item]);
 	const menuHold = useItemMenuHold(itemAt);
 
 	return (
-		<SpottableDiv {...menuHold} className={finished ? `${css.card} ${css.finished}` : css.card} style={{width}} spotlightId={spotlightId} data-book-id={item.Id} onClick={handleClick}>
+		<SpottableDiv {...menuHold} className={className} style={{width}} spotlightId={spotlightId} data-book-id={item.Id} onClick={handleClick}>
 			<div className={css.cover} style={{height: square ? width : width * 1.5}}>
 				{url ? (
 					<img className={css.image} src={url} alt="" loading="lazy" />
