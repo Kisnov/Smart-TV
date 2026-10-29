@@ -301,7 +301,7 @@ const SpotlightDetailContent = (props) => {
 	const hideMediaDescription = hidesMediaDescription(item, settings) || (isPerson && !showsSection('biography'));
 
 	const renderVersionBadge = () => {
-		if (!hasMultipleVersions || !mediaSource) return null;
+		if (!hasMultipleVersions || !mediaSource || !showsSection('versionBadge')) return null;
 		const versionName = mediaSource.Name || $L('Default');
 		return (
 			<span className={css.versionBadge}>
