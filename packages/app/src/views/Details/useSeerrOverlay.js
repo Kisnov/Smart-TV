@@ -159,8 +159,8 @@ const useSeerrOverlay = ({item, seerrOnly, showsSection}) => {
 		onCancel4k,
 		actionError,
 		clearActionError,
-		// With nothing owned, one control covers both tracks and asks which
-		// quality first when the viewer holds both permissions. A library title
+		// With nothing owned, one control covers both tracks, and its sheet
+		// carries a quality switch when the viewer can ask for both. A library title
 		// gets a button per track instead, since there the 4K one asks for the
 		// track that is missing. Worked out once so the two button rows agree
 		// without restating the rules.

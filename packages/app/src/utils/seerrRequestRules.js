@@ -1,5 +1,5 @@
 // What the request controls may offer for one quality track. Kept apart from the screen so
-// the rules can be read on their own, and so they stay the same rules the other clients use.
+// the rules can be read on their own.
 
 import {MEDIA_STATUS, REQUEST_STATUS} from './seerrStatus';
 
@@ -17,7 +17,7 @@ export const isContinuingSeries = (status) => {
 
 /**
  * The season numbers a series actually has. A provider that splits a run its own way reports
- * its own numbers, so counting from one would offer seasons that arent there. The count is
+ * its own numbers, so counting from one would offer seasons that aren't there. The count is
  * only a fallback for a server that sends no season list.
  *
  * @param {Array} [seasons] - the seasons Seerr reports
@@ -33,6 +33,9 @@ export const seasonNumbersOf = (seasons, fallbackCount = 0) => {
 	for (let i = 1; i <= fallbackCount; i++) numbers.push(i);
 	return numbers;
 };
+
+export const isAvailableStatus = (status) =>
+	status === MEDIA_STATUS.PARTIALLY_AVAILABLE || status === MEDIA_STATUS.AVAILABLE;
 
 /**
  * The seasons the request sheet may not offer, being already in the library or already
