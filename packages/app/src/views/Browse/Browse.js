@@ -178,10 +178,12 @@ const Browse = ({
 	const RowComponent = useModernRows ? ModernMediaRow : ClassicMediaRow;
 	const showTopInfoArea = !useModernRows && settings.homeRowOverlay !== false;
 	// The other clients size these sliders in their own units, so the stored value
-	// lands here as the space below each row. Full screen rows pace themselves.
+	// lands here as the space below each row. Classic rows count from the slider's
+	// lowest step, so they sit a little closer at every setting. Full screen rows pace
+	// themselves.
 	const rowSpacing = settings.fullScreenRows ? null : useModernRows
 		? modernRowSpacing(settings)
-		: Math.max(0, settings.classicHomeRowsPadding ?? 30);
+		: Math.max(0, (settings.classicHomeRowsPadding ?? 30) - 10);
 
 	const {
 		isLoading, browseMode, allRowData, featuredItems: loadedFeaturedItems, pendingSections, emptySections,
