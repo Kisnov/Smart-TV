@@ -5,6 +5,7 @@ import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDeco
 import {isMdblistEnabled} from '../../../services/mdblistApi';
 
 import RatingsRow from '../../../components/RatingsRow';
+import {IncompleteDetailLine} from '../../../components/IncompleteBadge';
 import {SeerrStatusBadge, SeerrDownloadBars} from '../../../components/seerr/SeerrStatusBadge';
 import {seerrChipCount} from '../../../components/seerr/SeerrSections';
 import {DETAIL_ICON_PATHS} from '../detailIcons';
@@ -410,6 +411,7 @@ const SpotlightDetailContent = (props) => {
 							})}
 						</div>
 					)}
+					{!isPerson && <IncompleteDetailLine itemId={item.Id} clockDisplay={settings.clockDisplay} />}
 					{hasTech && !isPerson && (
 						<div className={css.techRow}>
 							{techSize && <span className={css.techSize}>{techSize}</span>}

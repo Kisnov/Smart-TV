@@ -1,6 +1,7 @@
 import {useEffect, useRef} from 'react';
 import {isKidsMode} from '../../../utils/kidsMode';
 
+import {IncompleteDetailLine} from '../../../components/IncompleteBadge';
 import ModernActionButtons from '../ModernActionButtons';
 import SpotlightDetailContent from '../spotlight/SpotlightDetailContent';
 import MinimalistEpisodes, {EPISODES_ID} from './MinimalistEpisodes';
@@ -65,6 +66,7 @@ const MinimalistDetailContent = (props) => {
 							? <img className={css.logo} src={logoUrl} onError={onLogoError} alt="" />
 							: <h1 className={css.title}>{title}</h1>}
 						{episodeName && <div className={css.episodeName}>{episodeName}</div>}
+						<IncompleteDetailLine itemId={item.Id} clockDisplay={settings.clockDisplay} />
 						<div className={css.actions}>
 							<ModernActionButtons
 								{...props}

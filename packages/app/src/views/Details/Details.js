@@ -10,6 +10,7 @@ import {useSeerr} from '../../context/SeerrContext';
 import {useSyncPlay} from '../../context/SyncPlayContext';
 import * as jellyfinApi from '../../services/jellyfinApi';
 import {searchesForTrailer} from '../../services/youtubeTrailer';
+import {canKeepAsComplete, keepAsComplete, useIncompleteRecording} from '../../services/incompleteRecordings';
 import {saveAudioPref, saveSubtitlePref} from '../../services/subtitlePrefs';
 import {fromServerStream} from '../../utils/seriesTrackPrefs';
 import ModernDetailContent from './ModernDetailContent';
@@ -907,6 +908,19 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		}
 	}, [effectiveApi, item?.Id, onItemDeleted, closeDeleteDialog]);
 
+	const incompleteRecording = useIncompleteRecording(item?.Id);
+	const handleKeepAsComplete = useCallback(async () => {
+		try {
+			await keepAsComplete(item.Id);
+			showToast($L('Marked as complete'));
+			// The button goes away with the mark, so focus moves to Play rather than out of the row.
+			setTimeout(() => Spotlight.focus('details-primary-btn'), 0);
+		} catch {
+			showToast($L('Unable to mark as complete'));
+		}
+	}, [item?.Id, showToast]);
+	const keepAsCompleteAction = incompleteRecording && canKeepAsComplete() ? handleKeepAsComplete : null;
+
 	const handleButtonRowFocus = useCallback(() => {
 		if (pageScrollToRef.current) {
 			pageScrollToRef.current({position: {y: 0}, animate: true});
@@ -1267,6 +1281,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 					handleOpenCollectionModal={canAddToCollection ? modals.handleOpenCollectionModal : null}
 					handleOpenIdentifyModal={canIdentify ? modals.handleOpenIdentifyModal : null}
 					handleOpenDeleteDialog={modals.handleOpenDeleteDialog}
+					handleKeepAsComplete={keepAsCompleteAction}
 					handleChapterSelect={handleChapterSelect}
 					handleEpisodePlay={handleEpisodePlay}
 					handleExtraSelect={handleExtraSelect}
@@ -1450,6 +1465,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 			onOpenCollectionModal={modals.handleOpenCollectionModal}
 			onOpenDeleteDialog={modals.handleOpenDeleteDialog}
 			onOpenIdentifyModal={modals.handleOpenIdentifyModal}
+			onKeepAsComplete={keepAsCompleteAction}
 		/>
 	);
 

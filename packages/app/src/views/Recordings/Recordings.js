@@ -6,9 +6,9 @@ import $L from '@enact/i18n/$L';
 import {useAuth} from '../../context/AuthContext';
 import {pointerHover} from '../../utils/focusScroll';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import {formatClockTime, formatDayLabel} from '../../utils/clock';
+import {formatDayLabel} from '../../utils/clock';
 import {useSettings} from '../../context/SettingsContext';
-import IncompleteBadge from '../../components/IncompleteBadge';
+import IncompleteBadge, {incompleteDetailText} from '../../components/IncompleteBadge';
 import {
 	canKeepAsComplete, keepAsComplete, refreshIncompleteRecordings, useIncompleteRecording
 } from '../../services/incompleteRecordings';
@@ -119,19 +119,6 @@ const friendlyDate = (date) => {
 	if (diff === 1) return $L('Tomorrow');
 	if (diff === -1) return $L('Yesterday');
 	return formatDayLabel(date);
-};
-
-// How much of the program a recording missed, and what the plugin found for the rest of it.
-const incompleteDetail = (entry, clockDisplay) => {
-	const at = (date) => `${formatDayLabel(new Date(date))} ${formatClockTime(new Date(date), clockDisplay)}`;
-	let found = null;
-	if (entry.state === 'scheduled' && entry.scheduledStart) found = $L('Complete showing scheduled {dateTime}').replace('{dateTime}', at(entry.scheduledStart));
-	else if (entry.state === 'recorded' && entry.recordedAt) found = $L('Complete copy recorded {dateTime}').replace('{dateTime}', at(entry.recordedAt));
-	else if (entry.state === 'notFound') found = $L('No complete showing found');
-	const minutes = $L('{recorded} of {expected} min')
-		.replace('{recorded}', entry.recordedMinutes)
-		.replace('{expected}', entry.expectedMinutes);
-	return [$L('Incomplete'), minutes, found].filter(Boolean).join(' · ');
 };
 
 const Recordings = ({onPlayRecording, onBack, backHandlerRef}) => {
@@ -476,7 +463,7 @@ const Recordings = ({onPlayRecording, onBack, backHandlerRef}) => {
 								)}
 							</div>
 							{selectedIncomplete && (
-								<div className={css.incompleteLine}>{incompleteDetail(selectedIncomplete, settings.clockDisplay)}</div>
+								<div className={css.incompleteLine}>{incompleteDetailText(selectedIncomplete, settings.clockDisplay)}</div>
 							)}
 						</div>
 						<div className={css.dialogActions}>

@@ -8,6 +8,7 @@ import {
 	DETAIL_METADATA, DETAIL_METADATA_ORDER_KEY, DETAIL_METADATA_HIDDEN_KEY
 } from '../../utils/detailMetadataLayout';
 import {editedListKey} from './settingsRows';
+import {isIncompleteRecordingsSupported} from '../../services/incompleteRecordings';
 
 // The details row, the player controls, and the details metadata row are arranged the same way,
 // so one view drives all three and only the storage keys and catalogue differ.
@@ -18,7 +19,10 @@ const buttonLayoutKeys = (kind) => {
 	if (kind === 'metadata') {
 		return {catalogue: DETAIL_METADATA, orderKey: DETAIL_METADATA_ORDER_KEY, hiddenKey: DETAIL_METADATA_HIDDEN_KEY};
 	}
-	return {catalogue: DETAIL_BUTTONS, orderKey: DETAIL_ORDER_KEY, hiddenKey: DETAIL_HIDDEN_KEY};
+	// Keep as Complete is only offered when the server's plugin tracks incomplete recordings. A save
+	// still keeps its place, since ids outside the catalogue are carried through.
+	const catalogue = isIncompleteRecordingsSupported() ? DETAIL_BUTTONS : DETAIL_BUTTONS.filter((item) => item.id !== 'keepAsComplete');
+	return {catalogue, orderKey: DETAIL_ORDER_KEY, hiddenKey: DETAIL_HIDDEN_KEY};
 };
 
 const returnFocusMap = {

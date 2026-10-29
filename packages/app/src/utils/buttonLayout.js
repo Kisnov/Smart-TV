@@ -39,6 +39,7 @@ export const DETAIL_BUTTONS = [
 	{id: 'seerrWatchlist', label: 'Watchlist'},
 	{id: 'seerrReportIssue', label: 'Report Issue'},
 	{id: 'seerrManage', label: 'Manage Requests'},
+	{id: 'keepAsComplete', label: 'Keep as Complete'},
 	{id: 'admin', label: 'Admin Controls'}
 ];
 
