@@ -170,7 +170,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 		selectedSubtitleIndex, setSelectedSubtitleIndex
 	} = data;
 
-	const seerr = useSeerrOverlay({item: seerrOnly ? initialItem : data.item, seerrOnly, showsSection});
+	const seerr = useSeerrOverlay({item: seerrOnly ? initialItem : data.item, seerrOnly, showsSection, api: effectiveApi});
 
 	// A tap that came in as a bare TMDB or IMDb id can turn out to be a title the
 	// library holds, which only Seerr's answer reveals.
@@ -1185,7 +1185,7 @@ const Details = ({itemId: itemIdProp, initialItem, onPlay, onSelectItem, onSelec
 				onClose={modals.handleCloseRatingDialog}
 			/>
 			{modals.showPersonDisplayModal && <PersonDisplayDialog onClose={modals.handleClosePersonDisplayModal} />}
-			<SeerrDialogs seerr={seerr} title={item.Name} />
+			<SeerrDialogs seerr={seerr} item={item} />
 			<ReviewDialog review={reviews.openReview} onClose={reviews.handleCloseReview} />
 		</>
 	);

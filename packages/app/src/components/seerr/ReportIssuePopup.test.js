@@ -88,4 +88,22 @@ describe('ReportIssuePopup', () => {
 		expect(screen.getByText('Season 1')).toBeTruthy();
 		expect(screen.getByText('All Episodes')).toBeTruthy();
 	});
+
+	test('counts the seasons out from the total when the server sends no list', () => {
+		render(<ReportIssuePopup open isTv seasons={[]} numberOfSeasons={3} onSubmit={jest.fn()} onClose={() => {}} />);
+		fireEvent.click(screen.getByText('All Seasons'));
+		expect(screen.getByText('Season 3')).toBeTruthy();
+		expect(screen.queryByText('Season 4')).toBeNull();
+	});
+
+	test('opened from an episode, starts on its season and episode', async () => {
+		const onSubmit = jest.fn();
+		render(<ReportIssuePopup open isTv seasons={seasons} initialSeason={2} initialEpisode={1} onSubmit={onSubmit} onClose={() => {}} />);
+		expect(screen.getByText('Season 2')).toBeTruthy();
+		expect(screen.getByText('Episode 1')).toBeTruthy();
+
+		write('Wrong audio track');
+		await submit();
+		expect(onSubmit).toHaveBeenCalledWith({issueType: ISSUE_TYPE.VIDEO, message: 'Wrong audio track', problemSeason: 2, problemEpisode: 1});
+	});
 });

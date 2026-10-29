@@ -4,6 +4,7 @@ import $L from '@enact/i18n/$L';
 import CoreDialog, {CoreDialogRow} from '../CoreDialog';
 import SpottableInput from '../SpottableInput/SpottableInput';
 import {ISSUE_TYPE, getIssueTypeLabel} from '../../utils/seerrStatus';
+import {seasonNumbersOf} from '../../utils/seerrRequestRules';
 import {SeerrButtonRow, SeerrDialogButton, SeerrDivider, SeerrFocusRow, SeerrSelectorRow} from './SeerrDialogControls';
 import {MaterialIcon} from '../icons/materialIcons';
 
@@ -16,17 +17,20 @@ const ISSUE_TYPES = [ISSUE_TYPE.VIDEO, ISSUE_TYPE.AUDIO, ISSUE_TYPE.SUBTITLES, I
 const seasonLabel = (season) => (season > 0 ? $L('Season {number}').replace('{number}', season) : $L('All Seasons'));
 const episodeLabel = (episode) => (episode > 0 ? $L('Episode {number}').replace('{number}', episode) : $L('All Episodes'));
 
-// Mounted only while open, so each report starts from a clean form.
-const ReportIssueForm = ({isTv, seasons, onSubmit, onClose}) => {
-	const seasonNumbers = useMemo(() =>
-		(seasons || []).filter(s => s.seasonNumber > 0).map(s => s.seasonNumber),
-	[seasons]);
+// Mounted only while open, so each report starts from a clean form. Opened from a season or an
+// episode, it starts on that one.
+const ReportIssueForm = ({isTv, seasons, numberOfSeasons, initialSeason, initialEpisode, onSubmit, onClose}) => {
+	const seasonNumbers = useMemo(() => seasonNumbersOf(seasons, numberOfSeasons || 0), [seasons, numberOfSeasons]);
 	// The season each picker row stands for, with 0 for all seasons first.
 	const seasonValues = useMemo(() => [0, ...seasonNumbers], [seasonNumbers]);
 
 	const [issueType, setIssueType] = useState(ISSUE_TYPE.VIDEO);
-	const [season, setSeason] = useState(() => (isTv && seasonNumbers.length === 1 ? seasonNumbers[0] : 0));
-	const [episode, setEpisode] = useState(0);
+	const startsOnSeason = isTv && initialSeason > 0;
+	const [season, setSeason] = useState(() => {
+		if (startsOnSeason) return initialSeason;
+		return isTv && seasonNumbers.length === 1 ? seasonNumbers[0] : 0;
+	});
+	const [episode, setEpisode] = useState(() => (startsOnSeason && initialEpisode > 0 ? initialEpisode : 0));
 	const [message, setMessage] = useState('');
 	const [submitting, setSubmitting] = useState(false);
 	const [picker, setPicker] = useState(null);
