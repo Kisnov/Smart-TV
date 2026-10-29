@@ -49,8 +49,8 @@ export const isAvailableStatus = (status) =>
 export const unavailableOrRequestedSeasons = (seasonAvailability, activeRequests, is4k) => {
 	const taken = new Set();
 	(seasonAvailability || []).forEach((season) => {
-		const status = is4k ? season?.status4k : season?.status;
-		if (status >= MEDIA_STATUS.PARTIALLY_AVAILABLE) taken.add(season.seasonNumber);
+		// A blocklisted or deleted season isn't in the library, so it can be asked for again
+		if (isAvailableStatus(is4k ? season?.status4k : season?.status)) taken.add(season.seasonNumber);
 	});
 	(activeRequests || []).forEach((request) => {
 		(request?.seasons || []).forEach((season) => taken.add(season.seasonNumber));
