@@ -779,7 +779,7 @@ const Browse = ({
 				<BackdropLayer
 					targetUrl={targetBackdropUrl}
 					blurAmount={settings.backdropBlurHome}
-					inCorner={homeBackdropStyle(settings) === 'corner'}
+					placement={homeBackdropStyle(settings)}
 				/>
 
 				{featuredItems.length > 0 && showFeaturedBar !== false && (

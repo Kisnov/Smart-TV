@@ -230,7 +230,8 @@ export const getHomeRowsStyleOptions = () => [
 export const getHomeBackdropStyleOptions = () => [
 	{ value: 'off', label: $L('Off') },
 	{ value: 'fullScreen', label: $L('Full Screen') },
-	{ value: 'corner', label: $L('Corner') }
+	{ value: 'corner', label: $L('Corner') },
+	{ value: 'top', label: $L('Top') }
 ];
 
 export const getMediaPreviewModeOptions = () => [

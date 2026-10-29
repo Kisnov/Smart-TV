@@ -223,14 +223,15 @@ describe('the home screen backdrop', () => {
 		.find((row) => row.key === 'homeBackdropStyle');
 	const withSettings = (settings) => ({...ctx, settings: {...defaultSettings, ...settings}});
 
-	test('is a three way choice in place of the switch', () => {
+	test('is a choice in place of the switch', () => {
 		const row = backdropRow();
 		expect(row.kind).toBe(KIND.OPTION);
 		expect(row.label()).toBe('Home Screen Backdrop');
 		expect(row.options(ctx).map((option) => [option.value, option.label])).toEqual([
 			['off', 'Off'],
 			['fullScreen', 'Full Screen'],
-			['corner', 'Corner']
+			['corner', 'Corner'],
+			['top', 'Top']
 		]);
 		expect(allRows().some(({row: other}) => other.key === 'showHomeBackdrop')).toBe(false);
 	});
@@ -240,16 +241,18 @@ describe('the home screen backdrop', () => {
 		expect(row.value(withSettings({showHomeBackdrop: false, homeBackdropStyle: 'corner'}))).toBe('off');
 		expect(row.value(withSettings({showHomeBackdrop: true}))).toBe('fullScreen');
 		expect(row.value(withSettings({showHomeBackdrop: true, homeBackdropStyle: 'corner'}))).toBe('corner');
+		expect(row.value(withSettings({showHomeBackdrop: true, homeBackdropStyle: 'top'}))).toBe('top');
 	});
 
 	test('a choice writes both keys in one update', () => {
 		const setSettings = jest.fn();
 		const withActions = {...ctx, actions: {setSettings}};
-		['off', 'fullScreen', 'corner'].forEach((style) => backdropRow().onSelect(withActions, style));
+		['off', 'fullScreen', 'corner', 'top'].forEach((style) => backdropRow().onSelect(withActions, style));
 		expect(setSettings.mock.calls).toEqual([
 			[{showHomeBackdrop: false, homeBackdropStyle: 'off'}],
 			[{showHomeBackdrop: true, homeBackdropStyle: 'fullScreen'}],
-			[{showHomeBackdrop: true, homeBackdropStyle: 'corner'}]
+			[{showHomeBackdrop: true, homeBackdropStyle: 'corner'}],
+			[{showHomeBackdrop: true, homeBackdropStyle: 'top'}]
 		]);
 	});
 });
