@@ -964,6 +964,7 @@ const Browse = ({
 								registerRowRef={registerRowRef}
 								deferImages={!NATIVE_LAZY_IMAGES && index >= imageRows}
 								menuOptions={rowMenuOptions}
+								ratingsSurface='homeRows'
 							/>
 						);
 					})}

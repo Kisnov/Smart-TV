@@ -1,13 +1,14 @@
 import {useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback} from 'react';
 import $L from '@enact/i18n/$L';
-import {fetchRatings, fetchEpisodeRatings, buildDisplayRatings, getContentType, getTmdbId, getSelectionSource, isRatingSourceEnabled} from '../../services/mdblistApi';
+import {fetchRatings, fetchEpisodeRatings, buildDisplayRatings, getContentType, getTmdbId, getSelectionSource, isRatingSourceEnabled, ratingSettingsFor} from '../../services/mdblistApi';
 import {useSettings} from '../../context/SettingsContext';
 import {normalizeRatingStyle, personalRatingOf} from '../../utils/personalRating';
 import {getRtFallbackIcon} from '../icons/rtIcons';
 import css from './RatingsRow.module.less';
 
-const RatingsRow = ({item, serverUrl, compact = false, singleLineWidth, pluginEnabled = true}) => {
-	const {settings} = useSettings();
+// surface is 'homeRows' or 'mediaBar' for the screens that keep their own ratings settings.
+const RatingsRow = ({item, serverUrl, compact = false, singleLineWidth, pluginEnabled = true, surface}) => {
+	const settings = ratingSettingsFor(useSettings().settings, surface);
 	const showLabels = settings.showRatingLabels !== false;
 	// Badges only choose the chip chrome around each rating. Off means plain, not hidden.
 	const showBadges = settings.showRatingBadges !== false;

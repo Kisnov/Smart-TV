@@ -317,6 +317,70 @@ describe('SYNCABLE_KEYS', () => {
 	});
 });
 
+describe('the home rows and media bar ratings settings', () => {
+	const SERVER_KEYS = {
+		homeRowsMdblistEnabled: 'homeRowsMdblistEnabled',
+		homeRowsMdblistRatingSources: 'homeRowsMdblistRatingSources',
+		homeRowsTmdbEpisodeRatingsEnabled: 'homeRowsTmdbEpisodeRatingsEnabled',
+		homeRowsShowRatingLabels: 'homeRowsMdblistShowRatingNames',
+		homeRowsShowRatingBadges: 'homeRowsMdblistShowRatingBadges',
+		mediaBarMdblistEnabled: 'mediaBarMdblistEnabled',
+		mediaBarMdblistRatingSources: 'mediaBarMdblistRatingSources',
+		mediaBarShowRatingLabels: 'mediaBarMdblistShowRatingNames',
+		mediaBarShowRatingBadges: 'mediaBarMdblistShowRatingBadges'
+	};
+
+	test('default like the plain ones, except home rows start with labels off', () => {
+		for (const local of Object.keys(SERVER_KEYS)) {
+			const plain = local.replace(/^(homeRows|mediaBar)(.)/, (all, surface, first) => first.toLowerCase());
+			const expected = local === 'homeRowsShowRatingLabels' ? false : defaultSettings[plain];
+			expect({local, value: defaultSettings[local]}).toEqual({local, value: expected});
+		}
+	});
+
+	test('travel under the shared server names', () => {
+		const local = {
+			homeRowsMdblistEnabled: false,
+			homeRowsMdblistRatingSources: ['imdb', 'myanimelist'],
+			homeRowsTmdbEpisodeRatingsEnabled: false,
+			homeRowsShowRatingLabels: true,
+			homeRowsShowRatingBadges: false,
+			mediaBarMdblistEnabled: false,
+			mediaBarMdblistRatingSources: ['metacriticuser', 'stars'],
+			mediaBarShowRatingLabels: false,
+			mediaBarShowRatingBadges: false
+		};
+		const profile = localToProfile({...defaultSettings, ...local}, Object.keys(SERVER_KEYS));
+
+		expect(profile).toEqual({
+			homeRowsMdblistEnabled: false,
+			homeRowsMdblistRatingSources: ['imdb', 'myAnimeList'],
+			homeRowsTmdbEpisodeRatingsEnabled: false,
+			homeRowsMdblistShowRatingNames: true,
+			homeRowsMdblistShowRatingBadges: false,
+			mediaBarMdblistEnabled: false,
+			mediaBarMdblistRatingSources: ['metacriticUser', 'stars'],
+			mediaBarMdblistShowRatingNames: false,
+			mediaBarMdblistShowRatingBadges: false
+		});
+		expect(profileToLocal(profile)).toEqual(local);
+	});
+
+	test('an empty source list from the server keeps the one this device has', () => {
+		expect(profileToLocal({homeRowsMdblistRatingSources: [], mediaBarMdblistRatingSources: []})).toEqual({});
+
+		const resolved = resolveFromEnvelope({tv: {}, global: {}}, {homeRowsMdblistRatingSources: [], mediaBarMdblistRatingSources: ['imdb']});
+		expect(resolved).not.toHaveProperty('homeRowsMdblistRatingSources');
+		expect(resolved.mediaBarMdblistRatingSources).toEqual(['imdb']);
+	});
+
+	test('leave the plain ratings settings alone', () => {
+		const local = profileToLocal({homeRowsMdblistShowRatingNames: true, mediaBarMdblistRatingSources: ['imdb']});
+
+		expect(local).toEqual({homeRowsShowRatingLabels: true, mediaBarMdblistRatingSources: ['imdb']});
+	});
+});
+
 describe('the backdrop toggles', () => {
 	test('take and send the home and details backdrops under the server names', () => {
 		expect(profileToLocal({homeBackdropEnabled: false, detailsBackdropEnabled: false}))

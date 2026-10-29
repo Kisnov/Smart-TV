@@ -60,6 +60,10 @@ const SERVER_TO_LOCAL = {
 	homeImageUseSeriesImage: 'useSeriesThumbnails',
 	mdblistShowRatingNames: 'showRatingLabels',
 	mdblistShowRatingBadges: 'showRatingBadges',
+	homeRowsMdblistShowRatingNames: 'homeRowsShowRatingLabels',
+	homeRowsMdblistShowRatingBadges: 'homeRowsShowRatingBadges',
+	mediaBarMdblistShowRatingNames: 'mediaBarShowRatingLabels',
+	mediaBarMdblistShowRatingBadges: 'mediaBarShowRatingBadges',
 	languageOverride: 'uiLanguage',
 	syncPlayEnabled: 'syncplayEnabled',
 	syncPlayAutoOpen: 'syncplayAutoOpen',
@@ -138,6 +142,13 @@ const POSTER_SIZES_FROM_SERVER = {medium: 'default', extraLarge: 'xlarge'};
 const posterSizeFromServer = oneOf(['small', 'default', 'large', 'xlarge', 'grandparents']).fromServer;
 // Synced as is, unlike the home card sizes, and with no Grandparents size.
 const LIBRARY_POSTER_SIZES = ['small', 'medium', 'large', 'extraLarge'];
+
+// The plugin's admin defaults store an unset list as an empty one, which would hide every
+// rating, so an empty list from the server leaves the one we have.
+const surfaceRatingSources = {
+	toServer: ratingSourcesToServer,
+	fromServer: (v) => (Array.isArray(v) && v.length === 0 ? undefined : normalizeRatingSources(v))
+};
 
 const VALUE_CONVERSIONS = {
 	homeRowsPosterSize: {
@@ -239,6 +250,8 @@ const VALUE_CONVERSIONS = {
 		toServer: ratingSourcesToServer,
 		fromServer: normalizeRatingSources
 	},
+	homeRowsMdblistRatingSources: surfaceRatingSources,
+	mediaBarMdblistRatingSources: surfaceRatingSources,
 	homeRowImageTypes: {
 		toServer: homeRowImageTypesToServer,
 		fromServer: homeRowImageTypesFromServer
@@ -266,6 +279,9 @@ export const SYNCABLE_KEYS = [
 	'visualTheme', 'customThemeId',
 	'showRatingLabels',
 	'showRatingBadges',
+	'homeRowsMdblistEnabled', 'homeRowsMdblistRatingSources', 'homeRowsTmdbEpisodeRatingsEnabled',
+	'homeRowsShowRatingLabels', 'homeRowsShowRatingBadges',
+	'mediaBarMdblistEnabled', 'mediaBarMdblistRatingSources', 'mediaBarShowRatingLabels', 'mediaBarShowRatingBadges',
 	'themeMusicEnabled', 'themeMusicVolume', 'themeMusicOnHomeRows',
 	'homeRowsImageType', 'homeRowImageTypes', 'showClock', 'clockDisplay',
 	'homeRowOverlay',

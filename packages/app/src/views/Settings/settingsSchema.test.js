@@ -324,3 +324,39 @@ describe('the media preview switches', () => {
 		});
 	});
 });
+
+describe('the ratings sections', () => {
+	const screen = (id) => SETTINGS_SCHEMA
+		.find((category) => category.id === 'appearance').subcategories
+		.find((sub) => sub.id === id);
+	const ratingsKeys = (id) => screen(id).rows.filter((row) => KEYED.includes(row.kind)).map((row) => row.key)
+		.filter((key) => /(mdblistEnabled|episodeRatingsEnabled|showRating(Labels|Badges))$/i.test(key));
+	const withSettings = (settings) => ({...ctx, settings: {...defaultSettings, ...settings}});
+
+	test('home rows and the media bar each change their own copy', () => {
+		expect(ratingsKeys('detailsPage')).toEqual(['mdblistEnabled', 'tmdbEpisodeRatingsEnabled', 'showRatingLabels', 'showRatingBadges']);
+		expect(ratingsKeys('homeScreen')).toEqual(['homeRowsMdblistEnabled', 'homeRowsTmdbEpisodeRatingsEnabled', 'homeRowsShowRatingLabels', 'homeRowsShowRatingBadges']);
+		expect(ratingsKeys('mediaBar')).toEqual(['mediaBarMdblistEnabled', 'mediaBarShowRatingLabels', 'mediaBarShowRatingBadges']);
+	});
+
+	test('the sources and reset rows open on their own surface', () => {
+		const openRatingSources = jest.fn();
+		const resetRatingsSettings = jest.fn();
+		const withActions = {...ctx, actions: {openRatingSources, resetRatingsSettings}};
+		for (const [id, prefix] of [['detailsPage', ''], ['homeScreen', 'homeRows'], ['mediaBar', 'mediaBar']]) {
+			const rows = screen(id).rows;
+			rows.find((row) => /^(r|.+R)atingSources$/.test(row.id)).action(withActions);
+			rows.find((row) => /^(r|.+R)esetRatings$/.test(row.id)).action(withActions);
+			expect(openRatingSources).toHaveBeenLastCalledWith(prefix);
+			expect(resetRatingsSettings).toHaveBeenLastCalledWith(prefix);
+		}
+	});
+
+	test('the media bar section only shows for the styles that draw ratings', () => {
+		const shown = (featuredBarStyle) => screen('mediaBar').rows
+			.filter((row) => row.id === 'mediaBarRatings' || row.key === 'mediaBarMdblistEnabled')
+			.map((row) => row.when(withSettings({featuredBarStyle})));
+		for (const style of ['moonfin', 'makd', 'gallery', 'banner']) expect(shown(style)).toEqual([true, true]);
+		for (const style of ['bookshelf', 'aya', 'off']) expect(shown(style)).toEqual([false, false]);
+	});
+});

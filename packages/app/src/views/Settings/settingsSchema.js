@@ -3,6 +3,7 @@ import {isSignInPinEnabled} from '../../utils/signInPin';
 import {isTrickplayOn} from '../../utils/trickplayLayout';
 import {mediaPreviewMode, mediaPreviewSettings} from '../../utils/mediaPreviewMode';
 import {homeBackdropStyle, homeBackdropSettings} from '../../utils/homeBackdropStyle';
+import {ratingKey} from '../../utils/ratingSources';
 
 import {
 	getAccentColorOptions,
@@ -119,6 +120,39 @@ export const KIND = {
 
 export const resolve = (value, ctx) => (typeof value === 'function' ? value(ctx) : value);
 
+// Home rows and the media bar each get their own copy of the details page ratings rows,
+// with the keys prefixed by the surface. The media bar only shows movies and series, so it
+// has no episode ratings.
+const ratingsRows = (prefix, rowWhen) => {
+	const key = (name) => ratingKey(prefix, name);
+	const rows = [
+		{kind: KIND.SECTION, id: key('ratings'), label: () => $L('Ratings')},
+		{kind: KIND.TOGGLE, key: key('mdblistEnabled'), label: () => $L('Additional Ratings'), desc: () => $L('Show MDBList and TMDB ratings'), icon: 'star'},
+		{
+			kind: KIND.NAV,
+			id: key('ratingSources'),
+			label: () => $L('Rating Sources'),
+			desc: (ctx) => getEnabledRatingSourcesSummary(ctx.settings[key('mdblistRatingSources')]),
+			icon: 'reorder',
+			action: (ctx) => ctx.actions.openRatingSources(prefix)
+		},
+		prefix !== 'mediaBar' && {kind: KIND.TOGGLE, key: key('tmdbEpisodeRatingsEnabled'), label: () => $L('Episode Ratings'), desc: () => $L('Show ratings on individual episodes'), icon: 'stars'},
+		{kind: KIND.TOGGLE, key: key('showRatingLabels'), label: () => $L('Rating Labels'), desc: () => $L('Show labels next to rating icons'), icon: 'label'},
+		{kind: KIND.TOGGLE, key: key('showRatingBadges'), label: () => $L('Rating Badges'), desc: () => $L('Show decorative badges behind ratings'), icon: 'style'},
+		{
+			kind: KIND.NAV,
+			id: key('resetRatings'),
+			label: () => $L('Reset Ratings'),
+			desc: (ctx) => (ctx.ratingsResetArmed
+				? $L('Press again to put every ratings setting back to its default')
+				: $L('Restores the sources, their order, and the ratings toggles')),
+			icon: 'restore',
+			action: (ctx) => ctx.actions.resetRatingsSettings(prefix)
+		}
+	].filter(Boolean);
+	return rowWhen ? rows.map((row) => ({...row, when: rowWhen})) : rows;
+};
+
 // The spotlight id the row will carry once rendered, which is what a search result
 // focuses after it opens the screen.
 export const spotlightIdOf = (row) => {
@@ -144,6 +178,8 @@ const whenHdrSubtitles = (ctx) => ctx.settings.subtitleHdrSeparate;
 const whenSeerr = (ctx) => ctx.seerr.isEnabled;
 const whenScreensaver = (ctx) => ctx.settings.screensaverEnabled;
 const whenMediaPreview = (ctx) => mediaPreviewMode(ctx.settings) !== 'off';
+// Aya, Bookshelf and Off draw no ratings, so their media bar has nothing for these to change.
+const whenMediaBarRatings = (ctx) => ['moonfin', 'makd', 'gallery', 'banner'].includes(ctx.settings.featuredBarStyle);
 const whenScreensaverLibrary = (ctx) => ctx.settings.screensaverEnabled && ctx.settings.screensaverBackdrop === 'library';
 const whenScreensaverComponent = (ctx) => ctx.settings.screensaverEnabled && ctx.settings.screensaverComponent !== 'none';
 const whenScreensaverStatic = (ctx) => whenScreensaverComponent(ctx) && ctx.settings.screensaverMovement === 'staticCorner';
@@ -446,6 +482,7 @@ export const SETTINGS_SCHEMA = [
 						onSelect: (ctx, style) => ctx.actions.setSettings(homeBackdropSettings(style))
 					},
 					{kind: KIND.TOGGLE, key: 'hideHomeMediaDescription', label: () => $L('Hide Media Description'), desc: () => $L('Hide the movie or episode descriptive text.'), icon: 'description_outlined'},
+					...ratingsRows('homeRows'),
 					{kind: KIND.SECTION, id: 'externalSources', label: () => $L('External Sources'), when: whenPlugin},
 					{kind: KIND.NAV, id: 'imdbLists', label: () => $L('IMDb Lists'), desc: () => $L('Configure IMDb Top 250, Popular, and other charts.'), icon: 'movie_outlined', keywords: () => [$L('IMDb Row Sorting'), $L('Sort Order')], action: (ctx) => ctx.actions.openImdbLists(), when: whenPlugin},
 					{kind: KIND.NAV, id: 'externalTmdbLists', label: () => $L('TMDB Lists'), desc: () => $L('Configure Popular, Top Rated, and Trending TMDB lists.'), icon: 'trending_up', keywords: () => [$L('TMDB Row Sorting'), $L('Sort Order')], action: (ctx) => ctx.actions.openExternalTmdbLists(), when: whenPlugin},
@@ -584,7 +621,8 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.TOGGLE, key: 'featuredTrailerPreview', label: () => $L('Trailer Preview'), desc: () => $L('Auto-play trailers in the media bar after 3 seconds'), icon: 'movie_outlined'},
 					{kind: KIND.TOGGLE, key: 'featuredTrailerMuted', label: () => $L('Mute Trailer Audio'), desc: () => $L('Mute trailer previews in the featured media bar'), icon: 'volume_up', when: (ctx) => ctx.settings.featuredTrailerPreview},
 					{kind: KIND.SLIDER, key: 'trailerVolume', label: () => $L('Trailer Volume'), desc: () => $L('How loud trailers play in the featured media bar and details screen'), min: 0, max: 100, step: 5, format: percent, icon: 'volume_down', when: (ctx) => ctx.settings.featuredTrailerPreview},
-					{kind: KIND.TOGGLE, key: 'mediaBarTrailerCaptions', label: () => $L('Trailer Captions'), desc: () => $L('Show captions on YouTube trailers'), icon: 'closed_caption_outlined'}
+					{kind: KIND.TOGGLE, key: 'mediaBarTrailerCaptions', label: () => $L('Trailer Captions'), desc: () => $L('Show captions on YouTube trailers'), icon: 'closed_caption_outlined'},
+					...ratingsRows('mediaBar', whenMediaBarRatings)
 				]
 			},
 			{
@@ -653,29 +691,7 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.TOGGLE, key: 'detailUseSeriesThumbnails', label: () => $L('Use Series Thumbnails'), desc: () => $L('Replace thumbnails on the details page with the series thumbnail'), icon: 'image_outlined', when: (ctx) => ['v1', 'v4', 'v5'].indexOf(ctx.settings.detailScreenStyle) >= 0},
 					{kind: KIND.SECTION, id: 'recommendations', label: () => $L('Recommendations')},
 					{kind: KIND.OPTION, key: 'recommendationSystemSource', label: () => $L('Recommendation System'), desc: () => $L('Moonfin scores your own library, Jellyfin takes the picks from the server, TMDb uses Seerr, and Hybrid leads with the server then tops up locally'), options: getRecommendationSystemSourceOptions, fallback: () => $L('Moonfin Recommends'), icon: 'auto_awesome'},
-					{kind: KIND.SECTION, id: 'ratings', label: () => $L('Ratings')},
-					{kind: KIND.TOGGLE, key: 'mdblistEnabled', label: () => $L('Additional Ratings'), desc: () => $L('Show MDBList and TMDB ratings'), icon: 'star'},
-					{
-						kind: KIND.NAV,
-						id: 'ratingSources',
-						label: () => $L('Rating Sources'),
-						desc: (ctx) => getEnabledRatingSourcesSummary(ctx.settings.mdblistRatingSources),
-						icon: 'reorder',
-						action: (ctx) => ctx.actions.openRatingSources()
-					},
-					{kind: KIND.TOGGLE, key: 'tmdbEpisodeRatingsEnabled', label: () => $L('Episode Ratings'), desc: () => $L('Show ratings on individual episodes'), icon: 'stars'},
-					{kind: KIND.TOGGLE, key: 'showRatingLabels', label: () => $L('Rating Labels'), desc: () => $L('Show labels next to rating icons'), icon: 'label'},
-					{kind: KIND.TOGGLE, key: 'showRatingBadges', label: () => $L('Rating Badges'), desc: () => $L('Show decorative badges behind ratings'), icon: 'style'},
-					{
-						kind: KIND.NAV,
-						id: 'resetRatings',
-						label: () => $L('Reset Ratings'),
-						desc: (ctx) => (ctx.ratingsResetArmed
-							? $L('Press again to put every ratings setting back to its default')
-							: $L('Restores the sources, their order, and the ratings toggles')),
-						icon: 'restore',
-						action: (ctx) => ctx.actions.resetRatingsSettings()
-					},
+					...ratingsRows(''),
 					{kind: KIND.SECTION, id: 'themeMusic', label: () => $L('Theme Music')},
 					{kind: KIND.TOGGLE, key: 'themeMusicEnabled', label: () => $L('Theme Music'), desc: () => $L('Play theme music on detail pages'), icon: 'music_note'},
 					{kind: KIND.SLIDER, key: 'themeMusicVolume', label: () => $L('Theme Music Volume'), min: 0, max: 100, step: 5, format: percent, icon: 'volume_down'},
