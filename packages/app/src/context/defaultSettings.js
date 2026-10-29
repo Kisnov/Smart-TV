@@ -270,7 +270,7 @@ export const defaultSettings = {
 	previewVolume: 100,
 	homeRowsPosterSize: 'default',
 	classicHomeRowsPadding: 30,
-	modernHomeRowsPadding: 420,
+	modernHomeRowsPadding: 360,
 	homeRowsImageType: 'poster',
 	// Per row overrides keyed by row id. An absent id uses the global type above.
 	homeRowImageTypes: {},

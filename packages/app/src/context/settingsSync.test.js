@@ -200,7 +200,7 @@ describe('localToProfile', () => {
 		const profile = localToProfile(defaultSettings);
 
 		expect(profile.classicHomeRowsPadding).toBe(30);
-		expect(profile.modernHomeRowsPadding).toBe(420);
+		expect(profile.modernHomeRowsPadding).toBe(360);
 	});
 
 	test('sends the card size under the names the other clients use', () => {
