@@ -274,7 +274,7 @@ export const SYNCABLE_KEYS = [
 	'sinceYouWatchedSource', 'sinceYouWatchedSourceItem', 'sinceYouWatchedSourceType', 'sinceYouWatchedIncludeWatched',
 	'rewatchIncludeMovies', 'rewatchIncludeShows', 'rewatchIncludeCollections', 'rewatchSortBy',
 	'navbarPosition', 'featuredBarStyle', 'mediaBarRowPeek', 'featuredContentType', 'featuredItemCount',
-	'featuredTrailerPreview', 'featuredTrailerMuted', 'trailerVolume', 'mediaBarTrailerCaptions', 'unifiedLibraryMode', 'seasonalTheme', 'seasonalDensity',
+	'featuredTrailerPreview', 'featuredTrailerMuted', 'trailerVolume', 'mediaBarTrailerCaptions', 'unifiedLibraryMode', 'seasonalTheme', 'seasonalDensity', 'seasonalFollower',
 	'seasonalRowEnabled', 'seasonalRowCountry', 'seasonalRowHiddenHolidays',
 	'visualTheme', 'customThemeId',
 	'showRatingLabels',

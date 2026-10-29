@@ -708,7 +708,8 @@ export const SETTINGS_SCHEMA = [
 				rows: [
 					{kind: KIND.SECTION, id: 'seasonalEffects', label: () => $L('Seasonal Effects')},
 					{kind: KIND.OPTION, key: 'seasonalTheme', label: () => $L('Seasonal Surprise'), options: getSeasonalThemeOptions, fallback: () => $L('None'), icon: 'auto_awesome', padded: true},
-					{kind: KIND.OPTION, key: 'seasonalDensity', label: () => $L('Density'), options: getSeasonalDensityOptions, fallback: () => $L('Normal'), icon: 'grain', padded: true}
+					{kind: KIND.OPTION, key: 'seasonalDensity', label: () => $L('Density'), options: getSeasonalDensityOptions, fallback: () => $L('Normal'), icon: 'grain', padded: true},
+					{kind: KIND.TOGGLE, key: 'seasonalFollower', label: () => $L('Focus Follower'), desc: () => $L("A holiday piece, like Halloween's planchette, follows what you select on Home"), icon: 'ads_click'}
 				]
 			},
 			{

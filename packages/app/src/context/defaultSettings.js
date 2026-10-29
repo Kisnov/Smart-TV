@@ -321,6 +321,7 @@ export const defaultSettings = {
 	replaceSkipOutroWithNextUp: false,
 	seasonalTheme: 'none',
 	seasonalDensity: 'normal',
+	seasonalFollower: true,
 	themeMusicEnabled: false,
 	themeMusicVolume: 30,
 	themeMusicOnHomeRows: false,
