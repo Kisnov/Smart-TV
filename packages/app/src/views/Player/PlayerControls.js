@@ -589,7 +589,7 @@ const PlayerControls = ({
 							{canDownloadRemoteSubtitles && (
 								<TrackOptionRow
 									label={$L('Download subtitles...')}
-									detail={$L('Search using the OpenSubtitles plugin')}
+									detail={$L('Search using OpenSubtitles')}
 									spotlightId="btn-subtitle-download"
 									onClick={handleOpenRemoteSubtitleSearch}
 								/>
