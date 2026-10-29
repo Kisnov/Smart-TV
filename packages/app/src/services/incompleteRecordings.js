@@ -87,8 +87,6 @@ export const useIncompleteRecording = (itemId) => useSyncExternalStore(
 // Keep as Complete clears the mark for everyone on the server, so it's for Live TV managers only.
 export const canKeepAsComplete = () => supported && canManage;
 
-export const isIncompleteRecordingsSupported = () => supported;
-
 export const isExtendedSupported = () => supported && extendedSupported;
 
 // A read already under way may still list the item, so it's dropped and the list read again.

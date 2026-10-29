@@ -113,7 +113,7 @@ const FIRST_ROW_VIEWS = {
 	ratingSources: 'rating-sources-view'
 };
 
-const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, panelMode, initialView }) => {
+const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, panelMode, initialView, hasLiveTv }) => {
 	const { api, serverUrl, servers, accessToken, hasMultipleServers, logoutAll, activeServerInfo, user, serverType } = useAuth();
 	const {
 		settings, updateSetting, updateSettings, resetSettings, restoreSyncedDefaults, applyServerProfile, selectSyncProfile,
@@ -816,7 +816,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 	const {
 		tempButtons, buttonLayoutKind, openDetailButtons, openOsdButtons, openDetailMetadata,
 		commitButtonLayout, resetButtonLayout, toggleLayoutButton, moveLayoutButton
-	} = useButtonLayoutEditor({settings, updateSettings, pushView});
+	} = useButtonLayoutEditor({settings, updateSettings, pushView, hasLiveTv});
 
 	const {
 		allLibraries, hiddenLibraries, libraryLoading, librarySaving,

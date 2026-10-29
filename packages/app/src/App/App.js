@@ -1856,6 +1856,7 @@ const AppContent = (props) => {
 									onLibrariesChanged={fetchLibraries}
 									onRunSetupWizard={handleRunSetupWizard}
 									onSelectItem={handleSelectItemFromSettings}
+									hasLiveTv={hasLiveTv}
 								/>
 							)}
 						</Panel>
@@ -2186,6 +2187,7 @@ const AppContent = (props) => {
 					onLibrariesChanged={fetchLibraries}
 					onRunSetupWizard={handleRunSetupWizard}
 					onSelectItem={handleSelectItemFromSettings}
+					hasLiveTv={hasLiveTv}
 				/>
 			)}
 			<TVKeyboard />
