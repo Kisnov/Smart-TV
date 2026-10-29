@@ -592,10 +592,10 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${browseCss.bannerDotActive}`, `background: ${onBackground};`);
 
 	// The classic info band above the rows
-	rule(`.${browseCss.detailTitle}`, `color: ${onBackground};`);
+	rule(`.${browseCss.detailTitle}, .${browseCss.infoLead}`, `color: ${onBackground};`);
 	rule(`.${browseCss.infoText}`, `color: ${os(0.8)};`);
 	rule(`.${browseCss.infoDot}`, `color: ${os(0.5)};`);
-	rule(`.${browseCss.infoBadge}`, `background: ${chipBackground}; border: ${chipBorder}; border-radius: ${chipRadius}; color: ${os(0.8)};`);
+	rule(`.${browseCss.infoBadge}`, `background: ${chipBackground}; border: ${chipBorder}; border-radius: ${chipRadius}; color: ${os(0.85)};`);
 	rule(`.${browseCss.detailSummary}`, `color: ${os(0.85)};`);
 
 	// Cards, both row styles
@@ -631,6 +631,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	}
 	rule(`.${mediaCardCss.seriesName}`, `color: ${onSurface};`);
 	rule(`.${mediaCardCss.episodeInfo}, .${modernCardCss.secondaryTitle}`, `color: ${theme.id === 'neon_pulse' ? onSurface : os(0.6)};`);
+	rule(`.${mediaCardCss.homeText} .${mediaCardCss.episodeInfo}`, `color: ${theme.id === 'neon_pulse' ? onSurface : os(0.65)};`);
 	rule(`.${modernCardCss.placeholderIcon}`, `color: ${os(0.45)};`);
 	rule(`.${modernCardCss.overview}`, `color: ${theme.id === 'neon_pulse' ? onSurface : os(0.7)};`);
 	rule(`.${modernCardCss.platformWebos} .${modernCardCss.image}`, `border-radius: ${bumpRadius(b.cardRadius, 2)};`);

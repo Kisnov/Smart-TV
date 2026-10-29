@@ -7,7 +7,8 @@ import {getRtFallbackIcon} from '../icons/rtIcons';
 import css from './RatingsRow.module.less';
 
 // surface is 'homeRows' or 'mediaBar' for the screens that keep their own ratings settings.
-const RatingsRow = ({item, serverUrl, compact = false, singleLineWidth, pluginEnabled = true, surface}) => {
+// inline keeps the full size chips on one line with each label after its value.
+const RatingsRow = ({item, serverUrl, compact = false, singleLineWidth, pluginEnabled = true, surface, inline = false}) => {
 	const settings = ratingSettingsFor(useSettings().settings, surface);
 	const showLabels = settings.showRatingLabels !== false;
 	// Badges only choose the chip chrome around each rating. Off means plain, not hidden.
@@ -160,7 +161,7 @@ const RatingsRow = ({item, serverUrl, compact = false, singleLineWidth, pluginEn
 
 	const itemClass = `${css.ratingItem}${showBadges ? '' : ' ' + css.ratingItemPlain}`;
 	return (
-		<div className={css.ratingsRow}>
+		<div className={inline ? `${css.ratingsRow} ${css.ratingsRowInline}` : css.ratingsRow}>
 			{personalRating && (
 				<div className={itemClass}>
 					<div className={css.ratingTop}>
