@@ -46,6 +46,7 @@ export const defaultSettings = {
 	preferExternalSubtitles: false,
 	// The second subtitle track's settings stay on this device. A size of 0 and an empty
 	// color follow the first track.
+	secondarySubtitlesEnabled: false,
 	preferredSecondarySubtitleLanguage: '',
 	secondarySubtitleSize: 0,
 	secondarySubtitleOffset: 8,

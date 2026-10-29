@@ -194,6 +194,18 @@ describe('settings schema', () => {
 		expect(toggle.when({...ctx, settings: {...defaultSettings, showLibrariesInToolbar: false}})).toBe(false);
 	});
 
+	test("Secondary Subtitles is off by default and follows the default language, with its own language only while it's on", () => {
+		const subtitles = allScreens().find(({sub}) => sub.id === 'subtitles').sub.rows;
+		const keys = subtitles.map((row) => row.key);
+		expect(keys.indexOf('secondarySubtitlesEnabled')).toBe(keys.indexOf('subtitleLanguage') + 1);
+		expect(defaultSettings.secondarySubtitlesEnabled).toBe(false);
+
+		const language = subtitles.find((row) => row.key === 'preferredSecondarySubtitleLanguage');
+		expect(language.when(ctx)).toBe(false);
+		expect(language.when({...ctx, settings: {...defaultSettings, secondarySubtitlesEnabled: true}})).toBe(true);
+		expect(language.when({...ctx, settings: {...defaultSettings, secondarySubtitlesEnabled: true, subtitleMode: 'none'}})).toBe(false);
+	});
+
 	// The fallback stands in for the value on the row's chip, so it's one of the chip texts
 	test('every option row falls back to what one of its own options shows on the chip', () => {
 		const mismatched = [];
