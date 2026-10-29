@@ -391,6 +391,7 @@ const AppContent = (props) => {
 	useEffect(() => {
 		configureIncompleteRecordings({
 			supported: !!settings.useMoonfinPlugin && pluginInfo?.incompleteRecordingsSupported === true,
+			extended: pluginInfo?.extendedCompleteShowingsSupported === true,
 			canManage: user?.Policy?.EnableLiveTvManagement === true
 		});
 	}, [pluginInfo, settings.useMoonfinPlugin, user]);
