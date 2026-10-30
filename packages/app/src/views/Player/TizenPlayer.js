@@ -12,6 +12,7 @@ import {
 	avplaySetBufferingParams, avplaySuspend, avplayRestore, waitForHlsManifest
 } from '@moonfin/platform-tizen/video';
 import {useSettings} from '../../context/SettingsContext';
+import {dbg, installResumeDebug, startResumeDebugStatus} from '../../utils/resumeDebug';
 import {useSyncPlay} from '../../context/SyncPlayContext';
 import * as syncPlayService from '../../services/syncPlay';
 import {KEYS, isBackKey, isMediaKey} from '../../utils/keys';
@@ -954,6 +955,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	useEffect(() => {
 		const init = async () => {
 			await initTizenAPI();
+			installResumeDebug();
 			await keepScreenOn(!isPaused);
 
 			// Make ALL ancestor backgrounds transparent so AVPlay video layer shows through.
@@ -989,15 +991,19 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			unregisterAppStateRef.current = registerAppStateObserver(
 				() => {
 					console.log('[Player] App resumed');
+					dbg(`[player] FOREGROUND isPaused=${isPaused} ready=${avplayReadyRef.current} suspended=${suspendedRef.current ? `yes pos=${suspendedRef.current.positionMs} wasPlaying=${suspendedRef.current.wasPlaying}` : 'no'} state=${avplayGetState()}`);
 					const stoppedOnServer = playback.consumeBackgroundStopFired();
+					dbg(`[player] bgStopFired=${stoppedOnServer} session=${playback.getCurrentSession() ? playback.getCurrentSession().playMethod : 'NONE'}`);
 					const suspended = suspendedRef.current;
 					suspendedRef.current = null;
 					const reload = () => reloadPlaybackRef.current?.().then((reloaded) => {
+						dbg(`[player] reload -> ${reloaded} wasPlaying=${suspended.wasPlaying}`);
 						if (reloaded === false) {
 							setError($L('Playback failed. The file format may not be supported.'));
 						} else if (reloaded && !suspended.wasPlaying) {
 							// the reopened stream starts playing, so a paused one is paused again
 							avplayPause();
+							dbg(`[player] paused again after reload, state=${avplayGetState()}`);
 							setIsPaused(true);
 							healthMonitorRef.current?.setPaused(true);
 							playback.reportProgress(positionRef.current, {isPaused: true, eventName: 'pause'});
@@ -1005,6 +1011,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					});
 					// The background stop ended the session and restoreAsync never answers on some firmware, so it is opened again
 					if (suspended && stoppedOnServer) {
+						dbg(`[player] reloading instead of restore (${playback.getCurrentSession()?.playMethod})`);
 						reload();
 						return;
 					}
@@ -1016,6 +1023,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 					if (suspended) {
 						const generation = loadGenerationRef.current;
 						avplayRestore(suspended.url, suspended.positionMs).then((ok) => {
+							dbg(`[player] restore resolved ok=${ok} state=${avplayGetState()}`);
 							// Back or another item during the restore leaves nothing to resume
 							if (generation !== loadGenerationRef.current) return;
 							if (ok) {
@@ -1030,6 +1038,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 						});
 						return;
 					}
+					dbg('[player] no suspended session to restore');
 					if (avplayReadyRef.current && !isPaused) {
 						const state = avplayGetState();
 						if (state === 'PAUSED' || state === 'READY') {
@@ -1039,6 +1048,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				},
 				() => {
 					console.log('[Player] App backgrounded - suspending and saving progress');
+					dbg(`[player] BACKGROUND state=${avplayGetState()} ready=${avplayReadyRef.current} url=${String(currentUrlRef.current || 'none').split('?')[0].slice(-40)} method=${playback.getCurrentSession()?.playMethod}`);
 					// Script freezes as soon as the app is backgrounded and a kill
 					// while suspended runs nothing at all, so the stop has to go out
 					// right now. It also records the resume position. Coming back
@@ -1053,6 +1063,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 						const positionMs = avplayGetCurrentTime();
 						if (avplaySuspend()) {
 							suspendedRef.current = {url: currentUrlRef.current, positionMs, wasPlaying};
+							dbg(`[player] suspended at ${positionMs} wasPlaying=${wasPlaying}`);
+						} else {
+							dbg('[player] suspend returned false');
 						}
 					}
 				}
@@ -1085,6 +1098,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		};
 	}, [isPaused, background]);
 
+	useEffect(() => startResumeDebugStatus(() => `isPaused=${isPausedRef.current} ready=${avplayReadyRef.current}`), []);
+
 	useEffect(() => {
 		onPausedChange?.(isPaused);
 	}, [isPaused, onPausedChange]);
@@ -1102,7 +1117,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 		// backing out of the app entirely never reaches the unmount cleanup, so
 		// the session would sit open on the server forever
-		const handleAppExit = () => {
+		const handleAppExit = (e) => {
+			dbg(`[player] handleAppExit via ${e?.type} persisted=${e?.persisted} -> cleanupAVPlay`);
 			// always report the stop, even at position 0 (live TV and freshly
 			// opened media start there), or the session lingers on the server
 			// Only a stop that went out lets the session go, so a failed one gets
@@ -1978,6 +1994,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 
 	const handleError = useCallback(async () => {
 		console.error('[Player] Playback error');
+		dbg(`[player] handleError state=${avplayGetState()} hasPlayed=${hasPlayedRef.current} reopened=${hasReopenedRef.current}`);
 
 		// A channel past its tune is the live recovery's to bring back.
 		if (liveRecovery?.engaged()) {
@@ -2040,6 +2057,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Reload the current item from its last position, used when a suspended
 	// session cant be restored after the app returns to the foreground
 	const reloadCurrentPlayback = useCallback(async () => {
+		dbg(`[player] reloadCurrentPlayback burnInSub=${burnInSubtitleRef.current} audio=${selectedAudioIndex}`);
 		const generation = loadGenerationRef.current;
 		// Back or another item while this runs leaves nothing to reload
 		const superseded = () => generation !== loadGenerationRef.current;
@@ -2216,6 +2234,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	}, []);
 
 	const handlePlayPause = useCallback(() => {
+		dbg(`[player] PLAY/PAUSE key state=${avplayGetState()} ready=${avplayReadyRef.current} isPaused=${isPausedRef.current}`);
 		if (resumeHeldScrub()) return;
 		noteViewerActivity();
 		const state = avplayGetState();
