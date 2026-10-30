@@ -14,7 +14,6 @@ import css from './PersonalRatingDialog.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -158,6 +157,7 @@ const PersonalRatingDialog = ({open, style, userData, onSetThumbRating, onSetNum
 				className={dialogCss.dialog}
 				spotlightId="personal-rating-dialog"
 				onKeyDown={handleKeyDown}
+				spotlightRestrict="self-only"
 			>
 				<h2 className={dialogCss.title}>{$L('Rate')}</h2>
 				{editor}

@@ -15,11 +15,10 @@ import css from './RecordPrompt.module.less';
 
 const SpottableButton = Spottable('button');
 
-// self-only on its own still lets a press at the edge reach the screen behind the scrim, so every
-// direction is closed off as well.
+// A press at the edge must not reach the screen behind the scrim. The prompt holds focus through
+// spotlightRestrict where it is drawn, since the decorator drops a restrict set here.
 const PromptContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''},
 	preserveId: true
 }, 'div');
@@ -110,7 +109,7 @@ const RecordPrompt = ({programName, airing, suggestion, searchForCompleteShowing
 
 	return (
 		<div className={css.scrim}>
-			<PromptContainer className={css.dialog} spotlightId="record-prompt">
+			<PromptContainer className={css.dialog} spotlightId="record-prompt" spotlightRestrict="self-only">
 				<div className={css.title}>{$L('Record {name}').replace('{name}', programName)}</div>
 				<div className={css.details}>
 					<div className={css.started}>

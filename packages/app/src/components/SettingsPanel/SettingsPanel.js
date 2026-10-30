@@ -6,7 +6,6 @@ import css from './SettingsPanel.module.less';
 
 const PanelContainer = SpotlightContainerDecorator({
 	enterTo: 'last-focused',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -31,7 +30,7 @@ const SettingsPanel = ({initialView, onClose, onLibrariesChanged, onRunSetupWiza
 	return (
 		<div className={closing ? `${css.overlay} ${css.closing}` : css.overlay}>
 			<div className={css.scrim} onClick={handleClose} />
-			<PanelContainer className={css.panel} spotlightId="settings-panel-container">
+			<PanelContainer className={css.panel} spotlightId="settings-panel-container" spotlightRestrict="self-only">
 				<Settings
 					panelMode
 					initialView={initialView}

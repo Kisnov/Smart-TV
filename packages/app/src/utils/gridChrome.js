@@ -121,10 +121,10 @@ export const createToolbarKeyDown = (gridSpotlightId, aboveSpotlightId) => (e) =
 		return;
 	}
 	if (e.keyCode !== KEYS.DOWN) return;
-
+	// With no grid drawn, as under a load error, Down is left to Spotlight to find what is below.
+	if (!Spotlight.focus(gridSpotlightId)) return;
 	e.preventDefault();
 	e.stopPropagation();
-	Spotlight.focus(gridSpotlightId);
 };
 
 // Up out of the grid goes back to the toolbar, but only from the top of the list. Further

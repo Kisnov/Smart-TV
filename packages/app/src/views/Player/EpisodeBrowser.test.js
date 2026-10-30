@@ -26,7 +26,7 @@ jest.mock('@enact/spotlight/Spottable', () => (type) => {
 });
 jest.mock('@enact/spotlight/SpotlightContainerDecorator', () => (config, type) => {
 	const React = require('react');
-	return ({spotlightId, ...props}) => React.createElement(type, props); // eslint-disable-line no-unused-vars
+	return ({spotlightId, spotlightRestrict, ...props}) => React.createElement(type, props); // eslint-disable-line no-unused-vars
 });
 jest.mock('@enact/spotlight', () => ({__esModule: true, default: {focus: jest.fn(() => true), getPointerMode: () => false}}));
 jest.mock('../../services/jellyfinApi', () => ({getServerUrl: () => 'http://server'}));

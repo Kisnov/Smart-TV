@@ -8,7 +8,6 @@ import css from './ShuffleOverlay.module.less';
 
 const PickerContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -23,7 +22,7 @@ const PickerDialog = ({open, title, items, loading, emptyLabel, onClose, onPick,
 
 	return (
 		<div aria-hidden={!open} className={overlayClassName}>
-			<PickerContainer className={dialogClassName} spotlightDisabled={!open} spotlightId={spotlightId}>
+			<PickerContainer className={dialogClassName} spotlightDisabled={!open} spotlightId={spotlightId} spotlightRestrict="self-only">
 				<h3 className={css.pickerTitle}>{title}</h3>
 				{loading ? (
 					<div className={css.pickerLoading}>{$L('Loading...')}</div>

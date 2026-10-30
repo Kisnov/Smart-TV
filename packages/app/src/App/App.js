@@ -39,7 +39,7 @@ import {AchievementsProvider, useAchievements} from '../context/AchievementsCont
 import {achievementIconPath} from '../views/Settings/achievements/achievementIcons';
 import {threadIsPhoto} from '../utils/achievementsModel';
 import {ServerMessagesProvider, useServerMessages} from '../context/ServerMessagesContext';
-import {SyncPlayProvider, useSyncPlay} from '../context/SyncPlayContext';
+import {SyncPlayProvider, followsQueueUpdate, useSyncPlay} from '../context/SyncPlayContext';
 import {useVersionCheck} from '../hooks/useVersionCheck';
 import UpdateNotification from '../components/UpdateNotification';
 import {ItemMenuProvider} from '../components/ItemContextMenu';
@@ -178,7 +178,7 @@ const AppContent = (props) => {
 	const {streamNotification, dismissStreamNotification, pluginInfo} = useSeerr();
 	const {pendingPopups, markPopupsRead} = useServerMessages();
 	const themeMusic = useThemeMusic();
-	const {openDialog: openSyncPlay, closeDialog: closeSyncPlay, isDialogOpen: syncPlayDialogOpen, playQueueUpdate: syncPlayQueueUpdate, isInGroup: isSyncPlayInGroup, setNewQueue: syncPlaySetNewQueue, getGroupPositionTicks: getSyncPlayPositionTicks} = useSyncPlay();
+	const {openDialog: openSyncPlay, closeDialog: closeSyncPlay, isDialogOpen: syncPlayDialogOpen, playQueueUpdate: syncPlayQueueUpdate, isInGroup: isSyncPlayInGroup, setNewQueue: syncPlaySetNewQueue, moveGroupTo: syncPlayMoveGroupTo, getGroupPositionTicks: getSyncPlayPositionTicks} = useSyncPlay();
 	const handledSyncPlayQueueRef = useRef(null);
 
 	const [remoteMessage, setRemoteMessage] = useState(null);
@@ -1147,7 +1147,7 @@ const AppContent = (props) => {
 		const update = syncPlayQueueUpdate;
 		if (!update || update === handledSyncPlayQueueRef.current) return;
 		handledSyncPlayQueueRef.current = update;
-		if (!update.startsPlayback && playingItem?.Id === update.item.Id) return;
+		if (!followsQueueUpdate(update, playingItem?.Id)) return;
 		playSyncPlayItem(update.item);
 	}, [syncPlayQueueUpdate, playingItem, playSyncPlayItem]);
 
@@ -1163,6 +1163,14 @@ const AppContent = (props) => {
 	// one the viewer picked by hand from the episode browser passes `resume` so an episode they
 	// were part way through carries on from where it stopped.
 	const handlePlayNext = useCallback((item, options) => {
+		// In a group the group moves on, and its queue update brings this player along. The group
+		// only knows this server's items, so a Plex item or another server's plays on here alone.
+		const groupHasItem = (item._serverType || serverType) !== 'plex' && (!item._serverUrl || item._serverUrl === serverUrl);
+		if (isSyncPlayInGroup && groupHasItem && !isAudioItem(item) && !isLiveTvChannel(item)) {
+			const startPositionTicks = options?.resume === true ? (item.UserData?.PlaybackPositionTicks || 0) : 0;
+			syncPlayMoveGroupTo(item.Id, startPositionTicks);
+			return;
+		}
 		setPlayingItem(item);
 		setPlaybackOptions(prev => {
 			if (prev?.audioPlaylist?.some(t => t.Id === item.Id)) {
@@ -1177,7 +1185,7 @@ const AppContent = (props) => {
 			return null;
 		});
 		setIsResume(options?.resume === true);
-	}, []);
+	}, [isSyncPlayInGroup, serverType, serverUrl, syncPlayMoveGroupTo]);
 
 	const handlePlayerEnd = useCallback(() => {
 		// Episodes played on from inside the player (next episode, the episode browser) leave the
@@ -1229,18 +1237,30 @@ const AppContent = (props) => {
 		navigateTo(PANELS.SEARCH);
 	}, [navigateTo]);
 
+	// The button Settings was opened from, which is where focus goes back to when it closes.
+	// Otherwise the panel takes focus with it and the next press finds nothing focused.
+	const settingsOpenerRef = useRef(null);
+
 	const handleOpenSettings = useCallback(() => {
+		settingsOpenerRef.current = Spotlight.getCurrent();
 		setSettingsInitialView(null);
 		setShowSettingsPanel(true);
 	}, []);
 
 	const handleOpenFriends = useCallback(() => {
+		settingsOpenerRef.current = Spotlight.getCurrent();
 		setSettingsInitialView('friends');
 		setShowSettingsPanel(true);
 	}, []);
 
 	const handleCloseSettingsPanel = useCallback(() => {
 		setShowSettingsPanel(false);
+		const opener = settingsOpenerRef.current;
+		settingsOpenerRef.current = null;
+		// Once the panel has gone, and only if nothing else has taken focus meanwhile.
+		setTimeout(() => {
+			if (!Spotlight.getCurrent() && opener && document.body.contains(opener)) Spotlight.focus(opener);
+		}, 0);
 	}, []);
 
 	// Settings sits over everything, so picking something in it has to step out of the way first.

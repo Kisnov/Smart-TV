@@ -1077,6 +1077,15 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.CUSTOM, render: 'seerrPanel'},
 					{
 						kind: KIND.TOGGLE,
+						key: 'seerrBlockNsfw',
+						label: () => $L('NSFW Filter'),
+						desc: () => $L('Hide adult content in results'),
+						icon: 'visibility_off_outlined',
+						// It also filters the TMDB recommendations on Details, which a TMDB key brings without Seerr.
+						when: (ctx) => whenSeerr(ctx) || Boolean(ctx.settings.tmdbApiKey)
+					},
+					{
+						kind: KIND.TOGGLE,
 						key: 'seerrShowMissingCollectionItems',
 						label: () => $L('Show Missing Collection Items'),
 						desc: () => $L('Include missing items on Collection pages'),

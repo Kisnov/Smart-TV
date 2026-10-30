@@ -196,12 +196,14 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const {showBuffering, noteSeek} = useBufferingAnimation({
 		isBuffering,
 		isSeeking,
-		hasPreview: isTrickplayOn(settings) && hasTrickplayPreview(item.Id, mediaSourceId)
+		hasPreview: isTrickplayOn(settings) && hasTrickplayPreview(item, mediaSourceId)
 	});
 	const [hasTriedTranscode, setHasTriedTranscode] = useState(false);
 	const [focusRow, setFocusRow] = useState('bottom');
 	const [isAudioMode, setIsAudioMode] = useState(false);
 	const [isFavorite, setIsFavorite] = useState(false);
+	// Whose favorite the button shows, so reloading the same item keeps what the viewer set.
+	const favoriteItemRef = useRef(null);
 	const [zoomMode, setZoomMode] = useState(() => zoomInternalFromSetting(settings.playerZoomMode));
 	const [videoDisplayAspectRatio, setVideoDisplayAspectRatio] = useState(null);
 	const [decodedAspectRatio, setDecodedAspectRatio] = useState(null);
@@ -476,6 +478,9 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		selectedSubtitleIndex, canDownloadRemoteSubtitles: !isAudioMode && Boolean(item?.Id), hasCastMembers, zoomModeLabel, zoomModeKey: zoomMode,
 		sleepMinutes,
 		canBrowseEpisodes: canBrowseEpisodes({item, isLiveTV, isAudioMode}),
+		// A cinema mode intro is not something the viewer chose to watch.
+		canFavorite: Boolean(item?.Id) && !isPreroll(item),
+		inSyncPlayGroup: isInGroup,
 		isFavorite, hasLyrics: lyrics.lines.length > 0, audioPanel,
 		recordable: liveRecording.available, recordMark: liveRecording.mark
 	});
@@ -904,6 +909,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				prevItemIdRef.current = item.Id;
 			}
 			setIsLoading(true);
+			// Before any of the loading below, so the button never acts on the last item's state.
+			const favoriteItem = `${item._serverUrl || ''}|${item.Id}`;
+			if (favoriteItemRef.current !== favoriteItem) {
+				favoriteItemRef.current = favoriteItem;
+				setIsFavorite(!!item.UserData?.IsFavorite);
+			}
 			// A video taking over from music opens on its own screen, not the music player's.
 			setIsAudioMode((wasAudio) => wasAudio && (item?.MediaType === 'Audio' || item?.Type === 'Audio'));
 			setError(null);
@@ -1183,7 +1194,6 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				setIsAudioMode(shouldUseAudioMode);
 				// The next track keeps the music player's focus wherever the remote left it.
 				setFocusRow((row) => (shouldUseAudioMode && (row === 'panel' || row === 'progress') ? row : 'bottom'));
-				setIsFavorite(!!item.UserData?.IsFavorite);
 
 				// Audio mode: always show controls, skip video-only features
 				if (shouldUseAudioMode) {
@@ -2334,7 +2344,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// commits it. The viewer can turn that off, and without a preview playback carries on.
 	const beginScrub = useCallback(() => {
 		if (scrubHoldRef.current.active || settings.trickPlayPauseWhileScrubbing === false ||
-			settings.trickPlayMode === 'disabled' || isInGroup || !hasTrickplayPreview(item.Id, mediaSourceId)) return;
+			settings.trickPlayMode === 'disabled' || isInGroup || !hasTrickplayPreview(item, mediaSourceId)) return;
 		const video = videoRef.current;
 		const wasPlaying = Boolean(video && !video.paused);
 		scrubHoldRef.current = {active: true, wasPlaying, ticks: null};
@@ -2342,7 +2352,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			video.pause();
 			healthMonitorRef.current?.setPaused(true);
 		}
-	}, [settings.trickPlayPauseWhileScrubbing, settings.trickPlayMode, isInGroup, item.Id, mediaSourceId]);
+	}, [settings.trickPlayPauseWhileScrubbing, settings.trickPlayMode, isInGroup, item, mediaSourceId]);
 
 	const {stepBy: heldSeekStep, stepSeconds: seekStepSeconds} = useHeldSeekStep(settings.seekStep);
 
@@ -2480,10 +2490,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		setActiveModal(null);
 		showControls(false);
 		window.requestAnimationFrame(() => {
-		  if (lastFocusedElementRef.current) {
-				Spotlight.focus(lastFocusedElementRef.current);
-			}else{
-			  Spotlight.focus('playerControls');
+			// The button that opened it can be gone by now, like SyncPlay's once the group is left.
+			const last = lastFocusedElementRef.current;
+			if (last && document.body.contains(last)) {
+				Spotlight.focus(last);
+			} else {
+				Spotlight.focus('play-pause-btn');
 			}
 		});
 	}, [showControls]);
@@ -2974,6 +2986,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			case 'cast': handleOpenCast(); break;
 			case 'zoom': handleToggleZoom(); break;
 			case 'sleep': openModal('sleep'); break;
+			case 'syncPlay': openModal('syncPlay'); break;
 			case 'info': openModal('info'); break;
 			case 'channels': openCarousel(); break;
 			case 'guide': handleOpenGuide(); break;

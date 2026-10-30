@@ -16,7 +16,6 @@ import css from './ShuffleOverlay.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -103,7 +102,7 @@ const ShuffleOverlay = ({
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={`${css.dialog} ${pickerMode ? css.dialogDimmed : ''}`} spotlightId="shuffle-overlay-dialog">
+			<DialogContainer className={`${css.dialog} ${pickerMode ? css.dialogDimmed : ''}`} spotlightId="shuffle-overlay-dialog" spotlightRestrict="self-only">
 				<div className={css.topStrip}>
 					<div className={css.badge}>{$L('RANDOM SHUFFLE')}</div>
 					<div className={css.filterSummary}>{filterSummary}</div>

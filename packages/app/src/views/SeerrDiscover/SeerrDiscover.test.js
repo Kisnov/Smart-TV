@@ -163,6 +163,25 @@ describe('SeerrDiscover in the Modern style', () => {
 	});
 });
 
+describe('SeerrDiscover with the NSFW filter', () => {
+	it('drops a load the filter has changed since, whenever it lands', async () => {
+		const titles = () => ({results: [{id: 1, mediaType: 'movie', title: 'Night film', adult: true}, {id: 2, mediaType: 'movie', title: 'Day film'}]});
+		let landFirstLoad;
+		seerrApi.trending.mockImplementationOnce(() => new Promise((resolve) => {
+			landFirstLoad = () => resolve(titles());
+		}));
+		seerrApi.trending.mockImplementation(() => Promise.resolve(titles()));
+		mockSettings.settings = {seerrBlockNsfw: false};
+		const {rerender} = render(<SeerrDiscover onOpenRequests={() => {}} />);
+		await waitFor(() => expect(landFirstLoad).toBeDefined());
+		mockSettings.settings = {seerrBlockNsfw: true};
+		rerender(<SeerrDiscover onOpenRequests={() => {}} />);
+		await waitFor(() => expect(modernRow('trending')?.items.map((item) => item.Id)).toEqual(['seerr-movie-2']));
+		await act(async () => landFirstLoad());
+		expect(modernRow('trending').items.map((item) => item.Id)).toEqual(['seerr-movie-2']);
+	});
+});
+
 describe('SeerrDiscover in the Classic style', () => {
 	it('keeps its own rows and the info header', async () => {
 		mockSettings.settings = {homeRowsStyle: 'v1'};

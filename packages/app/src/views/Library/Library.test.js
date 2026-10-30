@@ -21,7 +21,7 @@ jest.mock('@enact/spotlight', () => ({focus: jest.fn(() => true), getPointerMode
 // Spotlight's own prop would be an unknown attribute on the plain elements these mocks render.
 const plain = (type) => {
 	const React = require('react');
-	return ({spotlightId, ...props}) => React.createElement(type, {...props, 'data-spotlight-id': spotlightId});
+	return ({spotlightId, spotlightRestrict, ...props}) => React.createElement(type, {...props, 'data-spotlight-id': spotlightId}); // eslint-disable-line no-unused-vars
 };
 jest.mock('@enact/spotlight/Spottable', () => (type) => plain(type));
 jest.mock('@enact/spotlight/SpotlightContainerDecorator', () => (config, type) => plain(type));
@@ -42,6 +42,7 @@ jest.mock('../../components/TileGrid', () => () => null);
 jest.mock('../../components/MediaRow', () => () => null);
 jest.mock('../../components/DetailsTabBar', () => () => null);
 jest.mock('../../components/RatingsRow', () => () => null);
+jest.mock('../../components/LoadFailedNotice', () => () => null);
 jest.mock('./LibrarySkeleton', () => () => null);
 jest.mock('../../components/SpottableInput/SpottableInput', () => {
 	const React = require('react');
