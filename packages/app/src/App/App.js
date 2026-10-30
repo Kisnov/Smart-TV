@@ -1237,18 +1237,30 @@ const AppContent = (props) => {
 		navigateTo(PANELS.SEARCH);
 	}, [navigateTo]);
 
+	// The button Settings was opened from, which is where focus goes back to when it closes.
+	// Otherwise the panel takes focus with it and the next press finds nothing focused.
+	const settingsOpenerRef = useRef(null);
+
 	const handleOpenSettings = useCallback(() => {
+		settingsOpenerRef.current = Spotlight.getCurrent();
 		setSettingsInitialView(null);
 		setShowSettingsPanel(true);
 	}, []);
 
 	const handleOpenFriends = useCallback(() => {
+		settingsOpenerRef.current = Spotlight.getCurrent();
 		setSettingsInitialView('friends');
 		setShowSettingsPanel(true);
 	}, []);
 
 	const handleCloseSettingsPanel = useCallback(() => {
 		setShowSettingsPanel(false);
+		const opener = settingsOpenerRef.current;
+		settingsOpenerRef.current = null;
+		// Once the panel has gone, and only if nothing else has taken focus meanwhile.
+		setTimeout(() => {
+			if (!Spotlight.getCurrent() && opener && document.body.contains(opener)) Spotlight.focus(opener);
+		}, 0);
 	}, []);
 
 	// Settings sits over everything, so picking something in it has to step out of the way first.
