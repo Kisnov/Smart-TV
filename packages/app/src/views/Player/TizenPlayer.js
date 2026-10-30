@@ -223,6 +223,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	const liveRangeReadAtRef = useRef(0);
 	const [isAudioMode, setIsAudioMode] = useState(false);
 	const [isFavorite, setIsFavorite] = useState(false);
+	// Whose favorite the button shows, so reloading the same item keeps what the viewer set.
+	const favoriteItemRef = useRef(null);
 	const [zoomMode, setZoomMode] = useState(() => zoomInternalFromSetting(settings.playerZoomMode));
 	const [videoAspectRatio, setVideoAspectRatio] = useState(null);
 	const [castMembers, setCastMembers] = useState([]);
@@ -428,6 +430,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		selectedSubtitleIndex, canDownloadRemoteSubtitles: !isAudioMode && Boolean(item?.Id), hasCastMembers, zoomModeLabel, zoomModeKey: zoomMode,
 		sleepMinutes,
 		canBrowseEpisodes: canBrowseEpisodes({item, isLiveTV, isAudioMode}),
+		// A cinema mode intro is not something the viewer chose to watch.
+		canFavorite: Boolean(item?.Id) && !isPreroll(item),
 		isFavorite, hasLyrics: lyrics.lines.length > 0, audioPanel,
 		recordable: liveRecording.available, recordMark: liveRecording.mark
 	});
@@ -1310,6 +1314,12 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			const generation = ++loadGenerationRef.current;
 			const stillCurrent = () => generation === loadGenerationRef.current;
 			setIsLoading(true);
+			// Before any of the loading below, so the button never acts on the last item's state.
+			const favoriteItem = `${item._serverUrl || ''}|${item.Id}`;
+			if (favoriteItemRef.current !== favoriteItem) {
+				favoriteItemRef.current = favoriteItem;
+				setIsFavorite(!!item.UserData?.IsFavorite);
+			}
 			// A video taking over from music opens on its own screen, not the music player's.
 			setIsAudioMode((wasAudio) => wasAudio && (item?.MediaType === 'Audio' || item?.Type === 'Audio'));
 			setError(null);
@@ -1606,7 +1616,6 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				setIsAudioMode(shouldUseAudioMode);
 				// The next track keeps the music player's focus wherever the remote left it.
 				setFocusRow((row) => (shouldUseAudioMode && (row === 'panel' || row === 'progress') ? row : 'bottom'));
-				setIsFavorite(!!item.UserData?.IsFavorite);
 
 				// Audio mode: always show controls, skip video-only features.
 				// Segment and next episode lookups only feed overlays, so they run

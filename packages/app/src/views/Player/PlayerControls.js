@@ -44,7 +44,7 @@ export const usePlayerButtons = ({
 	nextEpisode, isAudioMode, isLiveTV, liveRewind, atLive, hasNextTrack, hasPrevTrack,
 	shuffleMode, repeatMode, selectedQuality,
 	selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey,
-	sleepMinutes, canBrowseEpisodes = false, isFavorite, hasLyrics, audioPanel, recordable, recordMark
+	sleepMinutes, canBrowseEpisodes = false, canFavorite = false, isFavorite = false, hasLyrics, audioPanel, recordable, recordMark
 }) => {
 	const {settings} = useSettings();
 	const topButtons = useMemo(() => {
@@ -125,6 +125,7 @@ export const usePlayerButtons = ({
 			], {order: osdOrder, hidden: osdHidden});
 		}
 		return arrange([
+			...(canFavorite ? [{id: 'favorite', icon: (isFavorite ? <IconFavoriteFilled /> : <IconFavorite />), label: isFavorite ? $L('Remove from Favorites') : $L('Add to Favorites'), action: 'favorite', active: isFavorite}] : []),
 			...(chapters.length > 0 ? [{id: 'chapters', icon: <IconChapters />, label: $L('Chapters'), action: 'chapter'}] : []),
 			// Only an episode has a season to browse, so a movie never gets this button.
 			...(canBrowseEpisodes ? [{id: 'episodes', icon: <IconEpisodes />, label: $L('Episodes'), action: 'episodes'}] : []),
@@ -138,7 +139,7 @@ export const usePlayerButtons = ({
 			{id: 'sleep', icon: <IconSleep />, label: $L('Sleep timer'), action: 'sleep', active: sleepMinutes != null},
 			{id: 'info', icon: <IconInfo />, label: $L('Playback Information'), action: 'info'}
 		], {order: osdOrder, hidden: osdHidden, catalogue: OSD_BUTTONS});
-	}, [audioStreams.length, chapters.length, canBrowseEpisodes, subtitleStreams.length, isAudioMode, isLiveTV, selectedQuality, selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey, sleepMinutes, osdOrder, osdHidden, isFavorite, hasLyrics, audioPanel, recordable, recordMark]);
+	}, [audioStreams.length, chapters.length, canBrowseEpisodes, canFavorite, subtitleStreams.length, isAudioMode, isLiveTV, selectedQuality, selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey, sleepMinutes, osdOrder, osdHidden, isFavorite, hasLyrics, audioPanel, recordable, recordMark]);
 
 	return {topButtons, bottomButtons};
 };
