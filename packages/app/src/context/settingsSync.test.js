@@ -18,6 +18,8 @@ import {
 } from './SettingsContext';
 import {__resetHomeLayoutPassthrough, homeRowsFromProfile} from '../utils/homeLayout';
 
+const pushOne = (key, value) => localToProfile({...defaultSettings, [key]: value}, [key]);
+
 describe('profileToLocal', () => {
 	test('takes the TV button fields under their own names', () => {
 		const local = profileToLocal({
@@ -574,6 +576,79 @@ describe('the seasonal row settings', () => {
 	});
 });
 
+// Core reads these as enums by name and silently keeps its own value when a name doesn't
+// match, so the spellings below are copied from Moonfin-Core's preference_constants.dart.
+describe('choices Core spells differently', () => {
+	test('send the detail screen style by name and read either spelling back', () => {
+		expect(pushOne('detailScreenStyle', 'v1')).toEqual({detailScreenStyle: 'classic'});
+		expect(pushOne('detailScreenStyle', 'v4')).toEqual({detailScreenStyle: 'nouveau'});
+		expect(pushOne('detailScreenStyle', 'v5')).toEqual({detailScreenStyle: 'minimalist'});
+		expect(profileToLocal({detailScreenStyle: 'spotlight'}).detailScreenStyle).toBe('v3');
+		expect(profileToLocal({detailScreenStyle: 'v2'}).detailScreenStyle).toBe('v2');
+		expect(profileToLocal({detailScreenStyle: 'bogus'}).detailScreenStyle).toBeUndefined();
+	});
+
+	test('send the built-in themes under Core ids and read them back as this app ids', () => {
+		expect(pushOne('visualTheme', 'neon_pulse')).toEqual({visualTheme: 'neonPulse'});
+		expect(pushOne('visualTheme', '8bit_hero')).toEqual({visualTheme: 'eightbitHero'});
+		expect(pushOne('visualTheme', 'glass')).toEqual({visualTheme: 'glass'});
+		expect(profileToLocal({visualTheme: 'neonPulse'}).visualTheme).toBe('neon_pulse');
+		expect(profileToLocal({visualTheme: 'eightbitHero'}).visualTheme).toBe('8bit_hero');
+		expect(profileToLocal({visualTheme: '8bit_hero'}).visualTheme).toBe('8bit_hero');
+	});
+
+	test('send the focus color by name and Theme Default as it is', () => {
+		expect(pushOne('focusBorderColor', '#00a4dc')).toEqual({focusColor: 'moonfinCyan'});
+		expect(pushOne('focusBorderColor', '')).toEqual({focusColor: ''});
+		expect(profileToLocal({focusColor: 'darkBlue'}).focusBorderColor).toBe('#003366');
+		expect(profileToLocal({focusColor: 'eightBitGold'}).focusBorderColor).toBe('#ffcd75');
+		expect(profileToLocal({focusColor: '#ff2e92'}).focusBorderColor).toBe('#ff2e92');
+		expect(profileToLocal({focusColor: ''}).focusBorderColor).toBe('');
+	});
+
+	test('send the watched indicator that hides the unwatched count under Core name', () => {
+		expect(pushOne('watchedIndicatorBehavior', 'hideCount')).toEqual({watchedIndicator: 'hideUnwatched'});
+		expect(pushOne('watchedIndicatorBehavior', 'episodesOnly')).toEqual({watchedIndicator: 'episodesOnly'});
+		expect(profileToLocal({watchedIndicator: 'hideUnwatched'}).watchedIndicatorBehavior).toBe('hideCount');
+		expect(profileToLocal({watchedIndicator: 'never'}).watchedIndicatorBehavior).toBe('never');
+	});
+
+	test('send the genres row item filter under Core names', () => {
+		expect(pushOne('genresRowItemFilter', 'all')).toEqual({genresRowItemFilter: 'both'});
+		expect(pushOne('genresRowItemFilter', 'Movie')).toEqual({genresRowItemFilter: 'movies'});
+		expect(pushOne('genresRowItemFilter', 'Series')).toEqual({genresRowItemFilter: 'series'});
+		expect(profileToLocal({genresRowItemFilter: 'both'}).genresRowItemFilter).toBe('all');
+		expect(profileToLocal({genresRowItemFilter: 'movies'}).genresRowItemFilter).toBe('Movie');
+		expect(profileToLocal({genresRowItemFilter: 'Movie'}).genresRowItemFilter).toBe('Movie');
+	});
+
+	test('send the home row sorts as Core option names and never pass one to the server as a field', () => {
+		expect(pushOne('favoritesRowSortBy', 'SortName')).toEqual({favoritesRowSortBy: 'name'});
+		expect(pushOne('collectionsRowSortBy', 'PlaylistOrder')).toEqual({collectionsRowSortBy: 'playlistOrder'});
+		expect(pushOne('genresRowSortBy', 'OfficialRating')).toEqual({genresRowSortBy: 'rating'});
+		expect(pushOne('genresRowSortBy', 'DatePlayed')).toEqual({genresRowSortBy: 'DatePlayed'});
+		expect(profileToLocal({favoritesRowSortBy: 'dateAdded'}).favoritesRowSortBy).toBe('DateCreated');
+		expect(profileToLocal({genresRowSortBy: 'communityRating'}).genresRowSortBy).toBe('CommunityRating');
+		expect(profileToLocal({collectionsRowSortBy: 'DateCreated'}).collectionsRowSortBy).toBe('DateCreated');
+		expect(profileToLocal({favoritesRowSortBy: 'datePlayed'}).favoritesRowSortBy).toBeUndefined();
+	});
+
+	test('leave the interface language alone when Core follows the system', () => {
+		expect(profileToLocal({languageOverride: 'system'}).uiLanguage).toBeUndefined();
+		expect(profileToLocal({languageOverride: 'ca'}).uiLanguage).toBe('ca');
+	});
+
+	test('keep the blur and the media bar source on this device', () => {
+		expect(pushOne('backdropBlurHome', 40)).toEqual({});
+		expect(pushOne('backdropBlurDetail', 40)).toEqual({});
+		expect(pushOne('mediaBarSourceType', 'collection')).toEqual({});
+		const local = profileToLocal({browsingBlur: '2', detailsScreenBlur: '2', mediaBarSourceType: 'random'});
+		expect(local.backdropBlurHome).toBeUndefined();
+		expect(local.backdropBlurDetail).toBeUndefined();
+		expect(local.mediaBarSourceType).toBeUndefined();
+	});
+});
+
 describe('activeSyncProfile', () => {
 	test('names each profile the plugin stores', () => {
 		for (const profile of SYNC_PROFILES) {
@@ -816,4 +891,32 @@ test('Home rows read back from the webOS database still match the server copy', 
 	expect(sameSyncedValue(server, kept)).toBe(true);
 	expect(sameSyncedValue(server, [{...kept[0], enabled: false}])).toBe(false);
 	expect(sameSyncedValue(server, [...kept, {_id: '1b', id: 'nextup', enabled: true, order: 1}])).toBe(false);
+});
+
+describe('the video start delay', () => {
+	test('goes out in the milliseconds the other clients store', () => {
+		expect(pushOne('videoStartDelay', 1.5)).toEqual({videoStartDelay: 1500});
+		expect(pushOne('videoStartDelay', 0)).toEqual({videoStartDelay: 0});
+	});
+
+	test('comes back as seconds on the half second steps of the slider here', () => {
+		expect(profileToLocal({videoStartDelay: 1000}).videoStartDelay).toBe(1);
+		expect(profileToLocal({videoStartDelay: 250}).videoStartDelay).toBe(0.5);
+		expect(profileToLocal({videoStartDelay: 5000}).videoStartDelay).toBe(5);
+	});
+
+	test('still reads the seconds an older build of this app pushed', () => {
+		expect(profileToLocal({videoStartDelay: 2.5}).videoStartDelay).toBe(2.5);
+		expect(profileToLocal({videoStartDelay: 0}).videoStartDelay).toBe(0);
+	});
+});
+
+describe('the shuffle content type', () => {
+	test('says tvshows to the other clients and reads it back as tv', () => {
+		expect(pushOne('shuffleContentType', 'tv')).toEqual({shuffleContentType: 'tvshows'});
+		expect(profileToLocal({shuffleContentType: 'tvshows'}).shuffleContentType).toBe('tv');
+		expect(profileToLocal({shuffleContentType: 'movies'}).shuffleContentType).toBe('movies');
+		expect(profileToLocal({shuffleContentType: 'tv'}).shuffleContentType).toBe('tv');
+		expect(profileToLocal({shuffleContentType: 'music'}).shuffleContentType).toBeUndefined();
+	});
 });

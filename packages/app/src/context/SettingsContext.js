@@ -49,9 +49,6 @@ const SERVER_TO_LOCAL = {
 	mediaBarExcludedGenres: 'excludedGenres',
 	enableMultiServerLibraries: 'unifiedLibraryMode',
 	seasonalSurprise: 'seasonalTheme',
-	detailsScreenBlur: 'backdropBlurDetail',
-	detailsBackdropBlur: 'backdropBlurDetail',
-	browsingBlur: 'backdropBlurHome',
 	homeBackdropEnabled: 'showHomeBackdrop',
 	use24HourClock: 'clockDisplay',
 	focusColor: 'focusBorderColor',
@@ -101,15 +98,6 @@ const normalizeHomeRowsStyle = (value) => {
 	return value === 'v1' || value === 'v2' ? value : 'v2';
 };
 
-const normalizeDetailScreenStyle = (value) => {
-	if (value === 'classic') return 'v1';
-	if (value === 'modern') return 'v2';
-	if (value === 'spotlight') return 'v3';
-	if (value === 'nouveau') return 'v4';
-	if (value === 'minimalist') return 'v5';
-	return ['v1', 'v2', 'v3', 'v4', 'v5'].indexOf(value) >= 0 ? value : 'v2';
-};
-
 const normalizeGuid = (id) => {
 	if (!id || typeof id !== 'string') return id;
 	const raw = id.replace(/-/g, '');
@@ -132,6 +120,13 @@ const MIN_INTERVAL_MS = 100;
 const secondsToMs = (v) => (typeof v === 'number' ? Math.round(v * 1000) : undefined);
 const msToSeconds = (v) => (typeof v === 'number' ? Math.round(v / 1000) : undefined);
 
+// The slider here stops at 5 seconds in half second steps, so a bigger number is milliseconds.
+const MAX_START_DELAY_SECONDS = 5;
+const startDelayFromServer = (v) => {
+	if (typeof v !== 'number') return undefined;
+	return v > MAX_START_DELAY_SECONDS ? Math.round(v / 500) / 2 : v;
+};
+
 // A choice this app doesn't offer is left out, so the one already picked stays.
 const oneOf = (values) => ({fromServer: v => (values.includes(v) ? v : undefined)});
 
@@ -149,6 +144,60 @@ const surfaceRatingSources = {
 	toServer: ratingSourcesToServer,
 	fromServer: (v) => (Array.isArray(v) && v.length === 0 ? undefined : normalizeRatingSources(v))
 };
+
+const hasOwn = (map, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(map, key);
+
+// Core reads these names without regard to case and ignores ones it doesn't know, so they go out
+// in its spelling. Either spelling reads back, since older builds of this app pushed their own.
+const renamedChoice = (localToServer) => {
+	const toLocal = {};
+	for (const [local, server] of Object.entries(localToServer)) {
+		toLocal[local.toLowerCase()] = local;
+		toLocal[server.toLowerCase()] = local;
+	}
+	return {
+		toServer: v => (hasOwn(localToServer, v) ? localToServer[v] : v),
+		fromServer: v => (typeof v === 'string' && hasOwn(toLocal, v.toLowerCase()) ? toLocal[v.toLowerCase()] : undefined)
+	};
+};
+
+const detailScreenStyleChoice = renamedChoice({
+	v1: 'classic', v2: 'modern', v3: 'spotlight', v4: 'nouveau', v5: 'minimalist'
+});
+const normalizeDetailScreenStyle = (value) => detailScreenStyleChoice.fromServer(value) || 'v2';
+
+// Core drops the underscores from the built-in theme ids.
+const visualThemeChoice = renamedChoice({
+	moonfin: 'moonfin', neon_pulse: 'neonPulse', glass: 'glass', '8bit_hero': 'eightbitHero'
+});
+
+// Core names its focus colors. Its 8-Bit Gold isn't offered here but still reads back as a color.
+const namedFocusColor = renamedChoice({
+	'#ffffff': 'white', '#000000': 'black', '#808080': 'gray', '#003366': 'darkBlue',
+	'#6a0dad': 'purple', '#008080': 'teal', '#000080': 'navy', '#36454f': 'charcoal',
+	'#8b4513': 'brown', '#8b0000': 'darkRed', '#006400': 'darkGreen', '#708090': 'slate',
+	'#4b0082': 'indigo', '#00a4dc': 'moonfinCyan', '#ff2e92': 'neonPulseMagenta', '#ffcd75': 'eightBitGold'
+});
+// '' is Theme Default, which only the TVs send.
+const focusColorChoice = {
+	toServer: namedFocusColor.toServer,
+	fromServer: v => (v === '' ? '' : namedFocusColor.fromServer(v))
+};
+
+// Both hide the unwatched count and keep the watched tick.
+const watchedIndicatorChoice = renamedChoice({
+	always: 'always', hideCount: 'hideUnwatched', episodesOnly: 'episodesOnly', never: 'never'
+});
+
+const genresRowItemFilterChoice = renamedChoice({all: 'both', Movie: 'movies', Series: 'series'});
+
+// This app stores the server's sort field, Core the name of its option. Core's options with
+// no counterpart here are left out rather than handed to the server as a sort field.
+const homeRowSortChoice = renamedChoice({
+	PlaylistOrder: 'playlistOrder', SortName: 'name', DateCreated: 'dateAdded',
+	PremiereDate: 'premiereDate', OfficialRating: 'rating', Runtime: 'runtime', Random: 'random',
+	CriticRating: 'criticRating', CommunityRating: 'communityRating'
+});
 
 const VALUE_CONVERSIONS = {
 	homeRowsPosterSize: {
@@ -182,8 +231,17 @@ const VALUE_CONVERSIONS = {
 		toServer: v => CONTENT_TYPE_TO_SERVER[v],
 		fromServer: v => CONTENT_TYPE_FROM_SERVER[v]
 	},
-	mediaBarSourceType: {
-		fromServer: v => (v === 'library' || v === 'collection' ? v : undefined)
+	detailScreenStyle: detailScreenStyleChoice,
+	visualTheme: visualThemeChoice,
+	focusBorderColor: focusColorChoice,
+	watchedIndicatorBehavior: watchedIndicatorChoice,
+	genresRowItemFilter: genresRowItemFilterChoice,
+	favoritesRowSortBy: homeRowSortChoice,
+	collectionsRowSortBy: homeRowSortChoice,
+	genresRowSortBy: homeRowSortChoice,
+	// Core's default is to follow the system, which this app has no setting for.
+	uiLanguage: {
+		fromServer: v => (v === 'system' ? undefined : v)
 	},
 	liveTvChannelSortBy: {
 		fromServer: v => (['number', 'name', 'favoritesFirst'].includes(v) ? v : undefined)
@@ -208,6 +266,7 @@ const VALUE_CONVERSIONS = {
 		toServer: v => CONTENT_TYPE_TO_SERVER[v],
 		fromServer: v => CONTENT_TYPE_FROM_SERVER[v]
 	},
+	shuffleContentType: renamedChoice(CONTENT_TYPE_TO_SERVER),
 	// The clock is a toggle here and a three way choice on the other clients. Anything that
 	// isn't "never" shows a clock, so the toggle reads as on.
 	showClock: {
@@ -238,6 +297,11 @@ const VALUE_CONVERSIONS = {
 		toServer: secondsToMs,
 		fromServer: msToSeconds
 	},
+	// Seconds here, milliseconds on the other clients.
+	videoStartDelay: {
+		toServer: secondsToMs,
+		fromServer: startDelayFromServer
+	},
 	autoAdvanceInterval: {
 		toServer: secondsToMs,
 		// A small number is the seconds an older build pushed before this was
@@ -259,6 +323,11 @@ const VALUE_CONVERSIONS = {
 	// homeRows is missing on purpose. The home layout is two server fields that have to
 	// move together, so it gets resolved whole rather than a key at a time.
 };
+
+const SERVER_SPELLED_KEYS = [
+	'visualTheme', 'focusBorderColor', 'watchedIndicatorBehavior', 'genresRowItemFilter',
+	'favoritesRowSortBy', 'collectionsRowSortBy', 'genresRowSortBy', 'shuffleContentType'
+];
 
 export const SYNCABLE_KEYS = [
 	'showShuffleButton', 'shuffleContentType', 'showGenresButton',
@@ -298,8 +367,10 @@ export const SYNCABLE_KEYS = [
 	'musicPlaybackTimeDisplay', 'liveTvChannelSortBy',
 	'autoPlay', 'nextUpBehavior', 'nextUpTimeout', 'nextUpCountdownStyle',
 	'replaceSkipOutroWithNextUp',
-	'showHomeBackdrop', 'homeBackdropStyle', 'detailsBackdropEnabled', 'backdropBlurHome', 'backdropBlurDetail',
-	'mediaBarSourceType', 'mediaBarLibraryIds', 'mediaBarCollectionIds', 'mediaBarExternalLists',
+	// Not synced: the blur, which Core measures on another scale, and mediaBarSourceType,
+	// whose key Core uses for a different setting.
+	'showHomeBackdrop', 'homeBackdropStyle', 'detailsBackdropEnabled',
+	'mediaBarLibraryIds', 'mediaBarCollectionIds', 'mediaBarExternalLists',
 	'mediaBarOverlayColor', 'mediaBarOverlayOpacity',
 	'homeRows', 'homeRowsStyle', 'modernCardsOnMyMediaRow', 'detailScreenStyle', 'detailExpandedTabs', 'fullScreenRows', 'homeRowsPosterSize', 'useSeriesThumbnails',
 	'episodePreviewEnabled', 'mediaPreviewMode', 'previewAudioEnabled', 'previewVolume',
@@ -666,6 +737,18 @@ export function SettingsProvider({children}) {
 						migrated = true;
 					}
 				}
+				// Sync used to store Core's spelling of these as it came.
+				for (const key of SERVER_SPELLED_KEYS) {
+					const local = VALUE_CONVERSIONS[key].fromServer(stored[key]);
+					if (local !== undefined && local !== stored[key]) {
+						stored[key] = local;
+						migrated = true;
+					}
+				}
+				if (stored.uiLanguage === 'system') {
+					stored.uiLanguage = defaultSettings.uiLanguage;
+					migrated = true;
+				}
 				if (stored.seasonalTheme !== undefined) {
 					// Was winter, spring, summer, fall or halloween before this app took
 					// Moonfin-Core's effects.
@@ -678,6 +761,11 @@ export function SettingsProvider({children}) {
 				if (typeof stored.homeRowOverlay === 'string') {
 					// Was an on and off picker stored as strings before it became a switch.
 					stored.homeRowOverlay = stored.homeRowOverlay === 'on';
+					migrated = true;
+				}
+				if (typeof stored.videoStartDelay === 'number' && stored.videoStartDelay > MAX_START_DELAY_SECONDS) {
+					// Sync used to store the other clients' milliseconds as seconds.
+					stored.videoStartDelay = startDelayFromServer(stored.videoStartDelay);
 					migrated = true;
 				}
 				if (stored.trickPlayEnabled === false && stored.trickPlayMode === undefined) {
