@@ -7,6 +7,7 @@ import {serverLogger} from './serverLogger';
 import {TEXT_SUBTITLE_CODECS, isAssSubtitleCodec, isPgsSubtitleCodec, isBurnInSubtitleCodec, isInBandSubtitleTrack} from '../utils/subtitleCodecs';
 import {applyProfileTuning, preferMpegTsHlsForLive, transcodesAudioCodec} from '../utils/deviceProfileTuning';
 import {findNextInSeason, findNextSeason, firstPlayableEpisode} from '../utils/nextEpisode';
+import {tagWithServerOf} from '../utils/episodeBrowser';
 import {videoRangeTypeOf} from '../utils/videoRange';
 import {getVolumeState, lastVolumeState} from './systemVolume';
 import {loadShellBridge} from './shellBridge';
@@ -1222,10 +1223,11 @@ export const getNextEpisode = async (item, step = 1) => {
 		const seasonId = item.SeasonId || item.ParentId;
 		if (!seasonId) return null;
 
+		// The episode comes from this item's server, so it carries that server along to play from there.
 		const api = getApiForItem(item);
 		const episodesResult = await api.getEpisodes(item.SeriesId, seasonId);
 		const next = findNextInSeason(episodesResult.Items, item.Id, step);
-		if (next) return next;
+		if (next) return tagWithServerOf(item, next);
 
 		// End of season, so roll into the first episode of the next one, or the last of the one before.
 		const seasonsResult = await api.getSeasons(item.SeriesId);
@@ -1233,7 +1235,8 @@ export const getNextEpisode = async (item, step = 1) => {
 		if (!nextSeason) return null;
 
 		const nextSeasonEpisodes = await api.getEpisodes(item.SeriesId, nextSeason.Id);
-		return firstPlayableEpisode(nextSeasonEpisodes.Items, step);
+		const first = firstPlayableEpisode(nextSeasonEpisodes.Items, step);
+		return first && tagWithServerOf(item, first);
 	} catch (e) {
 		console.warn('[playback] Failed to get next episode:', e.message);
 		return null;
