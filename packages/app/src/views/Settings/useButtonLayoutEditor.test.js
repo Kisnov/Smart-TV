@@ -41,13 +41,20 @@ describe('the Player Buttons list', () => {
 		expect(episodes.enabled).toBe(true);
 	});
 
+	it('lists SyncPlay first, switched on, as Core does', () => {
+		const {result} = openPlayerButtons();
+		const [syncPlay] = result.current.tempButtons;
+		expect(syncPlay.id).toBe('syncPlay');
+		expect(syncPlay.enabled).toBe(true);
+	});
+
 	it('saves Episodes where it was moved to, and as hidden once switched off', () => {
 		const {result, updateSettings} = openPlayerButtons();
 		act(() => result.current.moveLayoutButton('episodes', -1));
 		act(() => result.current.toggleLayoutButton('episodes'));
 		act(() => result.current.commitButtonLayout());
 		const saved = updateSettings.mock.calls[0][0];
-		expect(saved[OSD_ORDER_KEY].slice(0, 3)).toEqual(['favorite', 'episodes', 'chapters']);
+		expect(saved[OSD_ORDER_KEY].slice(0, 4)).toEqual(['syncPlay', 'favorite', 'episodes', 'chapters']);
 		expect(saved[OSD_HIDDEN_KEY]).toEqual(['episodes']);
 	});
 });

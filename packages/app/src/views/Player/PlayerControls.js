@@ -15,6 +15,8 @@ import {numberedTrackName, sortSubtitleStreams, subtitleTrackDetail, audioTrackD
 import TrackOptionRow, {TrackDivider} from '../../components/TrackOptionRow';
 import EpisodeBrowser from './EpisodeBrowser';
 import PlaybackInfoModal from './PlaybackInfoModal';
+import SyncPlayPlayerPanel from './SyncPlayPlayerPanel';
+import SyncPlayIcon from '../../components/icons/SyncPlayIcon';
 import {
 	SpottableButton, SpottableDiv,
 	formatTime, getQualityPresets,
@@ -44,7 +46,7 @@ export const usePlayerButtons = ({
 	nextEpisode, isAudioMode, isLiveTV, liveRewind, atLive, hasNextTrack, hasPrevTrack,
 	shuffleMode, repeatMode, selectedQuality,
 	selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey,
-	sleepMinutes, canBrowseEpisodes = false, canFavorite = false, isFavorite = false, hasLyrics, audioPanel, recordable, recordMark
+	sleepMinutes, canBrowseEpisodes = false, inSyncPlayGroup = false, canFavorite = false, isFavorite = false, hasLyrics, audioPanel, recordable, recordMark
 }) => {
 	const {settings} = useSettings();
 	const topButtons = useMemo(() => {
@@ -125,6 +127,7 @@ export const usePlayerButtons = ({
 			], {order: osdOrder, hidden: osdHidden});
 		}
 		return arrange([
+			...(inSyncPlayGroup ? [{id: 'syncPlay', icon: <SyncPlayIcon />, label: $L('SyncPlay'), action: 'syncPlay'}] : []),
 			...(canFavorite ? [{id: 'favorite', icon: (isFavorite ? <IconFavoriteFilled /> : <IconFavorite />), label: isFavorite ? $L('Remove from Favorites') : $L('Add to Favorites'), action: 'favorite', active: isFavorite}] : []),
 			...(chapters.length > 0 ? [{id: 'chapters', icon: <IconChapters />, label: $L('Chapters'), action: 'chapter'}] : []),
 			// Only an episode has a season to browse, so a movie never gets this button.
@@ -139,7 +142,7 @@ export const usePlayerButtons = ({
 			{id: 'sleep', icon: <IconSleep />, label: $L('Sleep timer'), action: 'sleep', active: sleepMinutes != null},
 			{id: 'info', icon: <IconInfo />, label: $L('Playback Information'), action: 'info'}
 		], {order: osdOrder, hidden: osdHidden, catalogue: OSD_BUTTONS});
-	}, [audioStreams.length, chapters.length, canBrowseEpisodes, canFavorite, subtitleStreams.length, isAudioMode, isLiveTV, selectedQuality, selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey, sleepMinutes, osdOrder, osdHidden, isFavorite, hasLyrics, audioPanel, recordable, recordMark]);
+	}, [audioStreams.length, chapters.length, canBrowseEpisodes, canFavorite, subtitleStreams.length, isAudioMode, isLiveTV, selectedQuality, selectedSubtitleIndex, canDownloadRemoteSubtitles, hasCastMembers, zoomModeLabel, zoomModeKey, sleepMinutes, inSyncPlayGroup, osdOrder, osdHidden, isFavorite, hasLyrics, audioPanel, recordable, recordMark]);
 
 	return {topButtons, bottomButtons};
 };
@@ -891,6 +894,10 @@ const PlayerControls = ({
 					onClose={closeModal}
 					onOffsetChange={handleSubtitleOffsetChange}
 				/>
+			)}
+
+			{activeModal === 'syncPlay' && (
+				<SyncPlayPlayerPanel css={css} closeModal={closeModal} stopPropagation={stopPropagation} />
 			)}
 
 			{activeModal === 'secondarySubtitleOffset' && (
