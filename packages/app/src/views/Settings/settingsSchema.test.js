@@ -269,6 +269,17 @@ describe('the home screen backdrop', () => {
 	});
 });
 
+describe('the NSFW filter switch', () => {
+	const row = () => allRows().find(({row: r}) => r.key === 'seerrBlockNsfw').row;
+	const withSeerr = (isEnabled, settings = {}) => ({...ctx, seerr: {...ctx.seerr, isEnabled}, settings: {...defaultSettings, ...settings}});
+
+	test('shows with Seerr, or with a TMDB key whose recommendations it also filters', () => {
+		expect(row().when(withSeerr(true))).toBe(true);
+		expect(row().when(withSeerr(false, {tmdbApiKey: 'key'}))).toBe(true);
+		expect(row().when(withSeerr(false))).toBe(false);
+	});
+});
+
 describe('the media preview switches', () => {
 	const homeScreen = () => SETTINGS_SCHEMA
 		.find((category) => category.id === 'appearance').subcategories
