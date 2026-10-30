@@ -53,7 +53,8 @@ const hydrateRequestMediaItems = async (requests = []) => {
 				releaseDate: media?.releaseDate || details.releaseDate || details.release_date,
 				firstAirDate: media?.firstAirDate || details.firstAirDate || details.first_air_date,
 				voteAverage: media?.voteAverage ?? details.voteAverage,
-				popularity: media?.popularity ?? details.popularity
+				popularity: media?.popularity ?? details.popularity,
+				adult: media?.adult ?? details.adult
 			}
 		};
 	});
@@ -84,7 +85,8 @@ export const hydrateWatchlistItems = async (items = []) => {
 			firstAirDate: item.firstAirDate || details.firstAirDate,
 			voteAverage: item.voteAverage ?? details.voteAverage,
 			popularity: item.popularity ?? details.popularity,
-			mediaInfo: item.mediaInfo || details.mediaInfo
+			mediaInfo: item.mediaInfo || details.mediaInfo,
+			adult: item.adult ?? details.adult
 		};
 	});
 };

@@ -1,19 +1,24 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 
 import {getSeerrHomeRowConfigs, fetchSeerrHomeRow, normalizeMediaItem, SEERR_SECTION_TO_CONFIG} from '../../utils/seerrHomeRows';
 import {loadSliderHomeRow} from '../../utils/seerrSliders';
 import {isSameServer, isSeerrSliderRow} from '../../utils/pickedRows';
 import {sortExternalItems} from '../../utils/externalHomeRows';
 import {settleSections} from './browseCache';
+import {withoutSeerrAdult} from '../../utils/seerrAdultFilter';
 
 // The discover rows Seerr provides. They are fetched separately from the library rows because
 // they come from a different server and only exist while Seerr is connected and signed in. The
 // rows still on their way come back as [pending], so they can hold their place.
-const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, serverUrl, sortBy, sortOrder}) => {
+const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, serverUrl, sortBy, sortOrder, blockAdult}) => {
 	const [seerrRows, setSeerrRows] = useState([]);
 	const [pending, setPending] = useState([]);
+	const shownBlockAdultRef = useRef(blockAdult);
 
 	useEffect(() => {
+		// Rows loaded before the NSFW filter went on can hold what it hides, so they go at once.
+		if (blockAdult && !shownBlockAdultRef.current) setSeerrRows([]);
+		shownBlockAdultRef.current = blockAdult;
 		if (!seerrEnabled || !seerrAuthenticated) {
 			setSeerrRows([]);
 			setPending([]);
@@ -45,7 +50,7 @@ const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, 
 				const configId = SEERR_SECTION_TO_CONFIG[section.id];
 				const cfg = configFor(section);
 				if (!cfg) return null;
-				const items = await fetchSeerrHomeRow(configId, {userId: seerrUserId});
+				const items = await fetchSeerrHomeRow(configId, {userId: seerrUserId, blockAdult});
 				if (!items.length) return null;
 				return {
 					id: section.id,
@@ -58,11 +63,12 @@ const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, 
 			}));
 			const builtSliders = await Promise.all(sliderRows.map(async (row) => {
 				const loaded = await loadSliderHomeRow(row).catch(() => null);
-				if (!loaded?.results.length) return null;
+				const results = withoutSeerrAdult(loaded?.results || [], blockAdult);
+				if (!results.length) return null;
 				return {
 					id: row.id,
 					title: loaded.slider.title,
-					items: sortExternalItems(loaded.results.map(normalizeMediaItem), sortBy, sortOrder),
+					items: sortExternalItems(results.map(normalizeMediaItem), sortBy, sortOrder),
 					type: 'portrait',
 					isSeerrRow: true
 				};
@@ -76,7 +82,7 @@ const useSeerrRows = ({seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, 
 		return () => {
 			cancelled = true;
 		};
-	}, [seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, serverUrl, sortBy, sortOrder]);
+	}, [seerrEnabled, seerrAuthenticated, seerrUserId, homeRows, serverUrl, sortBy, sortOrder, blockAdult]);
 
 	return {rows: seerrRows, pending};
 };
