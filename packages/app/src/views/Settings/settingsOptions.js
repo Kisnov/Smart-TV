@@ -230,7 +230,8 @@ export const getHomeRowsStyleOptions = () => [
 export const getHomeBackdropStyleOptions = () => [
 	{ value: 'off', label: $L('Off') },
 	{ value: 'fullScreen', label: $L('Full Screen') },
-	{ value: 'corner', label: $L('Corner') }
+	{ value: 'corner', label: $L('Corner') },
+	{ value: 'top', label: $L('Top') }
 ];
 
 export const getMediaPreviewModeOptions = () => [
@@ -342,12 +343,6 @@ export const getServerSortOptions = () => [
 	{ value: 'added', label: $L('Date Added') }
 ];
 
-export const getFolderViewModeOptions = () => [
-	{ value: 'local', label: $L('Per Library') },
-	{ value: 'on', label: $L('Always on.') },
-	{ value: 'off', label: $L('Always Off') }
-];
-
 export const getContinueWatchingDefaultActionOptions = () => [
 	{ value: 'details', label: $L('Go to Details') },
 	{ value: 'play', label: $L('Play immediately') }
@@ -442,6 +437,20 @@ export const getSortOrderOptions = () => [
 	{ value: 'auto', label: $L('Auto') },
 	{ value: 'Ascending', label: $L('Ascending') },
 	{ value: 'Descending', label: $L('Descending') }
+];
+
+export const getExternalRowSortByOptions = () => [
+	{ value: 'none', label: $L('Default (List Order)') },
+	{ value: 'name', label: $L('Name') },
+	{ value: 'releaseDate', label: $L('Release Date') },
+	{ value: 'rating', label: $L('Rating') },
+	{ value: 'popularity', label: $L('Popularity') },
+	{ value: 'shuffle', label: $L('Shuffle') }
+];
+
+export const getExternalRowSortOrderOptions = () => [
+	{ value: 'ascending', label: $L('Ascending') },
+	{ value: 'descending', label: $L('Descending') }
 ];
 
 export const getOledModeOptions = () => [
