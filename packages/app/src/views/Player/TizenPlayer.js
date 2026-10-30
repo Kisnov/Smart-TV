@@ -403,7 +403,8 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		primaryIndex: selectedSubtitleIndex,
 		preferExternal: settings.preferExternalSubtitles === true,
 		preferredLanguage: settings.preferredSecondarySubtitleLanguage,
-		available: !isLiveTV && !isAudioMode
+		available: !isLiveTV && !isAudioMode,
+		enabled: settings.secondarySubtitlesEnabled === true
 	});
 	const {
 		prepareForItem: prepareSecondaryForItem, restore: restoreSecondary, update: updateSecondary,
@@ -829,6 +830,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		} finally {
 			clearTimeout(prepareTimer);
 		}
+		if (shouldAbort?.()) return;
 		avplayReadyRef.current = true;
 
 		// some firmware resets display state during prepare
@@ -854,6 +856,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (startDelayMs > 0) {
 			await new Promise((resolve) => setTimeout(resolve, startDelayMs));
 		}
+		if (shouldAbort?.()) return;
 
 		playIssued = true;
 		playbackMovingRef.current = false;
@@ -914,20 +917,23 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 			url,
 			playMethod: options.playMethod || session?.playMethod,
 			mediaSource: options.mediaSource || session?.mediaSource,
-			resumeTicks: seekPositionTicks
+			resumeTicks: seekPositionTicks,
+			shouldAbort: options.shouldAbort
 		});
+		if (options.shouldAbort?.()) return false;
 
 		startTimeUpdatePolling();
+		return true;
 	}, [startTimeUpdatePolling, stopTimeUpdatePolling, openAndPrepare]);
 
 	// every stream reload restarts playback and session reporting the same way
-	const restartFromResult = useCallback(async (result, positionTicks) => {
+	const restartFromResult = useCallback(async (result, positionTicks, shouldAbort) => {
 		if (!result?.url) return false;
 		positionRef.current = positionTicks;
 		if (result.playMethod) setPlayMethod(result.playMethod);
 		setIsHdrContent(isHdrOutput(result.mediaSource, result.playMethod === playback.PlayMethod.Transcode));
 		if (result.playSessionId) playSessionRef.current = result.playSessionId;
-		await startAVPlayback(result.url, positionTicks, {playMethod: result.playMethod, mediaSource: result.mediaSource});
+		if (!await startAVPlayback(result.url, positionTicks, {playMethod: result.playMethod, mediaSource: result.mediaSource, shouldAbort})) return null;
 		playback.reportStart(positionRef.current);
 		playback.startProgressReporting(
 			() => positionRef.current,
@@ -986,30 +992,48 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 				() => {
 					console.log('[Player] App resumed');
 					dbg(`[player] FOREGROUND isPaused=${isPaused} ready=${avplayReadyRef.current} suspended=${suspendedRef.current ? `yes pos=${suspendedRef.current.positionMs} wasPlaying=${suspendedRef.current.wasPlaying}` : 'no'} state=${avplayGetState()}`);
-					const bgStopFired = playback.consumeBackgroundStopFired();
-					dbg(`[player] bgStopFired=${bgStopFired} session=${playback.getCurrentSession() ? playback.getCurrentSession().playMethod : 'NONE'}`);
-					if (bgStopFired) {
+					const stoppedOnServer = playback.consumeBackgroundStopFired();
+					dbg(`[player] bgStopFired=${stoppedOnServer} session=${playback.getCurrentSession() ? playback.getCurrentSession().playMethod : 'NONE'}`);
+					const suspended = suspendedRef.current;
+					suspendedRef.current = null;
+					const reload = () => reloadPlaybackRef.current?.().then((reloaded) => {
+						dbg(`[player] reload -> ${reloaded} wasPlaying=${suspended.wasPlaying}`);
+						if (reloaded === false) {
+							setError($L('Playback failed. The file format may not be supported.'));
+						} else if (reloaded && !suspended.wasPlaying) {
+							// the reopened stream starts playing, so a paused one is paused again
+							avplayPause();
+							dbg(`[player] paused again after reload, state=${avplayGetState()}`);
+							setIsPaused(true);
+							healthMonitorRef.current?.setPaused(true);
+							playback.reportProgress(positionRef.current, {isPaused: true, eventName: 'pause'});
+						}
+					});
+					// The background stop ended the session and restoreAsync never answers on some firmware, so it is opened again
+					if (suspended && stoppedOnServer) {
+						dbg(`[player] reloading instead of restore (${playback.getCurrentSession()?.playMethod})`);
+						reload();
+						return;
+					}
+					if (stoppedOnServer) {
 						// the session was stopped on the server while we were
 						// backgrounded, so bring it back before we resume playback
 						resumeReportingRef.current?.();
 					}
-					const suspended = suspendedRef.current;
-					suspendedRef.current = null;
 					if (suspended) {
+						const generation = loadGenerationRef.current;
 						avplayRestore(suspended.url, suspended.positionMs).then((ok) => {
 							dbg(`[player] restore resolved ok=${ok} state=${avplayGetState()}`);
+							// Back or another item during the restore leaves nothing to resume
+							if (generation !== loadGenerationRef.current) return;
 							if (ok) {
 								if (suspended.wasPlaying) {
 									try { avplayPlay(); } catch (e) { void e; }
 									playback.reportProgress(positionRef.current, {isPaused: false, eventName: 'unpause'});
 								}
 							} else {
-								// the transcode session likely expired while backgrounded
 								console.warn('[Player] AVPlay restore failed, reloading stream');
-								reloadPlaybackRef.current?.().then((reloaded) => {
-									dbg(`[player] reload after failed restore -> ${reloaded}`);
-									if (!reloaded) setError($L('Playback failed. The file format may not be supported.'));
-								});
+								reload();
 							}
 						});
 						return;
@@ -1994,7 +2018,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 		if (hasPlayedRef.current && !hasReopenedRef.current && playMethod !== playback.PlayMethod.Transcode) {
 			hasReopenedRef.current = true;
 			console.warn('[Player] Playback died after running, reopening the same stream');
-			if (await reloadPlaybackRef.current?.()) return;
+			if (await reloadPlaybackRef.current?.() !== false) return;
 		}
 
 		if (!hasTriedTranscode && playMethod !== playback.PlayMethod.Transcode) {
@@ -2033,22 +2057,44 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Reload the current item from its last position, used when a suspended
 	// session cant be restored after the app returns to the foreground
 	const reloadCurrentPlayback = useCallback(async () => {
-		dbg('[player] reloadCurrentPlayback');
+		dbg(`[player] reloadCurrentPlayback burnInSub=${burnInSubtitleRef.current} audio=${selectedAudioIndex}`);
+		const generation = loadGenerationRef.current;
+		// Back or another item while this runs leaves nothing to reload
+		const superseded = () => generation !== loadGenerationRef.current;
 		try {
 			const result = await playback.getPlaybackInfo(item.Id, {
 				startPositionTicks: positionRef.current,
 				maxBitrate: selectedQuality || settings.maxBitrate,
 				mediaSourceId,
 				audioStreamIndex: selectedAudioIndex != null ? selectedAudioIndex : undefined,
+				subtitleStreamIndex: burnInSubtitleRef.current != null ? burnInSubtitleRef.current : undefined,
 				item,
 				stereoUpmixEnabled: settings.stereoUpmixEnabled
 			});
-			return await restartFromResult(result, positionRef.current);
+			if (superseded()) return null;
+			const restarted = await restartFromResult(result, positionRef.current, superseded);
+			if (restarted) {
+				// a background stop or the old session's end left stall detection off
+				playback.startHealthMonitoring(handleUnhealthy);
+				healthMonitorRef.current = playback.getHealthMonitor();
+				// AVPlay ignores the audio index outside a transcode, so the picked track is set again once it plays
+				if (selectedAudioIndex != null && result.playMethod !== playback.PlayMethod.Transcode) {
+					pendingTracksRef.current = {
+						audioIndex: selectedAudioIndex,
+						audioApplied: false,
+						subApplied: true,
+						audioStreams: result.audioStreams || [],
+						subtitleStreams: result.subtitleStreams || [],
+						deadline: Date.now() + 5000
+					};
+				}
+			}
+			return restarted;
 		} catch (err) {
 			console.error('[Player] Stream reload failed:', err);
-			return false;
+			return superseded() ? null : false;
 		}
-	}, [item, selectedQuality, settings.maxBitrate, settings.stereoUpmixEnabled, mediaSourceId, selectedAudioIndex, restartFromResult]);
+	}, [item, selectedQuality, settings.maxBitrate, settings.stereoUpmixEnabled, mediaSourceId, selectedAudioIndex, restartFromResult, handleUnhealthy]);
 
 	// Keep callback refs in sync
 	handleEndedCallbackRef.current = handleEnded;
@@ -2059,6 +2105,7 @@ const Player = ({item, resume, initialMediaSourceId, initialAudioIndex, initialS
 	// Control Actions (AVPlay-based)
 	// ==============================
 	const teardownPlayback = useCallback(async () => {
+		loadGenerationRef.current++;
 		cancelNextEpisodeCountdown();
 		stopTimeUpdatePolling();
 		await playback.reportStop(positionRef.current);
