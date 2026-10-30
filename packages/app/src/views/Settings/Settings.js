@@ -9,6 +9,7 @@ import $L from '@enact/i18n/$L';
 import Spotlight from '@enact/spotlight';
 import {useAuth} from '../../context/AuthContext';
 import {useSettings, defaultSettings, flushSettingsPush} from '../../context/SettingsContext';
+import {RATING_SETTING_KEYS, ratingKey} from '../../utils/ratingSources';
 import {useSeerr} from '../../context/SeerrContext';
 import {useAchievements} from '../../context/AchievementsContext';
 import {useDeviceInfo} from '../../hooks/useDeviceInfo';
@@ -112,7 +113,7 @@ const FIRST_ROW_VIEWS = {
 	ratingSources: 'rating-sources-view'
 };
 
-const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, panelMode, initialView }) => {
+const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, panelMode, initialView, hasLiveTv }) => {
 	const { api, serverUrl, servers, accessToken, hasMultipleServers, logoutAll, activeServerInfo, user, serverType } = useAuth();
 	const {
 		settings, updateSetting, updateSettings, resetSettings, restoreSyncedDefaults, applyServerProfile, selectSyncProfile,
@@ -200,6 +201,8 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 	const [ratingsResetArmed, setRatingsResetArmed] = useState(false);
 	const [tempRatingSources, setTempRatingSources] = useState([]);
 	const openedRatingSourcesRef = useRef('');
+	// Which surface's list the sources screen is editing, empty for the plain one.
+	const [ratingSourcesSurface, setRatingSourcesSurface] = useState('');
 	const [tempExcludedGenresText, setTempExcludedGenresText] = useState('');
 	const [customRowUrl, setCustomRowUrl] = useState('');
 	const [customRowName, setCustomRowName] = useState('');
@@ -512,12 +515,14 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			: [...picked, codec]);
 	}, [settings.transcodeAudioCodecs, updateSetting]);
 
-	const openRatingSources = useCallback(() => {
-		const sources = Array.isArray(settings.mdblistRatingSources) ? [...settings.mdblistRatingSources] : [];
+	const openRatingSources = useCallback((surface = '') => {
+		const stored = settings[ratingKey(surface, 'mdblistRatingSources')];
+		const sources = Array.isArray(stored) ? [...stored] : [];
 		openedRatingSourcesRef.current = sources.join(',');
+		setRatingSourcesSurface(surface);
 		setTempRatingSources(sources);
-		pushView({view: 'ratingSources', returnFocusTo: 'setting-ratingSources'});
-	}, [settings.mdblistRatingSources, pushView]);
+		pushView({view: 'ratingSources', returnFocusTo: `setting-${ratingKey(surface, 'ratingSources')}`});
+	}, [settings, pushView]);
 
 	const toggleRatingSource = useCallback((sourceValue) => {
 		setTempRatingSources((prev) => {
@@ -542,25 +547,24 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 	}, []);
 
 	const resetRatingSources = useCallback(() => {
-		setTempRatingSources([...defaultSettings.mdblistRatingSources]);
-	}, []);
+		setTempRatingSources([...defaultSettings[ratingKey(ratingSourcesSurface, 'mdblistRatingSources')]]);
+	}, [ratingSourcesSurface]);
 
 	// Covers every ratings setting, not just the source list, so one action puts the
 	// whole integration back the way it shipped. Asks for a second press the same way
-	// the profile reset does.
-	const resetRatingsSettings = useCallback(() => {
+	// the profile reset does. Home rows and the media bar reset only their own copy.
+	const resetRatingsSettings = useCallback((surface = '') => {
 		if (!ratingsResetArmed) {
 			setRatingsResetArmed(true);
 			return;
 		}
 		setRatingsResetArmed(false);
-		updateSettings({
-			mdblistEnabled: defaultSettings.mdblistEnabled,
-			mdblistRatingSources: [...defaultSettings.mdblistRatingSources],
-			tmdbEpisodeRatingsEnabled: defaultSettings.tmdbEpisodeRatingsEnabled,
-			showRatingLabels: defaultSettings.showRatingLabels,
-			showRatingBadges: defaultSettings.showRatingBadges
-		});
+		const reset = {};
+		for (const name of RATING_SETTING_KEYS) {
+			const key = ratingKey(surface, name);
+			if (key in defaultSettings) reset[key] = Array.isArray(defaultSettings[key]) ? [...defaultSettings[key]] : defaultSettings[key];
+		}
+		updateSettings(reset);
 	}, [ratingsResetArmed, updateSettings]);
 
 	// An armed reset left behind shouldnt fire from a later visit
@@ -572,8 +576,8 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 	const commitRatingSources = useCallback(() => {
 		if (tempRatingSources.join(',') === openedRatingSourcesRef.current) return;
 		openedRatingSourcesRef.current = tempRatingSources.join(',');
-		updateSetting('mdblistRatingSources', tempRatingSources);
-	}, [tempRatingSources, updateSetting]);
+		updateSetting(ratingKey(ratingSourcesSurface, 'mdblistRatingSources'), tempRatingSources);
+	}, [tempRatingSources, ratingSourcesSurface, updateSetting]);
 
 	const openExcludedGenres = useCallback(() => {
 		const excluded = Array.isArray(settings.excludedGenres) ? settings.excludedGenres : [];
@@ -751,6 +755,8 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		pushView({view: 'externalCustomRows', returnFocusTo: 'setting-externalCustomRows'});
 	}, [pushView]);
 
+	const openOptionsDialog = useCallback((picker) => pushView({view: 'options', ...picker}), [pushView]);
+
 	// Lets a row on one screen open a screen that lives elsewhere in the schema, the
 	// way Progress Bar Time is reached from Video Playback Preferences.
 	const openScreen = useCallback((categoryId, subcategoryId, returnFocusTo) => {
@@ -810,7 +816,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 	const {
 		tempButtons, buttonLayoutKind, openDetailButtons, openOsdButtons, openDetailMetadata,
 		commitButtonLayout, resetButtonLayout, toggleLayoutButton, moveLayoutButton
-	} = useButtonLayoutEditor({settings, updateSettings, pushView});
+	} = useButtonLayoutEditor({settings, updateSettings, pushView, hasLiveTv});
 
 	const {
 		allLibraries, hiddenLibraries, libraryLoading, librarySaving,
@@ -1482,16 +1488,27 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 					homeRows={settings.homeRows}
 					serverUrl={serverUrl}
 					onToggleSlider={toggleSeerrSlider}
+					settings={settings}
+					onOpenOptions={openOptionsDialog}
 				/>
 			)}
 			{viewName === 'imdbLists' && (
-				<ImdbListsView settings={settings} onUpdateSettings={updateSettings} />
+				<ImdbListsView
+					settings={settings}
+					onUpdateSettings={updateSettings}
+					onOpenOptions={openOptionsDialog}
+				/>
 			)}
 			{viewName === 'seasonalRow' && (
 				<SeasonalRowView settings={settings} onUpdateSettings={updateSettings} />
 			)}
 			{viewName === 'externalTmdbLists' && (
-				<ExternalTmdbListsView enabledMap={homeRowEnabledMap} onToggleRow={toggleHomeRowEnabled} />
+				<ExternalTmdbListsView
+					enabledMap={homeRowEnabledMap}
+					onToggleRow={toggleHomeRowEnabled}
+					settings={settings}
+					onOpenOptions={openOptionsDialog}
+				/>
 			)}
 			{viewName === 'externalCalendars' && (
 				<ExternalCalendarsView
