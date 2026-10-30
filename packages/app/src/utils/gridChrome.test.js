@@ -66,6 +66,7 @@ describe('stopPropagation', () => {
 
 describe('createToolbarKeyDown', () => {
 	test('down moves into the grid', () => {
+		Spotlight.focus.mockReturnValueOnce(true);
 		const e = keyEvent(KEYS.DOWN);
 
 		createToolbarKeyDown('favorites-grid')(e);
@@ -73,6 +74,17 @@ describe('createToolbarKeyDown', () => {
 		expect(Spotlight.focus).toHaveBeenCalledWith('favorites-grid');
 		expect(e.preventDefault).toHaveBeenCalled();
 		expect(e.stopPropagation).toHaveBeenCalled();
+	});
+
+	test('down with no grid drawn is left to Spotlight, so it can reach a Retry below', () => {
+		Spotlight.focus.mockReturnValueOnce(false);
+		const e = keyEvent(KEYS.DOWN);
+
+		createToolbarKeyDown('library-grid')(e);
+
+		expect(Spotlight.focus).toHaveBeenCalledWith('library-grid');
+		expect(e.preventDefault).not.toHaveBeenCalled();
+		expect(e.stopPropagation).not.toHaveBeenCalled();
 	});
 
 	test('every other key is left to bubble', () => {

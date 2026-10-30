@@ -28,10 +28,13 @@ export const executeAll = async (apiFn, options = {}) => {
 		sortBy = null,
 		limit = null,
 		dedupe = null,
-		ignoreErrors = true
+		ignoreErrors = true,
+		// Every server failing is a failed load rather than an empty one, for a caller with Retry.
+		failWhenAllFail = false
 	} = options;
 
 	const results = [];
+	let failures = 0;
 
 	// Execute requests to all servers in parallel
 	const promises = servers.map(async (server) => {
@@ -67,11 +70,13 @@ export const executeAll = async (apiFn, options = {}) => {
 			if (!ignoreErrors) {
 				throw err;
 			}
+			failures++;
 			return [];
 		}
 	});
 
 	const allResults = await Promise.all(promises);
+	if (failWhenAllFail && failures === servers.length) throw new Error('Every server failed');
 
 	// Flatten results from all servers
 	allResults.forEach(serverResults => {
@@ -399,7 +404,8 @@ export const getFavoritesFromAllServers = async ({includeItemTypes, fields} = {}
 		},
 		{
 			sortBy: (a, b) => (a.Name || '').localeCompare(b.Name || ''),
-			dedupe: 'provider'
+			dedupe: 'provider',
+			failWhenAllFail: true
 		}
 	);
 };

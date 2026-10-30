@@ -39,6 +39,7 @@ import useItemMenuHold, {cardIndexOf} from '../../hooks/useItemMenuHold';
 import {FOCUS_SCALE, POSTER_HEIGHTS, POSTER_SIZE_OPTIONS, createGridKeyDown, createRowsLeftKeyDown, createToolbarKeyDown, focusOverhang, horizontalCellPad, libraryPosterSize, matchesStartLetter, stopPropagation} from '../../utils/gridChrome';
 import {ARROW_DOWN_ICON, ARROW_UP_ICON, CLEAR_FILTERS_ICON, EXPAND_LESS_ICON, EXPAND_MORE_ICON, GROUP_ICON, HOME_ICON, Icon, Letters, LibraryDock, LibraryTitle, ModernBar, ModernLetters, SEARCH_ICON, SETTINGS_ICON, SHUFFLE_ICON, SORT_ICON} from './LibraryHeaders';
 import LibrarySkeleton from './LibrarySkeleton';
+import LoadFailedNotice from '../../components/LoadFailedNotice';
 
 import css from './Library.module.less';
 
@@ -284,6 +285,9 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 	const [allItems, setAllItems] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
+	// The first page failed, so the empty grid says so rather than "No items found".
+	const [loadFailed, setLoadFailed] = useState(false);
+	const [reloadKey, setReloadKey] = useState(0);
 	const [totalCount, setTotalCount] = useState(0);
 	// What the ratings filter dropped from the fetched pages, so the count shown leaves it out.
 	const [blockedCount, setBlockedCount] = useState(0);
@@ -500,6 +504,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 
 		if (!append) {
 			fetchGenerationRef.current++;
+			setLoadFailed(false);
 		}
 		const generation = fetchGenerationRef.current;
 
@@ -673,13 +678,18 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 				showPage(newItems);
 				setTotalCount(result.TotalRecordCount || 0);
 			}
-		} catch (err) { console.error('[Library] loadItems error:', err); } finally {
+		} catch (err) {
+			console.error('[Library] loadItems error:', err);
+			if (!append && generation === fetchGenerationRef.current) setLoadFailed(true);
+		} finally {
 			setIsLoading(false);
 			loadingMoreRef.current = false;
 		}
 	}, [isPlaylistLibrary, effectiveApi, library, genreFilter, studioFilter, sortKey, sortAscending, effectiveOrder, favoritesOnly, filters, openedGenre, parentId, isFolderView, currentFolderId, currentFolderCollectionType, isMusicLibrary, musicContentType, bookGridView, getItemTypeForLibrary, getExcludeItemTypes, settings.groupItemsIntoCollections, isGenreMode]);
 
 	loadItemsRef.current = loadItems;
+
+	const retryLoad = useCallback(() => setReloadKey((key) => key + 1), []);
 
 	// Grouping covers the whole library, so the rest of it loads in the
 	// background the way scrolling to the end would have.
@@ -769,7 +779,7 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 			initialFocusDoneRef.current = false;
 			if (storageReady) loadItemsRef.current(0, false);
 		}
-	}, [library, sortKey, effectiveOrder, favoritesOnly, filters, openedGenre, parentId, musicContentType, bookGridView, isFolderView, currentFolderId, genreFilter, studioFilter, isBrowseHome, storageReady, settings.groupItemsIntoCollections]);
+	}, [library, sortKey, effectiveOrder, favoritesOnly, filters, openedGenre, parentId, musicContentType, bookGridView, isFolderView, currentFolderId, genreFilter, studioFilter, isBrowseHome, storageReady, settings.groupItemsIntoCollections, reloadKey]);
 
 	// The values the library actually holds, read once per library so opening
 	// the filter panel does not wait on the network.
@@ -1795,7 +1805,11 @@ const Library = ({library, genreFilter, studioFilter, onSelectItem, onViewPhoto,
 							/>
 						</div>
 					) : items.length === 0 ? (
-						<div className={css.empty}>{$L('No items found')}</div>
+						loadFailed ? (
+							<LoadFailedNotice spotlightId='library-load-retry' onRetry={retryLoad} autoFocus={!dialogOpen} />
+						) : (
+							<div className={css.empty}>{$L('No items found')}</div>
+						)
 					) : showGroupRows ? (
 						<div className={css.groupRows} ref={groupRowsRef} onKeyDownCapture={isDocked ? handleRowsKeyDownDocked : undefined}>
 							{groups.map((group, index) => (

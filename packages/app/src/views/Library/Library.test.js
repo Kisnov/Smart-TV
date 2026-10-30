@@ -42,6 +42,7 @@ jest.mock('../../components/TileGrid', () => () => null);
 jest.mock('../../components/MediaRow', () => () => null);
 jest.mock('../../components/DetailsTabBar', () => () => null);
 jest.mock('../../components/RatingsRow', () => () => null);
+jest.mock('../../components/LoadFailedNotice', () => () => null);
 jest.mock('./LibrarySkeleton', () => () => null);
 jest.mock('../../components/SpottableInput/SpottableInput', () => {
 	const React = require('react');
