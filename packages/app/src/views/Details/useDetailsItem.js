@@ -227,6 +227,8 @@ const useDetailsItem = ({itemId, initialItem, effectiveApi, effectiveServerUrl, 
 			let data;
 			try {
 				data = await withProbedSources(effectiveApi, await effectiveApi.getItemForDetail(itemId));
+				// An empty answer has nothing to show either, so it gets Retry rather than the skeleton.
+				if (!data?.Id) throw new Error('Empty item response');
 			} catch (err) {
 				console.error('[Details] Error loading item', err);
 				if (cancelled) return;

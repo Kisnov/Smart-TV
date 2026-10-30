@@ -78,6 +78,13 @@ describe('useDetailsItem when the item fails to load', () => {
 		expect(result.current.item).toBeNull();
 	});
 
+	test('treats an empty answer as a failure too', async () => {
+		const {result} = open(apiWith(jest.fn(() => Promise.resolve(null))));
+
+		await waitFor(() => expect(result.current.loadFailed).toBe(true));
+		expect(result.current.isLoading).toBe(false);
+	});
+
 	test('fetches it again on retry and clears the failure once it arrives', async () => {
 		const getItemForDetail = jest.fn()
 			.mockImplementationOnce(() => Promise.reject(new Error('offline')))
