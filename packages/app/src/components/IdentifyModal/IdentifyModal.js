@@ -11,7 +11,6 @@ import css from './IdentifyModal.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -150,7 +149,7 @@ const IdentifyModal = ({open, item, api, onClose, onApplied, onSuccess}) => {
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={css.dialog} spotlightId="identify-modal">
+			<DialogContainer className={css.dialog} spotlightId="identify-modal" spotlightRestrict="self-only">
 				<h2 className={css.title}>{title}</h2>
 
 				{error && <p className={css.error}>{error}</p>}

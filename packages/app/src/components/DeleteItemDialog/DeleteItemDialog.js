@@ -9,7 +9,6 @@ import css from '../ClearDataDialog/ClearDataDialog.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -56,7 +55,7 @@ const DeleteItemDialog = ({open, itemName, onCancel, onConfirm}) => {
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={css.dialog} spotlightId="delete-item-dialog">
+			<DialogContainer className={css.dialog} spotlightId="delete-item-dialog" spotlightRestrict="self-only">
 				<h2 className={css.title}>{$L('Delete Item?')}</h2>
 				<p className={css.message}>
 					{itemName

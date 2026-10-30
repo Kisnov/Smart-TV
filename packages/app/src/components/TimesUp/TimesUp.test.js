@@ -19,9 +19,11 @@ jest.mock('@enact/spotlight/Spottable', () => (type) => {
 	const React = require('react');
 	return ({spotlightDefault, children, ...props}) => React.createElement(type, props, children); // eslint-disable-line no-unused-vars
 });
+// The decorator registers a container with the restrict its spotlightRestrict prop carries and
+// drops one given in its config, so the stand-in shows the prop.
 jest.mock('@enact/spotlight/SpotlightContainerDecorator', () => (config, type) => {
 	const React = require('react');
-	return ({children, ...props}) => React.createElement(type, props, children);
+	return ({children, spotlightRestrict, ...props}) => React.createElement(type, {...props, 'data-restrict': spotlightRestrict}, children);
 });
 jest.mock('@enact/spotlight', () => ({focus: jest.fn()}));
 
@@ -61,6 +63,12 @@ describe('the Time\'s up screen', () => {
 
 		screen.getByText('Time\'s up');
 		screen.getByText('You can use it again tomorrow at 08:00.');
+	});
+
+	test('holds focus on the card through the prop the decorator honours', () => {
+		show();
+
+		expect(screen.getByText('Switch User').parentNode.getAttribute('data-restrict')).toBe('self-only');
 	});
 
 	test('leaves the opening line out when there is none', () => {
