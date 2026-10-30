@@ -1081,7 +1081,8 @@ export const SETTINGS_SCHEMA = [
 						label: () => $L('NSFW Filter'),
 						desc: () => $L('Hide adult content in results'),
 						icon: 'visibility_off_outlined',
-						when: whenSeerr
+						// It also filters the TMDB recommendations on Details, which a TMDB key brings without Seerr.
+						when: (ctx) => whenSeerr(ctx) || Boolean(ctx.settings.tmdbApiKey)
 					},
 					{
 						kind: KIND.TOGGLE,
