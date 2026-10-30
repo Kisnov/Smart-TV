@@ -444,14 +444,14 @@ const handleGroupUpdate = (data) => {
 	}
 };
 
-const playlistItemKey = (id) => String(id || '').replace(/-/g, '').toLowerCase();
+// Ids come with and without dashes.
+export const itemIdKey = (id) => String(id || '').replace(/-/g, '').toLowerCase();
 
 const handlePlaybackCommand = (data) => {
 	if (!data) return;
-	// A command for another queue entry is the group catching up on one this device has already
-	// left, and would land on the wrong item. Core drops these too. An all-zero id names no entry.
-	const commandItem = playlistItemKey(data.PlaylistItemId);
-	if (/[1-9a-f]/.test(commandItem) && currentPlaylistItemId && commandItem !== playlistItemKey(currentPlaylistItemId)) {
+	// A command for another queue entry would land on the wrong item. An all-zero id names none.
+	const commandItem = itemIdKey(data.PlaylistItemId);
+	if (/[1-9a-f]/.test(commandItem) && currentPlaylistItemId && commandItem !== itemIdKey(currentPlaylistItemId)) {
 		syncLog('[SyncPlay] dropped', data.Command, 'for item', data.PlaylistItemId);
 		return;
 	}

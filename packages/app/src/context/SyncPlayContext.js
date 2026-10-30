@@ -173,13 +173,15 @@ export const SyncPlayProvider = ({children}) => {
 	// time since.
 	const getGroupPositionTicks = useCallback(() => syncPlayService.getGroupPositionTicks(), []);
 
-	// Moving on inside a group is the group's to do, as on Core. The next or previous entry goes
-	// by its own request, which the server ignores once the group has already moved on.
-	const moveGroupTo = useCallback((itemId) => {
+	// Moves the whole group to an item, by next or previous when it's the neighbouring entry.
+	const moveGroupTo = useCallback((itemId, startPositionTicks = 0) => {
 		const entries = playQueue?.Playlist || [];
 		const index = playQueue?.PlayingItemIndex ?? -1;
 		const entry = entries.find((e) => sameItemId(e.ItemId, itemId));
-		if (!entry) syncPlayService.setNewQueue([itemId]);
+		// Only SetNewQueue accepts a start position. Its update places every member at the resume point.
+		if (startPositionTicks > 0) {
+			syncPlayService.setNewQueue(entry ? entries.map(e => e.ItemId) : [itemId], entry ? entries.indexOf(entry) : 0, startPositionTicks);
+		} else if (!entry) syncPlayService.setNewQueue([itemId]);
 		// The group is already there, as when another member's move at the end of the episode landed first.
 		else if (entry === entries[index]) return;
 		else if (index >= 0 && entry === entries[index + 1]) syncPlayService.nextItem();

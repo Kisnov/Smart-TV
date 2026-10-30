@@ -1163,12 +1163,12 @@ const AppContent = (props) => {
 	// one the viewer picked by hand from the episode browser passes `resume` so an episode they
 	// were part way through carries on from where it stopped.
 	const handlePlayNext = useCallback((item, options) => {
-		// In a group the group moves on, and its queue update brings this player along. Played on
-		// here alone, the group's commands for the last item would land on this one. The group only
-		// knows this server's items, so a Plex item or another server's plays on here alone.
+		// In a group the group moves on, and its queue update brings this player along. The group
+		// only knows this server's items, so a Plex item or another server's plays on here alone.
 		const groupHasItem = (item._serverType || serverType) !== 'plex' && (!item._serverUrl || item._serverUrl === serverUrl);
 		if (isSyncPlayInGroup && groupHasItem && !isAudioItem(item) && !isLiveTvChannel(item)) {
-			syncPlayMoveGroupTo(item.Id);
+			const startPositionTicks = options?.resume === true ? (item.UserData?.PlaybackPositionTicks || 0) : 0;
+			syncPlayMoveGroupTo(item.Id, startPositionTicks);
 			return;
 		}
 		setPlayingItem(item);
