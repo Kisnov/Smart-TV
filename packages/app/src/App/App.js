@@ -391,6 +391,7 @@ const AppContent = (props) => {
 	useEffect(() => {
 		configureIncompleteRecordings({
 			supported: !!settings.useMoonfinPlugin && pluginInfo?.incompleteRecordingsSupported === true,
+			extended: pluginInfo?.extendedCompleteShowingsSupported === true,
 			canManage: user?.Policy?.EnableLiveTvManagement === true
 		});
 	}, [pluginInfo, settings.useMoonfinPlugin, user]);
@@ -830,9 +831,9 @@ const AppContent = (props) => {
 			if ((e.keyCode === KEYS.UP || e.keyCode === KEYS.DOWN || e.keyCode === KEYS.LEFT || e.keyCode === KEYS.RIGHT) && Spotlight.getPointerMode()) {
 				Spotlight.setPointerMode(false);
 			}
-			// The book readers and their dialog take Back themselves, from a listener
-			// beside this one on the window, so this one stays out of it.
-			if (showShuffleOverlay || reading || unreadableBook) {
+			// The photo viewer, the book readers and their dialog take Back themselves, from a
+			// listener beside this one on the window, so this one stays out of it.
+			if (showShuffleOverlay || photoViewerItem || reading || unreadableBook) {
 				return;
 			}
 			if (isTvKeyboardVisible()) {
@@ -917,7 +918,7 @@ const AppContent = (props) => {
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [panelIndex, handleBack, performAppCleanup, settings.exitConfirmation, showAccountModal, showServerMessages, showExitDialog, showSettingsPanel, showShuffleOverlay, reading, unreadableBook, isPinGateActive, isPinChecking, timesUp, setupWizardActive, updateInfo, dismissUpdate, syncPlayDialogOpen, closeSyncPlay]);
+	}, [panelIndex, handleBack, performAppCleanup, settings.exitConfirmation, showAccountModal, showServerMessages, showExitDialog, showSettingsPanel, showShuffleOverlay, photoViewerItem, reading, unreadableBook, isPinGateActive, isPinChecking, timesUp, setupWizardActive, updateInfo, dismissUpdate, syncPlayDialogOpen, closeSyncPlay]);
 
 	// The account stays saved, so it can be chosen again from the picker once its hours are back.
 	const handleTimesUpSwitchUser = useCallback(() => {
@@ -1855,6 +1856,7 @@ const AppContent = (props) => {
 									onLibrariesChanged={fetchLibraries}
 									onRunSetupWizard={handleRunSetupWizard}
 									onSelectItem={handleSelectItemFromSettings}
+									hasLiveTv={hasLiveTv}
 								/>
 							)}
 						</Panel>
@@ -2166,7 +2168,7 @@ const AppContent = (props) => {
 			never keeps animating behind them. */}
 			{panelIndex === PANELS.BROWSE && !showScreensaver && !showShuffleOverlay &&
 				!photoViewerItem && !reading && (
-				<SeasonalTheme theme={settings.seasonalTheme} density={settings.seasonalDensity} />
+				<SeasonalTheme theme={settings.seasonalTheme} density={settings.seasonalDensity} follower={settings.seasonalFollower} />
 			)}
 			<NoConnection />
 			<DebugOverlay />
@@ -2185,6 +2187,7 @@ const AppContent = (props) => {
 					onLibrariesChanged={fetchLibraries}
 					onRunSetupWizard={handleRunSetupWizard}
 					onSelectItem={handleSelectItemFromSettings}
+					hasLiveTv={hasLiveTv}
 				/>
 			)}
 			<TVKeyboard />

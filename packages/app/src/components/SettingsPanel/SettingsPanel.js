@@ -11,7 +11,7 @@ const PanelContainer = SpotlightContainerDecorator({
 
 const CLOSE_MS = 220;
 
-const SettingsPanel = ({initialView, onClose, onLibrariesChanged, onRunSetupWizard, onSelectItem}) => {
+const SettingsPanel = ({initialView, onClose, onLibrariesChanged, onRunSetupWizard, onSelectItem, hasLiveTv}) => {
 	const [closing, setClosing] = useState(false);
 	const timerRef = useRef(null);
 
@@ -38,6 +38,7 @@ const SettingsPanel = ({initialView, onClose, onLibrariesChanged, onRunSetupWiza
 					onLibrariesChanged={onLibrariesChanged}
 					onRunSetupWizard={onRunSetupWizard}
 					onSelectItem={onSelectItem}
+					hasLiveTv={hasLiveTv}
 				/>
 			</PanelContainer>
 		</div>
