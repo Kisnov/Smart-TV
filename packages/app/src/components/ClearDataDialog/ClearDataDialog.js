@@ -9,7 +9,6 @@ import css from './ClearDataDialog.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -56,7 +55,7 @@ const ClearDataDialog = ({open, onCancel, onConfirm}) => {
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={css.dialog} spotlightId="cleardata-dialog">
+			<DialogContainer className={css.dialog} spotlightId="cleardata-dialog" spotlightRestrict="self-only">
 				<h2 className={css.title}>{$L('Clear All Data?')}</h2>
 				<p className={css.message}>
 					{$L('This will remove all settings, saved servers, and login sessions. You will need to set up the app again.')}

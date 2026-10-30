@@ -46,7 +46,7 @@ import css from './Library.module.less';
 const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
 const ToolbarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
-const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
+const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused'}, 'div');
 
 const MUSIC_CONTENT_TYPES = [
 	{key: 'albums', label: $L('Albums'), itemType: 'MusicAlbum'},

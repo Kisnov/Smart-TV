@@ -21,7 +21,7 @@ import css from './GenreBrowse.module.less';
 const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
 const ToolbarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
-const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
+const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused'}, 'div');
 
 const SORT_OPTIONS = [
 	{key: 'SortName,Ascending', label: $L('Name (A-Z)')},
