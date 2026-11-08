@@ -7,9 +7,11 @@ import RatingsRow from '../../components/RatingsRow';
 import {formatDuration, getImageUrl} from '../../utils/helpers';
 import {castPhotoUrl, hidesMediaDescription, seriesThumbUrl} from './detailsMedia';
 import {splitAdditionalParts} from './extraCategories';
+import ClassicExtrasRow from './ClassicExtrasRow';
 import {isMdblistEnabled} from '../../services/mdblistApi';
 import {formatTime} from '../Player/PlayerConstants';
 import {SeerrStatusBadge, SeerrDownloadBars, SeerrSeasonDot} from '../../components/seerr/SeerrStatusBadge';
+import SeerrStatusBanner, {hasSeerrDot, seerrBadgeStyle} from '../../components/seerr/SeerrStatusBanner';
 import {SeerrChips, SeerrFacts, SeerrStreaming, SeerrCollectionBanner} from '../../components/seerr/SeerrSections';
 import {SpottableDiv, RowContainer, ShortRowContainer} from './detailsSpottables';
 import ExpandableOverview from './ExpandableOverview';
@@ -24,7 +26,10 @@ import {DETAIL_ICON_PATHS} from './detailIcons';
 import {showsWatchedCheck} from '../../utils/playedState';
 import {AnimeEpisodePills, AnimeItemPills} from '../../components/AnimeMarkerPills';
 import IncompleteBadge, {IncompleteDetailLine} from '../../components/IncompleteBadge';
+import PosterLabels from '../../components/PosterLabels';
 import useItemMenuHold, {itemWithIdAt} from '../../hooks/useItemMenuHold';
+import {getApiKey} from '../../services/jellyfinApi';
+import {moonbaseAssetUrl} from '../../services/moonbaseEndpoint';
 
 import css from './Details.module.less';
 
@@ -180,45 +185,6 @@ const ClassicDetailScreen = ({
 
 	const {parts: additionalParts, others: otherExtras} = splitAdditionalParts(extras);
 
-	const renderExtrasRow = (title, items) => (
-		<RowContainer className={css.section}>
-			<div className={css.sectionHeader}>
-				<h3 className={css.sectionTitle}>{title}</h3>
-			</div>
-			<div className={css.sectionScroll} onFocus={handleScrollerFocus}>
-				{items.map(extra => {
-					const extraThumbUrl = extra.ImageTags?.Primary
-						? getImageUrl(serverUrl, extra.Id, 'Primary', {maxWidth: 400, quality: 80})
-						: null;
-					const extraDuration = extra.RunTimeTicks ? formatDuration(extra.RunTimeTicks) : '';
-
-					return (
-						<SpottableDiv
-							key={extra.Id}
-							className={css.extraCard}
-							data-extra-id={extra.Id}
-							onClick={onExtraSelect}
-						>
-							<div className={css.extraThumb}>
-								{extraThumbUrl ? (
-									<img src={extraThumbUrl} alt="" />
-								) : (
-									<div className={css.extraThumbPlaceholder}>
-										<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
-									</div>
-								)}
-							</div>
-							<div className={css.extraInfo}>
-								<span className={css.extraName}>{extra.Name}</span>
-								{extraDuration && <span className={css.extraDuration}>{extraDuration}</span>}
-							</div>
-						</SpottableDiv>
-					);
-				})}
-			</div>
-		</RowContainer>
-	);
-
 	return (
 		<>
 			<div className={css.detailsHeader}>
@@ -312,10 +278,13 @@ const ClassicDetailScreen = ({
 								: null;
 							const isWatched = showsWatchedCheck(season);
 							const unplayed = season.UserData?.UnplayedItemCount;
+							const seerrStyle = seerrBadgeStyle(settings);
+							const seerrStatus = seerr.seasonMarkers.get(season.IndexNumber);
+							const banner = seerrStyle === 'banner' && hasSeerrDot(seerrStatus);
 
 							return (
 								<SpottableDiv key={season.Id} className={css.seasonCard} data-season-id={season.Id} onClick={onSeasonSelect}>
-									<div className={css.seasonPosterWrapper}>
+									<div className={`${css.seasonPosterWrapper}${banner ? ' ' + css.underSeerrBanner : ''}`}>
 										{seasonPosterUrl ? (
 											<img src={seasonPosterUrl} alt="" />
 										) : (
@@ -323,7 +292,9 @@ const ClassicDetailScreen = ({
 												<span>{season.Name}</span>
 											</div>
 										)}
-										<SeerrSeasonDot status={settings.showSeerrAvailabilityBadges !== false ? seerr.seasonMarkers.get(season.IndexNumber) : null} />
+										{banner
+											? <SeerrStatusBanner status={seerrStatus} />
+											: <SeerrSeasonDot status={seerrStyle === 'badge' ? seerrStatus : null} />}
 										{isWatched && (
 											<div className={css.watchedIndicator}>
 												<WatchedCheckIcon />
@@ -395,6 +366,13 @@ const ClassicDetailScreen = ({
 												<FavoriteHeartIcon />
 											</div>
 										)}
+										<PosterLabels
+											item={ep}
+											serverUrl={serverUrl}
+											scale={0.8}
+											top={ep.UserData?.IsFavorite ? 42 : 8}
+											topRight={ep.UserData?.Played ? 42 : 8}
+										/>
 									</div>
 									<div className={css.episodeInfo}>
 										<span className={css.episodeEpNumber}>E{ep.IndexNumber || '?'}</span>
@@ -402,7 +380,7 @@ const ClassicDetailScreen = ({
 										{epRuntime && <span className={css.episodeEpRuntime}>{epRuntime}</span>}
 										{episodeRatings[ep.IndexNumber] != null && (
 											<span className={css.tmdbBadge}>
-												<img className={css.tmdbIcon} src={`${serverUrl}/Moonfin/Assets/tmdb.svg`} alt="TMDB" />
+												<img className={css.tmdbIcon} src={moonbaseAssetUrl(serverUrl, '/Moonfin/Assets/tmdb.svg', getApiKey())} alt="TMDB" />
 												{episodeRatings[ep.IndexNumber].toFixed(1)}
 											</span>
 										)}
@@ -467,8 +445,8 @@ const ClassicDetailScreen = ({
 				</RowContainer>
 			)}
 
-			{additionalParts.length > 0 && renderExtrasRow($L('Additional Parts'), additionalParts)}
-			{otherExtras.length > 0 && renderExtrasRow($L('Extras'), otherExtras)}
+			{additionalParts.length > 0 && <ClassicExtrasRow title={$L('Additional Parts')} items={additionalParts} serverUrl={serverUrl} onExtraSelect={onExtraSelect} />}
+			{otherExtras.length > 0 && <ClassicExtrasRow title={$L('Extras')} items={otherExtras} serverUrl={serverUrl} onExtraSelect={onExtraSelect} />}
 
 			{cast.length > 0 && (
 				<RowContainer className={css.section}>

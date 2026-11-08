@@ -22,6 +22,27 @@ export const getContentTypeOptions = () => [
 	{ value: 'tv', label: $L('TV Shows Only') }
 ];
 
+export const getMediaBarSourceOptions = () => [
+	{ value: 'random', label: $L('Random') },
+	{ value: 'recentlyAdded', label: $L('Recently Added') },
+	{ value: 'recentlyReleased', label: $L('Recently Released') },
+	{ value: 'newReleases', label: $L('New Seasons & Episodes') }
+];
+
+export const getDateFormatOptions = () => [
+	{ value: 'system', label: $L('Locale Default') },
+	{ value: 'monthDay', label: $L('Month / Day (Nov 10)') },
+	{ value: 'dayMonth', label: $L('Day / Month (10 Nov)') }
+];
+
+export const getNewReleaseDaysOptions = () => [
+	{ value: 7, label: $L('7 days') },
+	{ value: 14, label: $L('14 days') },
+	{ value: 30, label: $L('30 days') },
+	{ value: 60, label: $L('60 days') },
+	{ value: 90, label: $L('90 days') }
+];
+
 export const getFeaturedBarStyleOptions = () => [
 	{ value: 'moonfin', label: $L('Moonfin') },
 	{ value: 'makd', label: $L('MakD') },
@@ -278,6 +299,10 @@ export const getDetailScreenStyleOptions = () => [
 	{ value: 'v3', label: $L('Spotlight') },
 	{ value: 'v4', label: $L('Nouveau') },
 	{ value: 'v5', label: $L('Minimalist') },
+	{ value: 'v6', label: $L('Stage') },
+	{ value: 'v7', label: $L('Premiere') },
+	{ value: 'v8', label: $L('Quick Look') },
+	{ value: 'v9', label: $L('Frost') },
 	{ value: 'v1', label: $L('Classic') }
 ];
 
@@ -433,6 +458,15 @@ export const getSubtitleModeOptions = () => [
 	{ value: 'none', label: $L('None') }
 ];
 
+// What each subtitle mode does, under its name in the picker
+export const subtitleModeHint = (mode) => ({
+	default: $L('Plays tracks internally flagged in the media file\'s metadata as "default" or "forced".'),
+	always: $L('Automatically loads and displays subtitles every time a video starts.'),
+	foreign: $L('Automatically turns on subtitles if the default audio track is in a foreign language.'),
+	forced: $L('Only loads subtitles explicitly tagged with the forced metadata flag.'),
+	none: $L('Completely disables automatic subtitle loading.')
+})[mode];
+
 export const getSortOrderOptions = () => [
 	{ value: 'auto', label: $L('Auto') },
 	{ value: 'Ascending', label: $L('Ascending') },
@@ -451,6 +485,11 @@ export const getExternalRowSortByOptions = () => [
 export const getExternalRowSortOrderOptions = () => [
 	{ value: 'ascending', label: $L('Ascending') },
 	{ value: 'descending', label: $L('Descending') }
+];
+
+export const getSeerrBadgeStyleOptions = () => [
+	{ value: 'badge', label: $L('Badge') },
+	{ value: 'banner', label: $L('Banner') }
 ];
 
 export const getOledModeOptions = () => [
@@ -722,7 +761,8 @@ export const getAccentColorOptions = () => [
 	{ value: '#708090', label: $L('Slate') },
 	{ value: '#4b0082', label: $L('Indigo') },
 	{ value: '#00a4dc', label: $L('Moonfin Cyan') },
-	{ value: '#ff2e92', label: $L('Neon Magenta') }
+	{ value: '#ff2e92', label: $L('Neon Magenta') },
+	{ value: '#ffcd75', label: $L('8-bit Gold') }
 ];
 
 // The color the navigation and media bar surfaces tint themselves with.
@@ -775,4 +815,35 @@ export const getRecentlyReleasedSeriesTypeOptions = () => [
 	{ value: 'series', label: $L('Series') },
 	{ value: 'season', label: $L('Season') },
 	{ value: 'episode', label: $L('Episode') }
+];
+
+export const getCalendarStyleOptions = () => [
+	{ value: 'agenda', label: $L('Agenda') },
+	{ value: 'countdown', label: $L('Countdown') }
+];
+
+export const getCalendarWeekStartOptions = () => [
+	{ value: 'locale', label: $L('Auto') },
+	{ value: 'sunday', label: $L('Sunday') },
+	{ value: 'monday', label: $L('Monday') }
+];
+
+export const getCalendarScopeOptions = () => [
+	{ value: 'everything', label: $L('Everything') },
+	{ value: 'myShows', label: $L('My shows') }
+];
+
+export const getCalendarColorByOptions = () => [
+	{ value: 'type', label: $L('Type') },
+	{ value: 'status', label: $L('Status') }
+];
+
+export const getCalendarImageTypeOptions = () => [
+	{ value: 'poster', label: $L('Poster') },
+	{ value: 'thumb', label: $L('Thumbnail') }
+];
+
+export const getCalendarSelectActionOptions = () => [
+	{ value: 'details', label: $L('Open details') },
+	{ value: 'play', label: $L('Play when in library') }
 ];

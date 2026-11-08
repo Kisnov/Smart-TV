@@ -23,6 +23,8 @@ const ctx = {
 	romm: {available: true},
 	seerrLabel: 'Seerr',
 	isSeerr: true,
+	hasLiveTv: true,
+	serverType: 'jellyfin',
 	hasMultipleServers: false,
 	isWebOS: true,
 	isTizen: false,
@@ -194,6 +196,24 @@ describe('settings schema', () => {
 		expect(toggle.when({...ctx, settings: {...defaultSettings, showLibrariesInToolbar: false}})).toBe(false);
 	});
 
+	test('Card image only shows while the saved calendar style is Countdown, the one style that draws it', () => {
+		const picker = allRows().find(({row}) => row.key === 'calendarImageType').row;
+		expect(defaultSettings.calendarStyle).toBe('agenda');
+		expect(picker.when(ctx)).toBe(false);
+		expect(picker.when({...ctx, settings: {...defaultSettings, calendarStyle: 'countdown'}})).toBe(true);
+	});
+
+	test('the Live TV and SyncPlay button switches only show where the navbar could draw the button', () => {
+		const shown = (key, overrides, settings = {}) => allRows().find(({row}) => row.key === key).row
+			.when({...ctx, ...overrides, settings: {...defaultSettings, ...settings}});
+		expect(shown('showLiveTvButton', {})).toBe(true);
+		expect(shown('showLiveTvButton', {hasLiveTv: false})).toBe(false);
+		expect(shown('showSyncPlayButton', {})).toBe(true);
+		expect(shown('showSyncPlayButton', {serverType: 'emby'})).toBe(true);
+		expect(shown('showSyncPlayButton', {serverType: 'plex'})).toBe(false);
+		expect(shown('showSyncPlayButton', {}, {syncplayEnabled: false})).toBe(false);
+	});
+
 	test("Secondary Subtitles is off by default and follows the default language, with its own language only while it's on", () => {
 		const subtitles = allScreens().find(({sub}) => sub.id === 'subtitles').sub.rows;
 		const keys = subtitles.map((row) => row.key);
@@ -225,6 +245,14 @@ describe('settings schema', () => {
 		const ids = buildSettingsIndex(SETTINGS_SCHEMA, ctx, {resolve, spotlightIdOf}).map(resultSpotlightId);
 		expect(ids.filter((id) => !/^[\w\d-]+$/.test(id))).toEqual([]);
 		expect(new Set(ids).size).toBe(ids.length);
+	});
+});
+
+describe('the details screen style', () => {
+	test.each(['Stage', 'Premiere', 'Quick Look', 'Frost'])('a search for %s finds the style setting', (name) => {
+		const index = buildSettingsIndex(SETTINGS_SCHEMA, ctx, {resolve, spotlightIdOf});
+
+		expect(matchSettings(index, name).map((entry) => entry.spotlightId)).toContain('setting-detailScreenStyle');
 	});
 });
 

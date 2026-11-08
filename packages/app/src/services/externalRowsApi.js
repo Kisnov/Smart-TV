@@ -1,4 +1,4 @@
-import {getAuthHeader, getServerUrl, getUserId} from './jellyfinApi';
+import {api, getAuthHeader, getServerType, getServerUrl, getUserId} from './jellyfinApi';
 import {fetchWithTimeout} from '../utils/fetchTimeout';
 import {mediaServerQueue} from '../utils/requestQueue';
 
@@ -124,10 +124,30 @@ export const fetchTmdbDetails = async ({type, tmdbId, imdbId}) => {
 	}
 };
 
+// Silo curates its own seasonal row (Seasonal Picks), picking the holiday and the titles, so Moonbase isn't asked.
+// A new order on each load, so the same picks don't always lead. As Moonfin-Core's _loadServerSeasonalRow.
+const fetchSiloSeasonalRow = async () => {
+	try {
+		const section = (await api.getServerHomeSections()).find((entry) => entry.kind === 'seasonal_themed');
+		if (!section) return null;
+		const items = [...((await api.getServerHomeSectionItems(section.id))?.Items || [])];
+		for (let i = items.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[items[i], items[j]] = [items[j], items[i]];
+		}
+		return {holiday: 'silo', title: section.title, items, suggestions: []};
+	} catch (err) {
+		console.warn('[ExternalRows] Silo seasonal section failed:', err);
+		return null;
+	}
+};
+
 // The seasonal row Moonbase built for this user. Owned movies arrive as library items and
-// suggestions in the custom row shape. A holiday of null means there is no row today.
-export const fetchSeasonalRow = async ({country} = {}) => {
-	const key = `${cacheScope()}|seasonal:${country || ''}`;
+// suggestions in the custom row shape. A holiday of null means there's no row today. allYear
+// asks for a row outside the holiday dates too.
+export const fetchSeasonalRow = async ({country, allYear = false} = {}) => {
+	if (getServerType() === 'silo') return fetchSiloSeasonalRow();
+	const key = `${cacheScope()}|seasonal:${country || ''}:${allYear}`;
 	const cached = cache[key];
 	if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
 		return cached.payload;
@@ -140,7 +160,8 @@ export const fetchSeasonalRow = async ({country} = {}) => {
 	const headers = {'Authorization': getAuthHeader()};
 
 	try {
-		const url = `${baseUrl}/Moonfin/Seasonal/Row` + (country ? `?country=${encodeURIComponent(country)}` : '');
+		const query = [country && `country=${encodeURIComponent(country)}`, allYear && 'allYear=true'].filter(Boolean).join('&');
+		const url = `${baseUrl}/Moonfin/Seasonal/Row` + (query ? `?${query}` : '');
 		const response = await mediaServerQueue.run(
 			() => fetchWithTimeout(url, {headers}, 10000)
 		);

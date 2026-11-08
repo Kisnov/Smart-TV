@@ -139,7 +139,7 @@ export const getMediaCapabilities = async () => {
 export const getSupportedAudioCodecs = (capabilities, _container, passthroughOptions = {}) => {
 	const passthrough = resolvePassthroughSettings(passthroughOptions);
 	const passthroughAllowed = passthrough.passthroughEnabled;
-	const codecs = ['aac', 'mp3', 'flac', 'vorbis', 'pcm', 'wav'];
+	const codecs = ['aac', 'mp3', 'flac', 'vorbis', 'pcm', 'wav', 'pcm_s16le'];
 	// Left alone by the passthrough settings, same as the device profile
 	if (capabilities.ac3) codecs.push('ac3');
 	if (capabilities.eac3) codecs.push('eac3');
@@ -165,6 +165,15 @@ export const isAudioStreamPlayable = (stream, capabilities, passthroughOptions =
 	if (!stream) return false;
 	const codec = (stream.Codec || '').toLowerCase();
 	if (!codec) return true;
+	// Samsung doesn't document LPCM limits, so only the 16-bit stereo at up to 48 kHz that played on an S95B
+	// skips conversion.
+	if (codec === 'pcm') {
+		// Plex reports the PCM format separately from the codec alias.
+		const profile = (stream.Profile || '').toLowerCase();
+		if (profile && profile !== 'pcm_s16le') return false;
+		if (stream.BitDepth != null && Number(stream.BitDepth) !== 16) return false;
+	}
+	if ((codec === 'pcm_s16le' || codec === 'pcm') && ((stream.Channels || 0) > 2 || (stream.SampleRate || 0) > 48000)) return false;
 	if (DTS_FAMILY_CODECS.includes(codec)) return false;
 	if ((codec === 'truehd' || codec === 'mlp') && streamHasAtmos(stream)) return false;
 	const supported = getSupportedAudioCodecs(capabilities, '', passthroughOptions);
@@ -194,7 +203,7 @@ export const getPlayMethod = (mediaSource, capabilities, _options, passthroughOp
 	const videoStream = mediaSource.MediaStreams?.find(s => s.Type === 'Video');
 
 	const videoCodec = (videoStream?.Codec || '').toLowerCase();
-	const supportedVideoCodecs = ['h264', 'avc'];
+	const supportedVideoCodecs = ['h264', 'avc', 'mpeg2video'];
 	if (capabilities.hevc) supportedVideoCodecs.push('hevc', 'h265', 'hev1', 'hvc1');
 	if (capabilities.av1) supportedVideoCodecs.push('av1');
 	if (capabilities.vp9) supportedVideoCodecs.push('vp9');
@@ -230,10 +239,13 @@ export const getPlayMethod = (mediaSource, capabilities, _options, passthroughOp
 	const videoOk = !videoCodec || supportedVideoCodecs.includes(videoCodec);
 	const audioOk = defaultPlayable;
 	const containerOk = !container || supportedContainers.includes(container);
+	// Jellyfin can report MP4's ffprobe format list as its first alias, mov.
+	// Match the MP4 codec rules already advertised in our server profile.
+	const codecContainer = container === 'mov' ? 'mp4' : container;
 
 	// Samsung docs: "HEVC: Supported only for MKV/MP4/TS containers"
 	const hevcContainerOk = videoCodec === 'hevc' || videoCodec === 'h265' || videoCodec === 'hev1' || videoCodec === 'hvc1'
-		? ['mp4', 'mkv', 'matroska', 'ts', 'mpegts', 'm4v'].includes(container)
+		? ['mp4', 'mkv', 'matroska', 'ts', 'mpegts', 'm4v'].includes(codecContainer)
 		: true;
 
 	// VP9 container support:
@@ -241,7 +253,7 @@ export const getPlayMethod = (mediaSource, capabilities, _options, passthroughOp
 	// decoder is container agnostic and Tizen's media framework demuxes
 	// MKV/MP4/WebM equally well for VP9 content.
 	const vp9ContainerOk = videoCodec === 'vp9'
-		? ['webm', 'mkv', 'matroska', 'mp4', 'm4v'].includes(container)
+		? ['webm', 'mkv', 'matroska', 'mp4', 'm4v'].includes(codecContainer)
 		: true;
 
 	// AV1 container support:
@@ -249,7 +261,7 @@ export const getPlayMethod = (mediaSource, capabilities, _options, passthroughOp
 	// 8K Premium 2022+ models additionally support TS/AVI containers.
 	const av1GeneralContainers = capabilities.uhd8K && capabilities.tizenVersion >= 6.5;
 	const av1ContainerOk = videoCodec === 'av1'
-		? (['webm', 'mkv', 'matroska', 'mp4', 'm4v'].includes(container) ||
+		? (['webm', 'mkv', 'matroska', 'mp4', 'm4v'].includes(codecContainer) ||
 			(av1GeneralContainers && ['ts', 'mpegts', 'avi'].includes(container)))
 		: true;
 

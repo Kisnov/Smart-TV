@@ -14,8 +14,9 @@ import {
 	DEFAULT_ERROR_COLOR,
 	inkOn,
 	MIN_BUTTON_CONTRAST,
-	isValidHexColor,
 	radiusToCss,
+	relativeLuminance,
+	resolveFocusBorderColor,
 	shadowToCss,
 	toCssColor,
 	toCssColorWithAlpha,
@@ -41,6 +42,9 @@ import spotlightGridCss from '../views/Details/spotlight/SpotlightGrids.module.l
 import nouveauCardsCss from '../views/Details/nouveau/cards/NouveauCards.module.less';
 import nouveauFooterCss from '../views/Details/nouveau/footer/NouveauDetailsFooter.module.less';
 import nouveauSectionsCss from '../views/Details/nouveau/sections/NouveauSections.module.less';
+import stageCss from '../views/Details/stage/StageDetailContent.module.less';
+import quickLookCss from '../views/Details/quickLook/QuickLookDetailContent.module.less';
+import frostCss from '../views/Details/frost/FrostDetailContent.module.less';
 import trackListCss from '../components/DetailTrackList/DetailTrackList.module.less';
 import musicCss from '../views/MusicBrowse/MusicLibrary.module.less';
 import musicScreensCss from '../views/MusicBrowse/MusicScreens.module.less';
@@ -57,15 +61,24 @@ import backdropCss from '../components/BackdropLayer/BackdropLayer.module.less';
 import browseCss from '../views/Browse/Browse.module.less';
 import mediaCardCss from '../components/MediaCard/MediaCard.module.less';
 import modernCardCss from '../components/MediaCard/ModernMediaCard.module.less';
+import seerrBannerCss from '../components/seerr/SeerrStatusBanner.module.less';
+import seerrDotCss from '../components/seerr/SeerrStatusDot.module.less';
 import mediaRowCss from '../components/MediaRow/MediaRow.module.less';
 import modernRowCss from '../components/MediaRow/ModernMediaRow.module.less';
 import ratingsCss from '../components/RatingsRow/RatingsRow.module.less';
+import watchingNowRowCss from '../components/WatchingNowRow/WatchingNowRow.module.less';
 import itemMenuCss from '../components/ItemContextMenu/ItemContextMenu.module.less';
 import skeletonCss from '../components/Skeleton/Skeleton.module.less';
 import playlistSortFilterCss from '../components/PlaylistSortFilterBar/PlaylistSortFilterBar.module.less';
 import playbackInfoCss from '../views/Player/PlaybackInfoModal.module.less';
 
 const STYLE_ELEMENT_ID = 'moonfin-theme-overrides';
+
+// Screens that load on demand hand their stylesheets over when they load, since importing one
+// here would move it into the main stylesheet and change which of its rules win ties.
+const lazySheets = {};
+let lastApplied = null;
+let rebuildQueued = false;
 
 const hexAlpha = (hex) => Number.parseInt(hex.slice(1, 3), 16) / 255;
 
@@ -88,6 +101,8 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	const scrim = (a) => `rgba(${scrimRgb}, ${a})`;
 	const accentA = (a) => `rgba(${accentRgb}, ${a})`;
 	const surfaceA = (a) => `rgba(${surfaceRgb}, ${a})`;
+	// Core units in rem, so a 720p set scales them too
+	const rem = (dp) => `${(dp * 1.66957 / 24).toFixed(4)}rem`;
 
 	const background = toCssColor(c.background);
 	const onBackground = toCssColor(c.onBackground);
@@ -114,9 +129,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	const statusRequested = toCssColor(theme.semantic.statusRequested);
 	const statusPending = toCssColor(theme.semantic.statusPending);
 
-	const focusColor = isValidHexColor(options.focusBorderColor)
-		? toCssColor(options.focusBorderColor)
-		: toCssColor(b.focusBorder.color);
+	const focusColor = resolveFocusBorderColor(theme, options.focusBorderColor);
 	const focusGlow = b.focusGlow.length ? b.focusGlow.map(shadowToCss).join(', ') : null;
 	const glowOr = (fallback) => focusGlow || fallback;
 	const textGlow = theme.textGlow.length ? theme.textGlow.map(shadowToCss).join(', ') : 'none';
@@ -214,13 +227,12 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	}
 
 	// The pixel face runs far larger than a normal one, so settings text shrinks to 60 percent
-	// under a pixel theme. Sizes here are in rem so a 720p set scales them too.
+	// under a pixel theme.
 	if (theme.isPixel) {
-		const rem = (dp) => `${(dp * 1.66957 / 24).toFixed(4)}rem`;
 		const dpRem = (dp) => rem(dp * 0.6);
 		const sizes = {
 			appBarTitle: 22, sectionTitle: 12, listItemHeading: 14, listItemCaption: 12, listItemDescriptionSmall: 11,
-			valueBubble: 11, searchInput: 14, dialogTitle: 14, aboutVersion: 14, input: 14, editorHint: 12,
+			valueBubble: 11, searchInput: 14, dialogTitle: 18, aboutVersion: 14, input: 14, editorHint: 12,
 			editorLead: 14, settingsButton: 14, syncSubtle: 12, syncStatusTitle: 16,
 			syncSwitchLabel: 11, syncChip: 11, syncCaption: 12, syncTransferTitle: 14, syncResetButton: 14, syncMessage: 12
 		};
@@ -239,8 +251,40 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${panelCss.scrim}`, `background: ${scrim(0.54)};`);
 	rule(`.${settingsCss.page}, .${settingsCss.viewContainer}, .${settingsCss.appBar}`, `background-color: ${background};`);
 	rule(`.${settingsCss.appBarScrolled}`, `background-image: linear-gradient(${accentA(0.08)}, ${accentA(0.08)});`);
-	rule(`.${settingsCss.appBarTitle}, .${settingsCss.dialogTitle}`, `color: ${onSurface};`);
+	rule(`.${settingsCss.appBarTitle}`, `color: ${onSurface};`);
 	rule(`.${settingsCss.sectionTitle}`, `color: ${accent};`);
+	// Pickers and checklists follow Core's dialog theme: the surface made opaque, the theme's
+	// corners, accent controls, and rows that fill with the focused button color under black ink.
+	const dialogShape = theme.isGlass
+		? `border-radius: ${rem(20)}; border: ${rem(1)} solid rgba(255, 255, 255, 0.2);`
+		: (theme.isPixel ? `border-radius: 0; border: ${rem(2)} solid ${surfaceVariant};` : '');
+	rule(`.${settingsCss.dialog}`, `background: rgb(${surfaceRgb}); ${dialogShape}`);
+	if (theme.isPixel) {
+		rule(`.${settingsCss.dialogOption}, .${settingsCss.checkRow}, .${settingsCss.dialogFilledButton}`, 'border-radius: 0;');
+	}
+	rule(`.${settingsCss.dialogOption}, .${settingsCss.checkRow}`, `color: ${onSurface};`);
+	rule(`.${settingsCss.dialogOption}:focus, .${settingsCss.checkRow}:focus`, `background: ${buttonFocused}; color: rgba(0, 0, 0, 0.87);`);
+	rule(`.${settingsCss.dialogRadio}`, `color: ${os(0.45)};`);
+	rule(`.${settingsCss.dialogRadioOn}`, `color: ${accent};`);
+	rule(`.${settingsCss.dialogOption}:focus .${settingsCss.dialogRadio}`, 'color: rgba(0, 0, 0, 0.5);');
+	rule(`.${settingsCss.dialogOption}:focus .${settingsCss.dialogRadioOn}`, 'color: rgba(0, 0, 0, 0.87);');
+	rule(`.${settingsCss.dialogHint}`, `color: ${os(0.65)};`);
+	rule(`.${settingsCss.dialogOption}:focus .${settingsCss.dialogHint}`, 'color: rgba(0, 0, 0, 0.6);');
+	rule(`.${settingsCss.checkBox}`, `border-color: ${accent};`);
+	rule(`.${settingsCss.checkBoxOn}`, `background: ${accent}; color: ${onAccent};`);
+	rule(`.${settingsCss.checkRow}:focus .${settingsCss.checkBox}`, 'border-color: rgba(0, 0, 0, 0.8);');
+	rule(`.${settingsCss.checkRow}:focus .${settingsCss.checkBoxOn}`, 'border-color: rgba(0, 0, 0, 0.87); background: rgba(0, 0, 0, 0.87); color: #fff;');
+	rule(`.${settingsCss.dialogButton}`, `color: ${accent};`);
+	rule(`.${settingsCss.dialogButton}:focus`, `background: ${accentA(0.1)};`);
+	rule(`.${settingsCss.dialogFilledButton}`, `background: ${buttonNormal}; color: ${onButtonNormal};`);
+	rule(`.${settingsCss.dialogFilledButton}:focus`, `background: ${buttonNormal}; background-image: linear-gradient(${toCssColorWithAlpha(c.onButtonNormal, 0.1)}, ${toCssColorWithAlpha(c.onButtonNormal, 0.1)});`);
+	// Neon Pulse's dialog titles glow in its accent, and the pixel theme sets the picker's title in its own font
+	if (theme.textGlow.length) {
+		rule(`.${settingsCss.dialogTitle}, .${settingsCss.checklistTitle}`, `color: ${accent}; text-shadow: ${textGlow}; letter-spacing: 0.4px;`);
+	}
+	if (theme.fontFamily) {
+		rule(`.${settingsCss.dialogTitle}`, `font-family: '${theme.fontFamily}', sans-serif;`);
+	}
 	rule(`.${settingsCss.listItem}, .${settingsCss.themeCard}`, `background: ${surfaceA(0.82)}; border-color: ${tileBorderColor};`);
 	rule(`.${settingsCss.listItem}:focus, .${settingsCss.themeCard}:focus`, tileFocus);
 	rule(`.${settingsCss.listItemSelected}, .${settingsCss.themeCardSelected}`, `border-color: ${accent};`);
@@ -269,7 +313,11 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	// Plain tiles keep the stock dark type's text colours whatever the theme
 	rule(`.${settingsCss.listItemPlain} .${settingsCss.listItemHeading}, .${settingsCss.listItemPlain}:focus .${settingsCss.listItemHeading}`, `color: #e6e0e9;`);
 	rule(`.${settingsCss.listItemPlain} .${settingsCss.listItemCaption}, .${settingsCss.listItemPlain}:focus .${settingsCss.listItemCaption}`, `color: #cac4d0;`);
-	rule(`.${settingsCss.colorCircle}`, `border: ${chipBorder};`);
+	// Core strokes a swatch with the chip border in its own units, which a 1px border draws too faint
+	const swatchRing = `${Math.max(1, Math.round(b.chipBorder.width * 1.66957))}px solid ${toCssColor(b.chipBorder.color)}`;
+	rule(`.${settingsCss.colorCircle}, .${settingsCss.colorSwatch}`, `border: ${swatchRing};`);
+	rule(`.${settingsCss.swatchEdge}`, `border-color: ${os(0.24)};`);
+	rule(`.${settingsCss.swatchEdgeLight}`, 'border-color: rgba(0, 0, 0, 0.38);');
 	rule(`.${settingsCss.subtitlePreview}`, `background: linear-gradient(to bottom right, ${surfaceVariant}, ${scrim(0.8)});`);
 	rule(`.${settingsCss.listItem}:focus .${settingsCss.listItemIcon}`, `background: ${accentA(0.22)}; border-color: ${accentA(0.64)}; color: ${invertedSoft};`);
 	rule(`.${settingsCss.valueBubble}`, `background: ${accentA(0.1)}; border-color: ${accentA(0.35)}; color: ${accent};`);
@@ -284,7 +332,6 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${settingsCss.sliderThumb}`, `background: ${toCssColor(c.rangeThumb)};`);
 	rule(`.${settingsCss.sliderTick}`, `background: ${os(0.38)};`);
 	rule(`.${settingsCss.divider}`, `background: ${os(0.12)};`);
-	rule(`.${settingsCss.dialog}`, `background: ${surface};`);
 	rule(`.${settingsCss.aboutVersion}`, `color: ${onSurface};`);
 	rule(`.${settingsCss.aboutDivider}`, `background: ${onSurface};`);
 	rule(`.${settingsCss.input}, .${settingsCss.searchInput}`, `background: ${surfaceVariant}; color: ${onSurface};`);
@@ -303,6 +350,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${settingsCss.listItem}:focus .${achievementsCss.boardValue}, .${settingsCss.listItem}:focus .${achievementsCss.rankGutter}, .${settingsCss.listItem}:focus .${achievementsCss.reward}`, `color: ${invertedStrong};`);
 	rule(`.${settingsCss.actionButton}`, `background: ${buttonNormal}; color: ${onButtonNormal}; border-color: ${tileBorderColor};`);
 	rule(`.${settingsCss.actionButton}:focus`, `background: ${buttonFocused}; border-color: ${focusColor}; color: ${buttonInk};`);
+	rule(`.${settingsCss.logFilter}:focus`, `border-color: ${focusColor};`);
 	rule(`.${settingsCss.dangerButton}:focus`, `background: ${recordingActive} !important; border-color: ${recordingActive} !important; color: #fff;`);
 	// The editors' buttons, Save filled and the rest as text, focus the way the rows do
 	rule(`.${settingsCss.settingsButton}`, `color: ${accent};`);
@@ -383,6 +431,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${detailsCss.trackPlayed} svg`, `fill: ${accent};`);
 	rule(`.${detailsCss.actionBtn}`, `background: ${os(0.1)}; border-color: ${os(0.2)}; color: ${onBackground};`);
 	rule(`.${detailsCss.actionBtn}:hover, .${detailsCss.actionBtn}:focus`, `background: ${accentA(0.3)}; border-color: ${focusColor};`);
+	rule(`.${detailsCss.personActionBtn}:focus`, `border-color: ${focusColor};`);
 	rule(`.${detailsCss.toast}`, `background: ${surfaceA(0.9)}; color: ${onBackground}; border-color: ${os(0.12)};`);
 	rule(`.${detailsCss.trailerCloseBtn}`, `background: ${os(0.15)}; color: ${onBackground};`);
 
@@ -548,6 +597,82 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${overviewCss.spottable}:focus`, `border-color: ${focusColor};`);
 	rule(`.${overviewCss.readMoreBtn}`, `color: ${accent};`);
 
+	// Detail screens, stage layout
+	rule(`.${stageCss.chip}:focus, .${stageCss.name}:focus`, `border-color: ${focusColor};`);
+	rule(`.${stageCss.cell}:focus`, `background: ${accentA(0.1)}; border-color: ${focusColor};`);
+	rule(`.${stageCss.card}:focus .${stageCss.cardArt}::after, .${stageCss.person}:focus .${stageCss.avatarRing}`, `border-color: ${focusColor};`);
+	rule(`.${stageCss.progressFill}, .${stageCss.statusUpcoming}`, `background: ${accent};`);
+	rule(`.${stageCss.metaRating}`, `background: ${accentA(0.15)};`);
+	rule(`.${stageCss.cardWatched}, .${stageCss.posterWatched}`, `background: ${badgeWatched}; border-color: ${onBadge};`);
+	rule(`.${stageCss.cardWatched} svg, .${stageCss.posterWatched} svg, .${stageCss.cardFavorite} svg, .${stageCss.posterFavorite} svg`, `fill: ${onBadge}; stroke: ${onBadge};`);
+	rule(`.${quickLookCss.season}:focus, .${quickLookCss.open}:focus`, `border-color: ${focusColor};`);
+	rule(`.${quickLookCss.progressFill}, .${quickLookCss.seasonFill}`, `background: ${accent};`);
+	['actionsStacked', 'actionsCentered'].forEach((row) => {
+		rule(`.${modernDetailCss[row]} > .${modernDetailCss.actionBtn}:first-child`, `background-color: ${accent}; color: ${onAccent};`);
+		rule(`.${modernDetailCss[row]} > .${modernDetailCss.actionBtn}:first-child:focus`, `background-color: ${buttonFocused}; border-color: ${focusColor}; color: ${onButtonFocused};`);
+		rule(`.${modernDetailCss[row]} > .${modernDetailCss.actionActive}`, `background-color: ${accentA(0.18)}; color: ${accent};`);
+		rule(`.${modernDetailCss[row]} > .${modernDetailCss.actionActive}[data-spotlight-id='details-favorite-btn']`, 'background-color: rgba(255, 71, 87, 0.18); color: #e50914;');
+	});
+	rule(`.${tabBarCss.barFocused}::after`, `border-color: ${focusColor};`);
+
+	// Detail screens, frost layout. Every color keeps the strength the stylesheet gives it. Text,
+	// hairlines and the light fills take the page's text color, the glass and placeholders the
+	// surface, the dim and fades over the art the background, and focus the focused button color.
+	const fr = frostCss;
+	const ink = (a) => `rgba(${toRgbTriplet(c.onBackground)}, ${a})`;
+	const ground = (a) => `rgba(${toRgbTriplet(c.background)}, ${a})`;
+	const focusFill = (a) => `rgba(${toRgbTriplet(c.buttonFocused)}, ${a})`;
+	rule(`.${fr.frost}, .${fr.readMore}`, `color: ${onBackground};`);
+	rule(`.${fr.dim}`, `background-color: ${ground(0.55)};`);
+	rule(`.${fr.artFade}`, `background-image: linear-gradient(to top, ${ground(0.95)}, ${ground(0.74)} 50%, ${ground(0)} 80%), linear-gradient(to right, ${ground(0.5)}, ${ground(0)} 62%);`);
+	rule(`.${fr.window}`, `background: ${surfaceA(0.55)};`);
+	rule(`.${fr.toolbarPane}, .${fr.tabPane}`, `background: ${surfaceA(0.9)};`);
+	rule(`.${fr.readMore}`, `background: ${surfaceA(0.97)};`);
+	rule(`.${fr.still}, .${fr.seasonPoster}, .${fr.avatar}, .${fr.wideThumb}, .${fr.posterThumb}`, `background: ${surfaceA(1)};`);
+	rule(`.${fr.window}::after, .${fr.toolbarPane}::after, .${fr.tabPane}::after`, `border-color: ${ink(0.08)}; border-top-color: ${ink(0.24)};`);
+	rule(`.${fr.strip}`, `border-color: ${ink(0.14)};`);
+	rule(`.${ratingsCss.ratingColumn} + .${ratingsCss.ratingColumn}`, `border-left-color: ${ink(0.14)};`);
+	rule(`.${ratingsCss.columnName}`, `color: ${ink(0.62)};`);
+	rule(`.${ratingsCss.columnValue}`, `color: ${ink(0.94)};`);
+	rule(`.${fr.infoRow} + .${fr.infoRow}`, `border-top-color: ${ink(0.08)};`);
+	rule(['headingCaps', 'creditLabel', 'trackChevron', 'watchHeading', 'caps', 'playedIcon', 'avatarIcon', 'groupTitle', 'infoLabel']
+		.map((name) => `.${fr[name]}`).join(', '), `color: ${ink(0.62)};`);
+	rule(`.${fr.metaLine}`, `color: ${ink(0.78)};`);
+	rule(`.${fr.metaRating}, .${fr.techChip}`, `border-color: ${ink(0.55)}; color: ${ink(0.85)};`);
+	rule(`.${fr.statusUpcoming}`, `background: ${accent};`);
+	rule(`.${fr.status}`, `color: ${ink(0.8)};`);
+	rule(`.${fr.textBody}, .${fr.posterTitle}`, `color: ${ink(0.9)};`);
+	rule(`.${fr.credits}, .${fr.readMoreText}`, `color: ${ink(0.92)};`);
+	rule(`.${fr.infoValue}`, `color: ${ink(0.94)};`);
+	rule(`.${fr.trackValue}, .${fr.rowSide}`, `color: ${ink(0.72)};`);
+	rule(`.${fr.watchOthers}, .${fr.pill}`, `color: ${ink(0.68)};`);
+	rule(`.${fr.rowOverview}, .${fr.castRole}, .${fr.readMoreMeta}`, `color: ${ink(0.65)};`);
+	rule(`.${fr.statusTrack}, .${fr.rowBar}`, `background: ${rangeTrack};`);
+	rule(`.${fr.barFill}`, `background: ${rangeProgress};`);
+	rule(`.${fr.card}`, `background: ${ink(0.06)};`);
+	rule(`.${fr.pills}, .${fr.statusPill}`, `background: ${ink(0.08)};`);
+	rule(`.${fr.track}, .${fr.watchCard}`, `background: ${ink(0.1)};`);
+	rule(`.${fr.watchLogo}`, `background: ${ink(0.12)};`);
+	rule(`.${fr.details}:focus .${fr.card}`, `background: ${focusFill(0.12)};`);
+	rule(`.${fr.text}:focus, .${fr.row}:focus, .${fr.castTile}:focus, .${fr.extraTile}:focus, .${fr.posterTile}:focus`, `background: ${focusFill(0.14)};`);
+	rule(`.${fr.tabSelected}`, `background: ${ink(0.16)};`);
+	rule(`.${fr.pillSelected}`, `background: ${ink(0.18)}; color: ${onBackground};`);
+	rule(`.${fr.track}:focus`, `background: ${focusFill(0.32)};`);
+	rule(`.${fr.pill}:focus, .${fr.tab}:focus`, `background: ${focusFill(0.38)}; color: ${onBackground};`);
+	// Frost's toolbar: Play is an accent pill that fills like Modern's labeled Play when focused, and
+	// the rest are bare icons on a light platter while focused, with their label in a chip above.
+	const frosted = `.${modernDetailCss.actionsFrosted} >`;
+	const actionBtn = modernDetailCss.actionBtn;
+	const favorite = `.${modernDetailCss.actionActive}[data-spotlight-id='details-favorite-btn']`;
+	rule(`${frosted} .${actionBtn}`, `color: ${onButtonNormal};`);
+	rule(`${frosted} .${actionBtn}:focus`, `background: transparent; border-color: transparent; color: ${onButtonNormal};`);
+	rule(`${frosted} .${modernDetailCss.actionActive}, ${frosted} .${modernDetailCss.actionActive}:focus`, `color: ${accent};`);
+	rule(`${frosted} ${favorite}, ${frosted} ${favorite}:focus`, 'color: #ff375f;');
+	rule(`${frosted} .${actionBtn}:not(:first-child):focus .${modernDetailCss.actionIcon}`, `background: ${focusFill(0.32)};`);
+	rule(`${frosted} .${actionBtn}:not(:first-child) .${modernDetailCss.actionText}`, `background: ${surfaceA(0.97)}; color: ${onSurface};`);
+	rule(`${frosted} .${actionBtn}:first-child`, `background: ${accentA(0.86)}; background-clip: padding-box; color: ${onAccent};`);
+	rule(`${frosted} .${actionBtn}:first-child:focus`, `background: ${buttonFocused}; background-clip: padding-box; border-color: ${focusFill(0.3)}; color: ${onButtonFocused};`);
+
 	// Home screen chrome
 	rule(`.${browseCss.page}`, `background: ${background};`);
 	rule(`.${browseCss.ayaFrame}`, `background: ${background};`);
@@ -622,13 +747,32 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 		rule(`.${cardCss.favoriteBadge}`, `background: ${recordingActive}; border-color: ${onBadge};`);
 		rule(`.${cardCss.favoriteBadge} svg`, `fill: ${onBadge}; stroke: ${onBadge};`);
 		rule(`.${cardCss.serverBadge}`, `background: ${surface}; color: ${onSurface};`);
-		rule(`.${cardCss.seerr5}`, `background: ${onSurface}; border-color: ${statusAvailable};`);
-		rule(`.${cardCss.seerr4}`, `background: ${statusAvailable};`);
-		rule(`.${cardCss.seerr3}`, `border-color: ${statusRequested};`);
-		rule(`.${cardCss.seerr2}`, `background: ${onSurface}; border-color: ${statusPending};`);
 		rule(`.${cardCss.seerrMissing}`, `background: ${accent};`);
 		rule(`.${cardCss.seerrMissing} svg`, `fill: ${onBadge};`);
+		rule(`.${cardCss.seerrBanner}`, `border-width: ${b.cardBorder.width}px ${b.cardBorder.width}px 0; border-radius: ${b.cardRadius.topLeft}px ${b.cardRadius.topRight}px 0 0;`);
+		rule(`.${cardCss.card}:focus .${cardCss.seerrBanner}`, 'border-width: 4px 4px 0;');
 	}
+
+	rule(`.${mediaCardCss.seerr5}`, `background: ${onSurface}; border-color: ${statusAvailable};`);
+	rule(`.${mediaCardCss.seerr4}`, `background: ${statusAvailable};`);
+	rule(`.${mediaCardCss.seerr3}`, `border-color: ${statusRequested};`);
+	rule(`.${mediaCardCss.seerr2}`, `background: ${onSurface}; border-color: ${statusPending};`);
+	rule(`.${modernCardCss.focusRing}`, `border-color: ${focusColor};`);
+	rule(`.${seerrDotCss.dot}`, `background: ${onBadge}; border-color: ${onBadge};`);
+	rule(`.${seerrDotCss.available}`, `border-color: ${statusAvailable}; color: ${statusAvailable};`);
+	rule(`.${seerrDotCss.partial}`, `background: ${statusAvailable}; border-color: ${statusAvailable}; color: ${onBadge};`);
+	rule(`.${seerrDotCss.processing}`, `border-color: ${statusRequested}; color: ${statusRequested};`);
+	rule(`.${seerrDotCss.pending}`, `border-color: ${statusPending}; color: ${statusPending};`);
+
+	// The Seerr banner across a poster, with dark ink on a fill as light as Pending's yellow.
+	const bannerInk = (hex) => (relativeLuminance(hex) > 0.45 ? '#000000' : onBadge);
+	[
+		['available', theme.semantic.statusAvailable],
+		['processing', theme.semantic.statusRequested],
+		['pending', theme.semantic.statusPending]
+	].forEach(([fill, hex]) => {
+		rule(`.${seerrBannerCss.banner}.${seerrBannerCss[fill]}`, `background: ${toCssColor(hex)}; color: ${bannerInk(hex)};`);
+	});
 	rule(`.${mediaCardCss.seriesName}`, `color: ${onSurface};`);
 	rule(`.${mediaCardCss.episodeInfo}, .${modernCardCss.secondaryTitle}`, `color: ${theme.id === 'neon_pulse' ? onSurface : os(0.6)};`);
 	rule(`.${mediaCardCss.homeText} .${mediaCardCss.episodeInfo}`, `color: ${theme.id === 'neon_pulse' ? onSurface : os(0.65)};`);
@@ -640,6 +784,8 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	// Row shells
 	rule(`.${mediaRowCss.title}, .${modernRowCss.title}`, `color: ${onSurface}; text-shadow: ${textGlow};`);
 	rule(`.${mediaRowCss.subtitle}, .${modernRowCss.subtitle}`, `color: ${os(0.5)};`);
+	rule(`.${watchingNowRowCss.subtitle}`, `color: ${os(0.95)};`);
+	rule(`.${watchingNowRowCss.globeIcon}`, `color: ${onSurface};`);
 	rule(`.${mediaRowCss.seeAll}`, `background: ${os(0.08)}; color: ${os(0.7)};`);
 	rule(`.${mediaRowCss.seeAll}:focus`, `border-color: ${accent}; background: ${accentA(0.22)}; color: ${onSurface}; box-shadow: 0 0 14px 1px ${accentA(0.45)};`);
 	rule(`.${mediaRowCss.seeAllChevron}`, `color: ${accent};`);
@@ -649,6 +795,40 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 	rule(`.${ratingsCss.ratingItemPlain}`, `background: transparent;`);
 	rule(`.${ratingsCss.ratingValue}, .${ratingsCss.ratingName}, .${ratingsCss.ratingNameCompact}`, `color: ${onSurface};`);
 	rule(`.${ratingsCss.ratingValueCompact}`, `color: ${onBackground};`);
+
+	// Focus rings on the screens that load on demand
+	const {player, playerOverlays, episodeBrowser, genreBrowse, seerrDiscover, seerrBrowse, seerrPosterCard, calendar} = lazySheets;
+	const ring = (sheet, names, states) => names.flatMap((name) => states.map((state) => `.${sheet[name]}${state}`)).join(', ');
+	if (player) {
+		rule(ring(player, ['liveBtn', 'chapterItem'], [':hover', ':focus']), `border-color: ${focusColor};`);
+		rule(`.${player.trackItem}:focus`, `background: ${accentA(0.3)};`);
+	}
+	if (playerOverlays) {
+		rule(ring(playerOverlays, ['offsetBtn', 'actionBtn', 'settingItem'], [':hover', ':focus']), `border-color: ${focusColor};`);
+		// Older engines drop a whole rule over one selector they can't read, so this stands alone
+		rule(`.${playerOverlays.sliderItem}:focus-within`, `border-color: ${focusColor};`);
+	}
+	if (episodeBrowser) {
+		rule(ring(episodeBrowser, ['episode'], [':hover', ':focus']), `border-color: ${focusColor};`);
+	}
+	if (genreBrowse) {
+		rule(ring(genreBrowse, ['filterButton', 'sortButton', 'letterButton'], [':focus']), `border-color: ${focusColor};`);
+	}
+	// Core draws every Seerr ring and focus border in its focus color.
+	if (seerrDiscover) {
+		rule(`.${seerrDiscover.tileRing}`, `border-color: ${focusColor};`);
+		rule(`.${seerrDiscover.pill}:focus`, `border-color: ${focusColor};`);
+	}
+	if (seerrBrowse) {
+		rule(ring(seerrBrowse, ['chip', 'letter', 'toolButton'], [':focus']), `box-shadow: inset 0 0 0 2px ${focusColor};`);
+	}
+	if (seerrPosterCard) {
+		rule(`.${seerrPosterCard.ring}`, `border-color: ${focusColor};`);
+	}
+	if (calendar) {
+		rule(`.${calendar.row}:focus::after, .${calendar.card}:focus::after, .${calendar.cell}:focus::after`, `border-color: ${focusColor};`);
+		rule(`.${calendar.button}:focus, .${calendar.tab}:focus`, `background: ${onSurface} !important; border-color: ${focusColor}; color: ${inkOn(c.onSurface) === '0, 0, 0' ? 'rgba(0, 0, 0, 0.87)' : '#fff'};`);
+	}
 
 	// Pixel themes square off every fixed radius.
 	if (theme.isPixel) {
@@ -676,6 +856,7 @@ export const buildThemeOverrideCss = (theme, options = {}) => {
 // Creates or refreshes the injected style element. Appending on every call also
 // moves it back to the end of the head.
 export const applyThemeOverrides = (theme, options) => {
+	lastApplied = [theme, options];
 	if (typeof document === 'undefined') return;
 	let element = document.getElementById(STYLE_ELEMENT_ID);
 	if (!element) {
@@ -684,4 +865,15 @@ export const applyThemeOverrides = (theme, options) => {
 	}
 	element.textContent = buildThemeOverrideCss(theme, options);
 	document.head.appendChild(element);
+};
+
+export const registerThemeSheet = (name, css) => {
+	lazySheets[name] = css;
+	if (!lastApplied || rebuildQueued) return;
+	rebuildQueued = true;
+	// A screen's modules load together, so their sheets go in with one rebuild
+	Promise.resolve().then(() => {
+		rebuildQueued = false;
+		applyThemeOverrides(...lastApplied);
+	});
 };

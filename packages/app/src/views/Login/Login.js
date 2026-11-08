@@ -8,6 +8,7 @@ import {useSettings} from '../../context/SettingsContext';
 import * as jellyfinApi from '../../services/jellyfinApi';
 import * as embyConnect from '../../services/embyConnect';
 import * as plexTv from '../../services/plexTv';
+import {probeSilo} from '../../services/siloApi';
 import * as multiServerManager from '../../services/multiServerManager';
 import {discoverLocalServers} from '../../services/serverDiscovery';
 import {generateCandidates, normalizeServerBaseUrl, quickConnectApprovalUrl} from '../../utils/serverUrl';
@@ -18,8 +19,10 @@ import SpottableInput from '../../components/SpottableInput/SpottableInput';
 import {subscribeTvKeyboardVisibility} from '../../components/TVKeyboard/keyboardBus';
 import {MaterialIcon} from '../../components/icons/materialIcons';
 import {CoreAlertDialog} from '../../components/CoreDialog';
-import {ServerTypeIcon} from './loginIcons';
+import ProfileCarousel, {PillButton, PillRow} from '../../components/ProfileCarousel';
+import {BRAND_NAMES, ServerTypeIcon} from './loginIcons';
 import {forgottenPinUsername, noteProvedSignIn} from '../../utils/signInPin';
+import {siloNewPasswordIssue, siloNewPasswordMessage} from './siloNewPassword';
 
 import logoAndText from './logo_and_text.png';
 import css from './Login.module.less';
@@ -38,8 +41,14 @@ const LONG_PRESS_DELAY = 500;
 
 const focusLater = (id) => setTimeout(() => Spotlight.focus(`[data-spotlight-id="${id}"]`), 100);
 
-const formatQuickConnectCode = (code) => (code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code);
+// Jellyfin's six digits read 3+3, Silo's eight 4+4.
+const formatQuickConnectCode = (code) => {
+	if (code.length === 6) return `${code.slice(0, 3)} ${code.slice(3)}`;
+	if (code.length === 8) return `${code.slice(0, 4)} ${code.slice(4)}`;
+	return code;
+};
 
+// Silo's device sign-in stands in for Quick Connect.
 const hasQuickConnect = (target) => target?.serverType !== 'emby' && target?.serverType !== 'plex';
 
 // plex.tv asks apps to check a code once a second.
@@ -55,7 +64,7 @@ const plexErrorMessage = (err) => (err?.status === 401 ? getSignInMessage(err) :
 // These say more than the general advice to check the address, so the add dialog keeps their own line.
 const SPECIFIC_FAILURES = [INVALID_ADDRESS, SERVER_NOT_JELLYFIN, VERSION_UNSUPPORTED];
 
-const BRAND_NAMES = {jellyfin: 'Jellyfin', emby: 'Emby', plex: 'Plex'};
+const FOUND_TILES = {emby: css.tileEmby, silo: css.tileSilo};
 
 // Where a press should land once the password half of the screen is showing
 const credentialFocusTarget = (user) => {
@@ -107,8 +116,14 @@ const Login = ({
 	const [signInUser, setSignInUser] = useState(null);
 	const [username, setUsername] = useState('');
 	const [password, setPassword] = useState('');
+	// A Silo account signed in with a temporary password, waiting for a new one: {minimumLength}.
+	const [passwordChange, setPasswordChange] = useState(null);
 	const [showQuickConnect, setShowQuickConnect] = useState(false);
 	const [quickConnectCode, setQuickConnectCode] = useState(null);
+	// Silo names its own approval page, with the code filled in.
+	const [quickConnectLink, setQuickConnectLink] = useState(null);
+	// Bumped when a code ran out, so a fresh one is asked for.
+	const [quickConnectRound, setQuickConnectRound] = useState(0);
 	const [connectServers, setConnectServers] = useState([]);
 	const [connectSession, setConnectSession] = useState(null);
 	const [error, setError] = useState(null);
@@ -142,8 +157,9 @@ const Login = ({
 
 	// The QR sits beside the code and the buttons, so its room is kept while the code
 	// is still on its way instead of the card jumping when it arrives.
-	const showQuickConnectQr = supportsQuickConnect && showQuickConnect && supportsQuickConnectWebLink(server?.version);
-	const quickConnectQrUrl = showQuickConnectQr ? quickConnectApprovalUrl(server?.url, quickConnectCode) : null;
+	const onSilo = server?.serverType === 'silo';
+	const showQuickConnectQr = supportsQuickConnect && showQuickConnect && (onSilo ? Boolean(quickConnectLink) : supportsQuickConnectWebLink(server?.version));
+	const quickConnectQrUrl = showQuickConnectQr ? (onSilo ? quickConnectLink : quickConnectApprovalUrl(server?.url, quickConnectCode)) : null;
 
 	useEffect(() => {
 		drawQrCode(qrCanvasRef.current, quickConnectQrUrl);
@@ -196,6 +212,7 @@ const Login = ({
 			quickConnectTimer.current = null;
 		}
 		setQuickConnectCode(null);
+		setQuickConnectLink(null);
 	}, []);
 
 	useEffect(() => () => {
@@ -459,6 +476,22 @@ const Login = ({
 			jellyfinApi.setServer(candidate);
 
 			try {
+				// Silo's own API is asked first: its web app answers Jellyfin's probe with a page.
+				const siloInfo = await probeSilo(candidate);
+				if (siloInfo) {
+					jellyfinApi.setServerType('silo');
+					return {
+						server: {
+							serverId: null,
+							url: candidate,
+							name: siloInfo.ServerName || candidate,
+							serverType: 'silo',
+							version: siloInfo.Version || null,
+							loginDisclaimer: siloInfo.LoginDisclaimer || null
+						}
+					};
+				}
+
 				const info = await jellyfinApi.api.getPublicInfo();
 				if (!info) continue;
 
@@ -490,6 +523,14 @@ const Login = ({
 					}
 				};
 			} catch (err) {
+				if (err.siloApiUnsupported) {
+					return {
+						error: err.serverIsNewer
+							? $L('This Silo server needs a newer version of Moonfin. Update Moonfin to use it.')
+							: $L('This Silo server is too old for this version of Moonfin. Update Silo to use it.'),
+						errorType: VERSION_UNSUPPORTED
+					};
+				}
 				const errType = classifyError(err);
 				// A cert rejection (from the https candidate / proxy probe) is the
 				// most actionable diagnosis, don't let a weaker network failure
@@ -509,7 +550,7 @@ const Login = ({
 		else setError(null);
 
 		const result = await probeServer(input);
-		// Only Jellyfin and Emby answer that probe, so a Plex server goes to its plex.tv sign in.
+		// Only Jellyfin, Emby and Silo answer that probe, so a Plex server goes to its plex.tv sign in.
 		const plex = result.error ? await plexTv.findServerAt(input) : null;
 		setStatus(null);
 		setIsConnecting(false);
@@ -614,13 +655,57 @@ const Login = ({
 			finishLogin(result);
 			return true;
 		} catch (err) {
-			setError(getSignInMessage(err));
 			setStatus(null);
+			if (err.code === 'password_change_required') {
+				// The password just typed is the temporary one, which Silo won't take back as the new one.
+				setPasswordChange({minimumLength: err.minimumLength || 0, maximumBytes: err.maximumBytes || 0, temporaryPassword: secret});
+				setPassword('');
+				focusLater('password-input');
+				return false;
+			}
+			setError(err.code === 'password_change_unavailable'
+				? $L("This account's password has to be changed in Silo's web app before signing in here.")
+				: getSignInMessage(err));
 			return false;
 		} finally {
 			setIsConnecting(false);
 		}
 	}, [server, login, isAdding, finishLogin]);
+
+	// Replaces the temporary password the sign-in stopped on, then finishes signing in.
+	const changeRequiredPassword = useCallback(async () => {
+		if (!password) return;
+		const issue = siloNewPasswordIssue({newPassword: password, ...passwordChange});
+		if (issue) {
+			setError(siloNewPasswordMessage(issue, passwordChange?.minimumLength));
+			return;
+		}
+		setIsConnecting(true);
+		setError(null);
+		setStatus(isAdding ? $L('Adding user...') : $L('Signing in...'));
+		try {
+			const authResult = await jellyfinApi.api.changeRequiredPassword(password);
+			setPasswordChange(null);
+			setPassword('');
+			const result = await loginWithToken(jellyfinApi.getServerUrl(), authResult, {
+				serverName: server?.name, serverType: server?.serverType, serverVersion: server?.version,
+				isAddingNewServer: isAdding, switchToNewUser: true
+			});
+			finishLogin(result);
+		} catch (err) {
+			if (err.code === 'password_changed_sign_in' || err.status === 401) {
+				setPasswordChange(null);
+				setPassword('');
+				setError($L('The password changed. Sign in with the new one.'));
+			} else {
+				// Silo says why a new password was refused (too short, too long).
+				setError(err.status === 422 || err.status === 400 ? err.message : getSignInMessage(err));
+			}
+		} finally {
+			setIsConnecting(false);
+			setStatus(null);
+		}
+	}, [password, passwordChange, isAdding, loginWithToken, server, finishLogin]);
 
 	// A Plex Home member signs in with their own plex.tv token, from a switch that checks their PIN, and the server token
 	// plex.tv gives them.
@@ -699,6 +784,12 @@ const Login = ({
 	const pollQuickConnect = useCallback(async (secret) => {
 		try {
 			const state = await jellyfinApi.api.getQuickConnectState(secret);
+			// A Silo code that ran out (or was declined) is done; the screen asks for a fresh one.
+			if (state.Expired) {
+				stopQuickConnect();
+				setQuickConnectRound((n) => n + 1);
+				return;
+			}
 			if (!state.Authenticated) return;
 
 			stopQuickConnect();
@@ -736,6 +827,7 @@ const Login = ({
 			const result = await jellyfinApi.api.initiateQuickConnect();
 			if (!result?.Code || !result?.Secret) return;
 			setQuickConnectCode(result.Code);
+			setQuickConnectLink(result.VerificationUriComplete || null);
 			quickConnectTimer.current = setInterval(() => pollQuickConnect(result.Secret), QUICK_CONNECT_POLL);
 			focusLater('back-btn');
 		} catch {
@@ -749,7 +841,7 @@ const Login = ({
 		if (quickConnectTimer.current || quickConnectCode) return;
 		startQuickConnect();
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [step, showQuickConnect, supportsQuickConnect]);
+	}, [step, showQuickConnect, supportsQuickConnect, quickConnectRound]);
 
 	const selectQuickConnect = useCallback(() => {
 		if (showQuickConnect) return;
@@ -984,6 +1076,15 @@ const Login = ({
 			return true;
 		}
 		if (step === 'signin') {
+			if (passwordChange) {
+				// Giving up the change ends the login it was waiting on.
+				setPasswordChange(null);
+				setPassword('');
+				setError(null);
+				jellyfinApi.api.cancelRequiredPasswordChange?.();
+				focusLater('password-input');
+				return true;
+			}
 			stopQuickConnect();
 			if (users.length > 0) {
 				setStep('users');
@@ -1003,7 +1104,7 @@ const Login = ({
 			return true;
 		}
 		return false;
-	}, [dialog, closeDialog, showAddressStep, showChooseStep, isConnecting, step, users.length, isAdding, goToServers, stopQuickConnect, cancelAddServerFlow, onServerAdded, plexUsePassword, stopPlexPolling, requestPlexPin]);
+	}, [dialog, closeDialog, showAddressStep, showChooseStep, isConnecting, step, users.length, isAdding, goToServers, stopQuickConnect, cancelAddServerFlow, onServerAdded, plexUsePassword, stopPlexPolling, requestPlexPin, passwordChange]);
 
 	useEffect(() => {
 		if (!backHandlerRef) return undefined;
@@ -1093,24 +1194,44 @@ const Login = ({
 		focusLater('add-server-btn');
 	}, [dialog, removeServerEntry]);
 
-	const handleUserClick = useCallback((e) => {
-		const {userId} = e.currentTarget.dataset;
-		const user = users.find((item) => String(item.id) === String(userId));
+	const handleUserActivate = useCallback((item) => {
+		const user = users.find((entry) => String(entry.id) === String(item.id));
 		if (user) handleUserSelect(user);
 	}, [users, handleUserSelect]);
+
+	// A token resumes without asking, so only someone without one is told what they'll need.
+	const userCarouselItems = useMemo(() => users.map((user) => {
+		const pin = !user.hasToken && user.plexHome && user.hasPassword;
+		let line = null;
+		if (user.hasToken) line = {text: $L('Signed in on this device')};
+		else if (pin) line = {text: $L('PIN required'), lock: true};
+		else if (user.hasPassword) line = {text: $L('Password required')};
+		return {
+			key: user.id,
+			id: user.id,
+			name: user.name,
+			imageUrl: user.imageTag ? jellyfinApi.getUserImageUrl(jellyfinApi.getServerUrl(), user.id, user.imageTag, server?.serverType) : null,
+			badge: pin ? 'pin' : null,
+			lines: line ? [line] : []
+		};
+	}), [users, server]);
 
 	const handleAddUser = useCallback(() => {
 		if (server) goToSignIn(server, null);
 	}, [server, goToSignIn]);
 
 	const handleSignIn = useCallback(() => {
+		if (passwordChange) {
+			changeRequiredPassword();
+			return;
+		}
 		if (server?.serverType === 'plex') {
 			signInPlexHome(signInUser, password);
 			return;
 		}
 		if (!username.trim()) return;
 		signIn(username.trim(), password);
-	}, [server, signInUser, username, password, signIn, signInPlexHome]);
+	}, [server, signInUser, username, password, signIn, signInPlexHome, passwordChange, changeRequiredPassword]);
 
 	const handlePlexCodeChange = useCallback((e) => setPlexCode(e.target.value), []);
 
@@ -1238,7 +1359,7 @@ const Login = ({
 						<span className={css.addServerTitle}>{$L('Add Server')}</span>
 						<span className={css.addServerSubtitle}>{$L('By address, or with a Plex or Emby Connect account')}</span>
 					</span>
-					{['jellyfin', 'emby', 'plex'].map((type) => (
+					{['jellyfin', 'emby', 'plex', 'silo'].map((type) => (
 						<ServerTypeIcon key={type} serverType={type} className={css.addServerBrand} />
 					))}
 				</SpottableButton>
@@ -1246,59 +1367,40 @@ const Login = ({
 		</FocusArea>
 	);
 
+	// The carousel takes the whole screen, so this step draws its own logo and status.
 	const renderUsers = () => (
-		<FocusArea className={`${css.card} ${css.cardCentered}`}>
-			<p className={css.serverLabel}>{server?.name}</p>
-			<h1 className={css.title}>{$L("Who's watching?")}</h1>
-			{server?.loginDisclaimer && <p className={css.disclaimer}>{server.loginDisclaimer}</p>}
-
-			<div className={css.userRow}>
-				<div className={css.userRowInner}>
-					{users.map((user, index) => (
-						<SpottableDiv
-							key={user.id}
-							data-spotlight-id={`user-${index}`}
-							data-user-id={user.id}
-							className={css.userCard}
-							onClick={handleUserClick}
-						>
-							{user.imageTag ? (
-								<img
-									src={jellyfinApi.getUserImageUrl(jellyfinApi.getServerUrl(), user.id, user.imageTag, server?.serverType)}
-									alt={user.name}
-									className={css.userAvatar}
-								/>
-							) : (
-								<div className={css.userAvatarPlaceholder}>
-									<MaterialIcon name="person" className={css.placeholderIcon} />
-								</div>
-							)}
-							<div className={css.userName}>{user.name}</div>
-						</SpottableDiv>
-					))}
-				</div>
+		<FocusArea className={css.usersScreen}>
+			<div className={css.usersTop}>
+				<img src={logoAndText} alt="Moonfin" className={css.usersLogo} />
+				{server?.name && (
+					<span className={css.usersServer}>
+						<MaterialIcon name="dnsOutlined" className={css.usersServerIcon} />
+						{server.name}
+					</span>
+				)}
 			</div>
 
-			{error && <div className={css.errorText}>{error}</div>}
+			<div className={css.usersMain}>
+				<h1 className={css.usersTitle}>{$L("Who's watching?")}</h1>
+				<ProfileCarousel
+					key={server?.serverId}
+					items={userCarouselItems}
+					spotlightId="user-0"
+					onActivate={handleUserActivate}
+				/>
+				{status && !dialog && <div className={`${css.statusMessage} ${css.usersStatus}`}>{status}</div>}
+				{server?.loginDisclaimer && <p className={`${css.disclaimer} ${css.usersNote}`}>{server.loginDisclaimer}</p>}
+				{error && <div className={`${css.errorText} ${css.usersNote}`}>{error}</div>}
+			</div>
 
-			<div className={`${css.actionRow} ${css.actionRowWide}`}>
-				<SpottableButton
-					data-spotlight-id="add-user-btn"
-					className={css.outlineButton}
-					onClick={handleAddUser}
-				>
-					<MaterialIcon name="person" className={css.outlineButtonIcon} />
+			<PillRow>
+				<PillButton data-spotlight-id="add-user-btn" icon="person" onClick={handleAddUser}>
 					{$L('Add User')}
-				</SpottableButton>
-				<SpottableButton
-					data-spotlight-id="select-server-btn"
-					className={css.outlineButton}
-					onClick={goToServers}
-				>
-					<MaterialIcon name="home" className={css.outlineButtonIcon} />
+				</PillButton>
+				<PillButton data-spotlight-id="select-server-btn" icon="home" onClick={goToServers}>
 					{$L('Select Server')}
-				</SpottableButton>
-			</div>
+				</PillButton>
+			</PillRow>
 		</FocusArea>
 	);
 
@@ -1327,7 +1429,13 @@ const Login = ({
 
 	const renderCredentials = () => (
 		<div className={css.formBlock}>
-			{!signInUser && (
+			{passwordChange && (
+				<p className={css.signInSubtitle}>
+					{$L("This account's password has to be changed before signing in. Choose a new one of at least {count} characters.")
+						.replace('{count}', String(passwordChange.minimumLength || 1))}
+				</p>
+			)}
+			{!signInUser && !passwordChange && (
 				<div className={css.field}>
 					<SpottableInput
 						data-spotlight-id="username-input"
@@ -1350,7 +1458,7 @@ const Login = ({
 						type="password"
 						purpose="password"
 						className={css.input}
-						placeholder={server?.serverType === 'plex' ? $L('PIN') : $L('Password')}
+						placeholder={passwordChange ? $L('New password') : (server?.serverType === 'plex' ? $L('PIN') : $L('Password'))}
 						value={password}
 						onChange={handlePasswordChange}
 						onKeyDown={handlePasswordKeyDown}
@@ -1373,7 +1481,7 @@ const Login = ({
 					onClick={handleSignIn}
 					disabled={isConnecting}
 				>
-					{isConnecting ? <span className={`${css.spinner} ${css.buttonSpinner}`} /> : $L('Sign In')}
+					{isConnecting ? <span className={`${css.spinner} ${css.buttonSpinner}`} /> : (passwordChange ? $L('Change Password') : $L('Sign In'))}
 				</SpottableButton>
 			</div>
 		</div>
@@ -1666,7 +1774,7 @@ const Login = ({
 					tileClass: css.tileAccent,
 					icon: <MaterialIcon name="language" className={css.choiceGlyph} />,
 					title: $L('Server Address'),
-					detail: $L('Jellyfin or Emby on your network or online'),
+					detail: $L('Jellyfin, Emby or Silo on your network or online'),
 					onClick: showAddressStep
 				})}
 				{renderChoice({
@@ -1739,7 +1847,7 @@ const Login = ({
 			<div className={css.addressHint}>
 				{isConnecting
 					? $L('Checking {address}').replace('{address}', addressValue.trim())
-					: $L('Works with Jellyfin and Emby. A Plex address opens the Plex sign-in.')}
+					: $L('Works with Jellyfin, Emby and Silo. A Plex address opens the Plex sign-in.')}
 			</div>
 			{dialogError && renderNotice(dialogError)}
 		</div>
@@ -1754,7 +1862,7 @@ const Login = ({
 				<h2 className={css.panelTitle}>{$L('Server found')}</h2>
 			</div>
 			<div className={css.foundCard}>
-				<div className={`${css.foundTile} ${found.serverType === 'emby' ? css.tileEmby : css.tileJellyfin}`}>
+				<div className={`${css.foundTile} ${FOUND_TILES[found.serverType] || css.tileJellyfin}`}>
 					<ServerTypeIcon serverType={found.serverType} className={css.foundGlyph} />
 				</div>
 				<div className={css.foundBody}>
@@ -1827,7 +1935,7 @@ const Login = ({
 	const isWide = (step === 'signin' && showQuickConnectQr) || Boolean(plexQrUrl);
 
 	return (
-		<div className={css.page} ref={pageRef}>
+		<div className={`${css.page} ${step === 'users' ? css.pageUsers : ''}`} ref={pageRef}>
 			<div className={css.spacerTop} />
 			<div className={`${css.frame} ${isNarrow ? (isWide ? css.frameWide : css.frameNarrow) : ''}`}>
 				<div className={css.logoSection}>
@@ -1838,7 +1946,7 @@ const Login = ({
 					/>
 				</div>
 
-				{status && !dialog && <div className={css.statusMessage}>{status}</div>}
+				{status && !dialog && step !== 'users' && <div className={css.statusMessage}>{status}</div>}
 
 				{step === 'servers' && renderServers()}
 				{step === 'users' && renderUsers()}
