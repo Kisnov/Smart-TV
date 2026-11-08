@@ -300,7 +300,8 @@ describe('SettingsLivePreview', () => {
 		try {
 			const {unmount} = draw({}, 'setting-calendarShowBadges', 'calendar');
 			expect(await screen.findByText('Upcoming')).toBeTruthy();
-			expect(screen.getAllByText('Night Shift').length).toBeGreaterThan(0);
+			// the tabs draw before the calendar loads, so the entry has to be waited for
+			expect((await screen.findAllByText('Night Shift')).length).toBeGreaterThan(0);
 			expect(screen.getByText('Shows on the Calendar preview')).toBeTruthy();
 			expect(find('.page').getAttribute('data-spotlight-container-disabled')).toBe('true');
 			unmount();
