@@ -52,7 +52,7 @@ export const detailActionCatalogue = (props) => {
 	const {
 		item, seerr, effectiveServerUrl,
 		isSeries, isSeason, isBoxSet, isEpisode, isBook, isPerson, isPlaylist, playlistTracks,
-		hasTrailer, played, isFavorite, inSyncPlayGroup, onWatchWithGroup,
+		hasTrailer, inSyncPlayGroup, onWatchWithGroup,
 		supportsMediaSourceSelection, hasMultipleVersions, hasMultipleAudio,
 		handleShuffle, handleTrailer, handleToggleWatched, handleToggleFavorite, handleGoToSeries,
 		showsPersonalRating, personalRatingStyle, handleOpenRatingDialog,
@@ -60,6 +60,10 @@ export const detailActionCatalogue = (props) => {
 		handleOpenCollectionModal, handleOpenDeleteDialog, handleOpenIdentifyModal,
 		canChangeArtwork, handleOpenArtworkModal, handleOpenPersonDisplayModal, handleKeepAsComplete
 	} = props;
+	// Read off the item every screen already passes, so a style can't leave them out and show
+	// Watched and Favorite as never set.
+	const played = Boolean(item.UserData?.Played);
+	const isFavorite = Boolean(item.UserData?.IsFavorite);
 
 	// Asking and taking back are separate buttons sharing one arrangement
 	// slot, so a partly available series with an open request offers both at
