@@ -1,24 +1,30 @@
 import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDecorator';
 
-// The track pickers the detail screen and the player both raise. self-only on its
-// own still lets a press at the edge reach what sits behind the picker, so every
-// direction is closed off as well. Explicit Spotlight.focus still crosses it,
-// which is how these open and hand focus back on close.
-export const ModalContainer = SpotlightContainerDecorator({
+// The decorator registers a container with its spotlightRestrict prop, 'self-first' unless given,
+// and drops a restrict set in its config. A container that must hold focus is wrapped here, which
+// also keeps a pointer resting on the sidebar from making that the active container the next
+// arrow press lands in.
+export const selfOnly = (Container) => {
+	const SelfOnlyContainer = (props) => <Container spotlightRestrict="self-only" {...props} />;
+	return SelfOnlyContainer;
+};
+
+// The track pickers the detail screen and the player both raise. A press at the edge stays
+// on the picker. Explicit Spotlight.focus still crosses it, which is how these open and hand
+// focus back on close.
+export const ModalContainer = selfOnly(SpotlightContainerDecorator({
 	enterTo: 'default-element',
 	defaultElement: '[data-selected="true"]',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''},
 	preserveId: true
-}, 'div');
+}, 'div'));
 
 // The sort and settings panels over the library, favorites and genre grids. Held the
 // same way, but coming back in lands wherever the viewer left off.
-export const PanelContainer = SpotlightContainerDecorator({
+export const PanelContainer = selfOnly(SpotlightContainerDecorator({
 	enterTo: 'last-focused',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
-}, 'div');
+}, 'div'));
 
 // Full screen layers like the trailer and the lost connection notice. Nothing under them
 // can be seen, so a press at the edge stays on the layer.

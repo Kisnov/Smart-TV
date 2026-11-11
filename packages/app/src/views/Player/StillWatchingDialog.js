@@ -8,7 +8,6 @@ import css from './StillWatchingDialog.module.less';
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
 	defaultElement: '[data-spot-default="true"]',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -21,7 +20,7 @@ const StillWatchingDialog = ({onContinue, onStop}) => {
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={css.card} spotlightId="still-watching-dialog">
+			<DialogContainer className={css.card} spotlightId="still-watching-dialog" spotlightRestrict="self-only">
 				<div className={css.icon}>
 					<svg viewBox="0 0 24 24" aria-hidden="true">
 						<path fill="none" stroke="currentColor" strokeWidth="1.8" d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7z" />

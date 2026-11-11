@@ -23,7 +23,7 @@ jest.mock('@enact/spotlight/Spottable', () => (type) => {
 });
 jest.mock('@enact/spotlight/SpotlightContainerDecorator', () => (config, type) => {
 	const React = require('react');
-	return ({spotlightId, children, ...props}) => React.createElement(type, props, children); // eslint-disable-line no-unused-vars
+	return ({spotlightId, spotlightRestrict, children, ...props}) => React.createElement(type, props, children); // eslint-disable-line no-unused-vars
 });
 jest.mock('@enact/spotlight', () => ({focus: jest.fn(), getCurrent: jest.fn()}));
 jest.mock('../../platform', () => ({getPlatform: () => 'webos'}));

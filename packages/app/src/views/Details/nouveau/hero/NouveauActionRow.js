@@ -17,7 +17,6 @@ import css from './NouveauHero.module.less';
 
 const MenuContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -178,7 +177,7 @@ const NouveauActionRow = (props) => {
 			</RowContainer>
 			{menuOpen && (
 				<div className={modernCss.overflowMenu}>
-					<MenuContainer className={modernCss.overflowPanel} spotlightId="nouveau-overflow-menu">
+					<MenuContainer className={modernCss.overflowPanel} spotlightId="nouveau-overflow-menu" spotlightRestrict="self-only">
 						<div className={modernCss.overflowTitle}>{$L('More Actions')}</div>
 						<div className={modernCss.overflowList}>
 							{overflow.map((btn) => <Fragment key={btn.id}>{btn.render()}</Fragment>)}

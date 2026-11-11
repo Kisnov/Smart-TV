@@ -12,7 +12,6 @@ import css from './ExitDialog.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -70,7 +69,7 @@ const ExitDialog = ({open, onCancel, onExit}) => {
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={css.dialog} spotlightId="exit-dialog">
+			<DialogContainer className={css.dialog} spotlightId="exit-dialog" spotlightRestrict="self-only">
 				<h2 className={css.title}>{$L('Exit Moonfin?')}</h2>
 				<p className={css.message}>{$L('Are you sure you want to exit?')}</p>
 				<div className={css.buttons}>

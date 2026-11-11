@@ -33,7 +33,6 @@ const SpottableDiv = Spottable('div');
 const FocusArea = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
 const DialogArea = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -1927,7 +1926,7 @@ const Login = ({
 		if (dialog?.kind === 'add') {
 			return (
 				<div className={`${css.panelScrim} ${keyboardOpen ? css.panelScrimKeyboard : ''}`}>
-					<DialogArea className={css.panel}>
+					<DialogArea className={css.panel} spotlightRestrict="self-only">
 						<div ref={panelRef} className={css.panelScroll}>
 							<div key={dialog.step} className={css.stepEntrance}>
 								{dialog.step === 'choose' && renderChooseStep()}

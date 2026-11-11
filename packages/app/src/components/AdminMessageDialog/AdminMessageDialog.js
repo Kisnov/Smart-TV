@@ -9,7 +9,6 @@ import css from '../ClearDataDialog/ClearDataDialog.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -49,7 +48,7 @@ const AdminMessageDialog = ({open, title, message, onDismiss}) => {
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={css.dialog} spotlightId="server-message-dialog">
+			<DialogContainer className={css.dialog} spotlightId="server-message-dialog" spotlightRestrict="self-only">
 				<h2 className={css.title}>{title || $L('Server Message')}</h2>
 				<p className={`${css.message} ${css.preWrap}`}>{message}</p>
 				<div className={css.buttons}>
