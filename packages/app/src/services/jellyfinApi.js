@@ -13,6 +13,7 @@ import {createSiloApi, withEverySiloMethod} from './siloApi';
 import {onSiloTokensRotated, siloServerKey, siloSessionFor, siloSessionOfAccount} from './siloSession';
 import {isPlexServer, registerPlexServer} from '../utils/plexUrls';
 import {registerSiloServer} from '../utils/siloUrls';
+import {readStudioRow} from '../utils/studioGenreSorting';
 const APP_VERSION = packageJson.version;
 
 const PLATFORM_IDENTITY = {
@@ -627,8 +628,12 @@ export const api = {
 	getCollections: (limit = 50, sortBy = 'SortName', sortOrder = 'Ascending') =>
 		request(`${userRoutes.items()}IncludeItemTypes=BoxSet&Recursive=true&SortBy=${encodeURIComponent(sortBy)}&SortOrder=${encodeURIComponent(sortOrder)}&Limit=${limit}&Fields=PrimaryImageAspectRatio,ProductionYear,OfficialRating`),
 
-	getStudios: (limit = 20, sortBy = 'SortName', sortOrder = 'Ascending') =>
-		request(`/Studios?UserId=${currentUser}&Recursive=true&SortBy=${encodeURIComponent(sortBy)}&SortOrder=${encodeURIComponent(sortOrder)}&Limit=${limit}&Fields=ItemCounts,PrimaryImageAspectRatio`),
+	// Jellyfin's /Studios ignores SortBy and SortOrder and always lists by name. Emby sorts.
+	// Before Jellyfin 12 a studio's counts only come back with IncludeItemTypes.
+	getStudios: (limit = 20, sortBy = 'SortName', sortOrder = 'Ascending') => readStudioRow(
+		(startIndex, count, by, order) => request(`/Studios?UserId=${currentUser}&Recursive=true&SortBy=${encodeURIComponent(by)}&SortOrder=${encodeURIComponent(order)}&StartIndex=${startIndex}&Limit=${count}&IncludeItemTypes=Movie,Series&Fields=ItemCounts,PrimaryImageAspectRatio,DateCreated`),
+		{limit, sortBy, sortOrder, serverSorts: serverType === 'emby'}
+	),
 
 	getResumeItems: (limit = 12) =>
 		request(`${userRoutes.resume()}Limit=${limit}&MediaTypes=Video&Fields=${encodeURIComponent(HOME_ROW_ITEM_FIELDS)}`),
