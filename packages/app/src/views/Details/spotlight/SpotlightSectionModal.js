@@ -11,10 +11,11 @@ import SpotlightSection from './SpotlightGrids';
 import css from './SpotlightSectionModal.module.less';
 
 // Focus stays inside while the modal is open, so a press at the edge of a grid has nowhere to
-// leak out to and the detail screen underneath is never reachable by accident.
+// leak out to and the detail screen underneath is never reachable by accident. The restriction
+// goes on as the spotlightRestrict prop below: the decorator overwrites a restrict given here
+// with that prop's 'self-first' default.
 const ModalContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -146,7 +147,7 @@ const SpotlightSectionModal = ({card, serverUrl, actions, seerr, onNearEnd}) => 
 
 	return (
 		<div className={css.overlay}>
-			<ModalContainer className={css.panel} spotlightId="spotlight-modal" onKeyDown={handleKeyDown} onKeyUp={handleKeyUp}>
+			<ModalContainer className={css.panel} spotlightId="spotlight-modal" spotlightRestrict="self-only" onKeyDown={handleKeyDown} onKeyUp={handleKeyUp}>
 				<div className={css.header}>
 					{card.icon && (
 						<svg className={css.headerIcon} viewBox={iconViewBox(card.icon)} fill="currentColor" aria-hidden="true">
