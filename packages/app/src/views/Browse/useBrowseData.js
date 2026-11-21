@@ -862,6 +862,7 @@ const useBrowseData = ({
 		settings.playlistsRowSortOrder,
 		settings.audioRowsSortOrder,
 		settings.studiosRowSortOrder,
+		settings.studiosRowSelectedIds,
 		settings.collectionsRowShowEpisodes,
 		settings.playlistsRowShowEpisodes,
 		settings.uiLanguage,

@@ -113,19 +113,25 @@ describe('Home loads again when a row setting changes', () => {
 	test('a new Studio Row sort loads the row in that order', async () => {
 		await changed({displayStudiosRows: true, studiosRowSortOrder: 'Ascending'}, {studiosRowSortBy: 'Random'}, rows('studios'),
 			() => expect(api.getStudios).toHaveBeenCalled());
-		await waitFor(() => expect(api.getStudios).toHaveBeenCalledWith(20, 'Random', 'Ascending'));
+		await waitFor(() => expect(api.getStudios).toHaveBeenCalledWith(20, 'Random', 'Ascending', []));
 	});
 
 	test('a new Studio Row sort order loads the row in that order', async () => {
 		await changed({displayStudiosRows: true}, {studiosRowSortOrder: 'Descending'}, rows('studios'),
 			() => expect(api.getStudios).toHaveBeenCalled());
-		await waitFor(() => expect(api.getStudios).toHaveBeenCalledWith(20, 'SortName', 'Descending'));
+		await waitFor(() => expect(api.getStudios).toHaveBeenCalledWith(20, 'SortName', 'Descending', []));
 	});
 
 	test('a Studio Row sort the setting no longer offers loads as Name in the stored order', async () => {
 		await changed({displayStudiosRows: true}, {studiosRowSortBy: 'DateCreated', studiosRowSortOrder: 'Descending'}, rows('studios'),
 			() => expect(api.getStudios).toHaveBeenCalled());
-		await waitFor(() => expect(api.getStudios).toHaveBeenCalledWith(20, 'SortName', 'Descending'));
+		await waitFor(() => expect(api.getStudios).toHaveBeenCalledWith(20, 'SortName', 'Descending', []));
+	});
+
+	test('picking studios loads the row with every pick', async () => {
+		await changed({displayStudiosRows: true}, {studiosRowSelectedIds: ['a', 'b']}, rows('studios'),
+			() => expect(api.getStudios).toHaveBeenCalled());
+		await waitFor(() => expect(api.getStudios).toHaveBeenCalledWith(null, 'SortName', 'Ascending', ['a', 'b']));
 	});
 
 	test('turning on Display Rewatch Row loads the Rewatch row', async () => {

@@ -16,10 +16,29 @@ const shuffled = (items) => {
 	return copy;
 };
 
+// The endpoint can't ask for particular studios, so picked ones are read a page at a time until all have turned up.
+const readPicked = async (fetchPage, picked) => {
+	const outstanding = new Set(picked);
+	const found = [];
+	for (let start = 0; outstanding.size > 0; start += STUDIO_PAGE_SIZE) {
+		const items = (await fetchPage(start, STUDIO_PAGE_SIZE))?.Items || [];
+		items.forEach((studio) => {
+			if (outstanding.delete(studio.Id)) found.push(studio);
+		});
+		if (items.length < STUDIO_PAGE_SIZE) break;
+	}
+	return found;
+};
+
 // fetchPage(startIndex, limit) reads one page of studios in name order.
-export const readStudioRow = async (fetchPage, {limit, sortBy, sortOrder}) => {
+export const readStudioRow = async (fetchPage, {limit, sortBy, sortOrder, picked}) => {
 	const random = sortBy === 'Random';
 	const descending = !random && sortOrder === 'Descending';
+	if (picked?.length > 0) {
+		const found = await readPicked(fetchPage, picked);
+		const Items = random ? shuffled(found) : (descending ? found.reverse() : found);
+		return {Items, TotalRecordCount: Items.length};
+	}
 	const first = await fetchPage(0, random ? STUDIO_PAGE_SIZE : limit);
 	if (!random && !descending) return first;
 	const total = first?.TotalRecordCount || 0;

@@ -142,6 +142,7 @@ export const defaultSettings = {
 	displayStudiosRows: false,
 	studiosRowSortBy: 'SortName',
 	studiosRowSortOrder: 'auto',
+	studiosRowSelectedIds: [],
 	collectionsRowShowEpisodes: false,
 	fullScreenRows: false,
 	showShuffleButton: true,

@@ -315,14 +315,17 @@ export const loadStudios = async (ctx) => {
 	const {api, appendRows, studiosEnabled, settings, serverUrl} = ctx;
 	if (!studiosEnabled) return;
 	const sortBy = studioRowSortBy(settings.studiosRowSortBy);
+	const picked = settings.studiosRowSelectedIds || [];
 	try {
 		const logos = settings.useMoonfinPlugin && api.getStudioLogos ? api.getStudioLogos().catch(() => null) : null;
-		const result = await api.getStudios(20, sortBy, resolveSortOrder(sortBy, settings.studiosRowSortOrder)).catch(() => null);
-		if (result?.Items?.length > 0) {
+		// With studios picked the row holds every pick, and a server that lists them all keeps just those.
+		const result = await api.getStudios(picked.length > 0 ? null : 20, sortBy, resolveSortOrder(sortBy, settings.studiosRowSortOrder), picked).catch(() => null);
+		const studios = picked.length > 0 ? (result?.Items || []).filter((studio) => picked.includes(studio.Id)) : result?.Items;
+		if (studios?.length > 0) {
 			appendRows([{
 				id: 'studios',
 				title: $L('Studios'),
-				items: withStudioLogos(result.Items, await logos, serverUrl, getApiKey()),
+				items: withStudioLogos(studios, await logos, serverUrl, getApiKey()),
 				type: 'landscape'
 			}]);
 		}

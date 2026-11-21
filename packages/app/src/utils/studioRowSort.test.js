@@ -7,7 +7,8 @@ const nameOnlyServer = (total) => {
 		calls.push({startIndex, limit});
 		const Items = [];
 		for (let i = startIndex; i < Math.min(startIndex + limit, total); i++) {
-			Items.push({Name: `Studio ${String(i).padStart(4, '0')}`});
+			const name = `Studio ${String(i).padStart(4, '0')}`;
+			Items.push({Id: name, Name: name});
 		}
 		return {Items, TotalRecordCount: total};
 	};
@@ -48,5 +49,25 @@ describe('reading the studio row', () => {
 		const server = nameOnlyServer(15);
 		await read(server, 'SortName', 'Descending');
 		expect(server.calls).toHaveLength(1);
+	});
+
+	it('reads picked studios until the last one turns up', async () => {
+		const server = nameOnlyServer(1000);
+		const row = await readStudioRow(server.fetchPage, {limit: 20, sortBy: 'SortName', sortOrder: 'Ascending', picked: ['Studio 0450', 'Studio 0010']});
+		expect(server.calls.map((c) => c.startIndex)).toEqual([0, 200, 400]);
+		expect(row.Items.map((item) => item.Name)).toEqual(['Studio 0010', 'Studio 0450']);
+	});
+
+	it('orders picked studios Z to A', async () => {
+		const server = nameOnlyServer(1000);
+		const row = await readStudioRow(server.fetchPage, {limit: 20, sortBy: 'SortName', sortOrder: 'Descending', picked: ['Studio 0010', 'Studio 0450']});
+		expect(row.Items.map((item) => item.Name)).toEqual(['Studio 0450', 'Studio 0010']);
+	});
+
+	it('stops at the end of the list when a pick is gone', async () => {
+		const server = nameOnlyServer(300);
+		const row = await readStudioRow(server.fetchPage, {limit: 20, sortBy: 'SortName', sortOrder: 'Ascending', picked: ['Studio 0005', 'Removed']});
+		expect(server.calls).toHaveLength(2);
+		expect(row.Items.map((item) => item.Name)).toEqual(['Studio 0005']);
 	});
 });

@@ -628,9 +628,9 @@ export const api = {
 	getCollections: (limit = 50, sortBy = 'SortName', sortOrder = 'Ascending') =>
 		request(`${userRoutes.items()}IncludeItemTypes=BoxSet&Recursive=true&SortBy=${encodeURIComponent(sortBy)}&SortOrder=${encodeURIComponent(sortOrder)}&Limit=${limit}&Fields=PrimaryImageAspectRatio,ProductionYear,OfficialRating`),
 
-	getStudios: (limit = 20, sortBy = 'SortName', sortOrder = 'Ascending') => readStudioRow(
-		(startIndex, count) => request(`/Studios?UserId=${currentUser}&Recursive=true&SortBy=SortName&SortOrder=Ascending&StartIndex=${startIndex}&Limit=${count}&Fields=ItemCounts,PrimaryImageAspectRatio`),
-		{limit, sortBy, sortOrder}
+	getStudios: (limit = 20, sortBy = 'SortName', sortOrder = 'Ascending', picked) => readStudioRow(
+		(startIndex, count) => request(`/Studios?UserId=${currentUser}&Recursive=true&SortBy=SortName&SortOrder=Ascending&StartIndex=${startIndex}${count == null ? '' : `&Limit=${count}`}&Fields=ItemCounts,PrimaryImageAspectRatio`),
+		{limit, sortBy, sortOrder, picked}
 	),
 
 	getResumeItems: (limit = 12) =>

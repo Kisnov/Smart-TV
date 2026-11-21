@@ -635,6 +635,16 @@ export const SETTINGS_SCHEMA = [
 					{kind: KIND.TOGGLE, key: 'sinceYouWatchedIncludeWatched', label: () => $L('Include Previously Watched'), desc: () => $L('Include watched items in recommendations'), icon: 'history', when: (ctx) => whenSinceYouWatched(ctx) && ctx.settings.sinceYouWatchedSource !== 'online'},
 					{kind: KIND.SECTION, id: 'studios', label: () => $L('STUDIOS')},
 					{kind: KIND.TOGGLE, key: 'displayStudiosRows', label: () => $L('Display Studio Row'), desc: () => $L('Show Studio row in Home Sections.'), icon: 'business'},
+					{
+						kind: KIND.NAV,
+						id: 'studiosRowSelectedIds',
+						label: () => $L('Select Studios to Include'),
+						desc: (ctx) => (ctx.settings.studiosRowSelectedIds?.length > 0 ? countLabel(ctx.settings.studiosRowSelectedIds.length) : $L('None selected')),
+						icon: 'check_circle',
+						chevron: false,
+						action: (ctx) => ctx.actions.openStudios(),
+						when: (ctx) => ctx.settings.displayStudiosRows
+					},
 					{kind: KIND.OPTION, key: 'studiosRowSortBy', label: () => $L('Studio Row Sorting'), desc: () => $L('Sort the Studio row by name or at random.'), options: getStudioSortOptions, fallback: () => $L('Name'), icon: 'sort_by_alpha', value: (ctx) => studioRowSortBy(ctx.settings.studiosRowSortBy), when: (ctx) => ctx.settings.displayStudiosRows},
 					{kind: KIND.OPTION, key: 'studiosRowSortOrder', label: () => $L('Sort Order'), desc: () => $L('Choose Ascending or Descending sort order.'), options: getSortOrderOptions, fallback: () => $L('Auto'), icon: 'swap_vert', when: (ctx) => ctx.settings.displayStudiosRows}
 				]

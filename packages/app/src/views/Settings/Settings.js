@@ -46,7 +46,7 @@ import useHomeRowsEditor from './useHomeRowsEditor';
 import useButtonLayoutEditor from './useButtonLayoutEditor';
 import useLibraryVisibility from './useLibraryVisibility';
 import useNotificationPrefs from './useNotificationPrefs';
-import useMediaBarSources from './useMediaBarSources';
+import useMediaBarSources, {asOptions, openWhenLoaded} from './useMediaBarSources';
 import useScreensaverSources from './useScreensaverSources';
 import useCalendarLibraries from './useCalendarLibraries';
 import useDiagnosticsLog from './useDiagnosticsLog';
@@ -558,6 +558,19 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			returnFocusTo: 'setting-transcodeAudioCodecs'
 		});
 	}, [serverType, api, openChecklist, settings.transcodeAudioCodecs, updateSetting]);
+
+	const openStudios = useCallback(() => openWhenLoaded(
+		openChecklist,
+		async () => (await api.getStudios(null))?.Items || [],
+		(studios) => ({
+			title: $L('Select Studios to Include'),
+			options: asOptions(studios),
+			picked: settings.studiosRowSelectedIds || [],
+			sortByLabel: true,
+			onSave: (picked) => updateSetting('studiosRowSelectedIds', picked),
+			returnFocusTo: 'setting-studiosRowSelectedIds'
+		})
+	), [api, openChecklist, settings.studiosRowSelectedIds, updateSetting]);
 
 	const openRatingSources = useCallback((surface = '') => {
 		const stored = settings[ratingKey(surface, 'mdblistRatingSources')];
@@ -1162,6 +1175,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			openSubtitleDownloadLanguages,
 			openNewReleaseKinds,
 			openTranscodeAudioCodecs,
+			openStudios,
 			openQrLink,
 			openRatingSources,
 			openRowImageTypes,
@@ -1196,7 +1210,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 		settings, capabilities, seerr, achievements, romm, seerrLabel, isSeerr, hasLiveTv, posterLabelsAvailable, serverType, serverUrl, ratingsResetArmed, resetRatingsSettings, toggleExperimentalTruehd, toggleXboxDolbyVision, updateSetting, updateSettings, refreshPlugin, calendarLibraries,
 		serverVersion, availableThemes, activeThemeId, openThemes, openThemeStore, openHomeRows,
 		openDetailButtons, openOsdButtons, openDetailMetadata, openDetailSections, openDiagnostics,
-		signInPin, toggleSignInPin, changeSignInPin, removeSignInPin, openKidsMode, openLibraries, openLibraryOrder, openParentalControls, openSubtitleDownloadLanguages, openNewReleaseKinds, openTranscodeAudioCodecs, openQrLink, openRatingSources, openRowImageTypes, openExcludedGenres, openMediaBarLibraries,
+		signInPin, toggleSignInPin, changeSignInPin, removeSignInPin, openKidsMode, openLibraries, openLibraryOrder, openParentalControls, openSubtitleDownloadLanguages, openNewReleaseKinds, openTranscodeAudioCodecs, openStudios, openQrLink, openRatingSources, openRowImageTypes, openExcludedGenres, openMediaBarLibraries,
 		openMediaBarCollections, openMediaBarExternalLists, openScreensaverLibraries, openScreensaverCollections, openScreensaverGenres, openCalendarLibraries,
 		openImdbLists, openSeasonalRow, openExternalTmdbLists, openExternalCalendars,
 		openExternalCustomRows, openSeerrHomeRows, openScreen, onRunSetupWizard, canProbeDevice, afterHours.press, watchParties,
