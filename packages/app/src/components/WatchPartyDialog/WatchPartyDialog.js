@@ -28,7 +28,6 @@ import own from './WatchPartyDialog.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -191,6 +190,7 @@ const WatchPartyDialog = ({open, onClose, playingItemId, onOpenSyncPlay}) => {
 			<DialogContainer
 				className={`${css.dialog} ${moonbase ? own.wide : ''}`}
 				spotlightId="watchparty-dialog"
+				spotlightRestrict="self-only"
 				onClick={(e) => e.stopPropagation()} // eslint-disable-line react/jsx-no-bind
 			>
 				<div className={css.header}>

@@ -11,7 +11,6 @@ import css from '../AddToCollectionModal/AddToCollectionModal.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -107,7 +106,7 @@ const RemoveFromCollectionModal = ({open, item, collections = [], api, onClose, 
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={css.dialog} spotlightId="remove-collection-modal">
+			<DialogContainer className={css.dialog} spotlightId="remove-collection-modal" spotlightRestrict="self-only">
 				<h2 className={css.title}>{$L('Remove from Collection')}</h2>
 
 				{confirming ? (

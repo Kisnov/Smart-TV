@@ -29,7 +29,7 @@ jest.mock('@enact/spotlight/Spottable', () => (type) => {
 });
 jest.mock('@enact/spotlight/SpotlightContainerDecorator', () => (config, type) => {
 	const React = require('react');
-	return ({spotlightId, ...props}) => React.createElement(type, {...props, 'data-spotlight-id': spotlightId});
+	return ({spotlightId, spotlightRestrict, ...props}) => React.createElement(type, {...props, 'data-spotlight-id': spotlightId}); // eslint-disable-line no-unused-vars
 });
 jest.mock('../../components/LoadingSpinner', () => () => null);
 

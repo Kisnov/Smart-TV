@@ -11,7 +11,6 @@ import css from '../AddToPlaylistModal/AddToPlaylistModal.module.less';
 
 const DialogContainer = SpotlightContainerDecorator({
 	enterTo: 'default-element',
-	restrict: 'self-only',
 	leaveFor: {left: '', right: '', up: '', down: ''}
 }, 'div');
 
@@ -107,7 +106,7 @@ const RemoveFromPlaylistModal = ({open, item, playlists = [], loading = false, a
 
 	return (
 		<div className={css.overlay}>
-			<DialogContainer className={css.dialog} spotlightId="remove-playlist-modal">
+			<DialogContainer className={css.dialog} spotlightId="remove-playlist-modal" spotlightRestrict="self-only">
 				<h2 className={css.title}>{$L('Remove from Playlist')}</h2>
 
 				{confirming ? (

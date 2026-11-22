@@ -19,7 +19,7 @@ jest.mock('@enact/spotlight', () => ({focus: jest.fn(() => true)}));
 // Containers and spottables become plain elements that carry their spotlight id.
 jest.mock('@enact/spotlight/SpotlightContainerDecorator', () => (config, type) => {
 	const React = require('react');
-	return ({spotlightId, ...props}) => React.createElement(type, {...props, 'data-spotlight-id': spotlightId});
+	return ({spotlightId, spotlightRestrict, ...props}) => React.createElement(type, {...props, 'data-spotlight-id': spotlightId}); // eslint-disable-line no-unused-vars
 });
 jest.mock('@enact/spotlight/Spottable', () => (type) => {
 	const React = require('react');
