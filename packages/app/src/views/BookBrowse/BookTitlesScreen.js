@@ -10,7 +10,7 @@ import {
 	SCOPE_ALL, availableScopes, bookImageUrl, bookProgressMeta, bookSubtitle, isAudiobookItem, isAudiobookLibrary,
 	isMixedLibrary, matchesScope, playedPercent, scopeLabel
 } from '../../utils/bookLibrary';
-import {keepFocusInView} from '../../utils/focusScroll';
+import {glideScroll, keepFocusInView, stopScrollAnimation} from '../../utils/focusScroll';
 import {stopPropagation} from '../../utils/gridChrome';
 import {KEYS} from '../../utils/keys';
 import {cleanOverview} from '../../utils/overviewText';
@@ -171,7 +171,7 @@ const TitlePanel = ({item, api, serverUrl, caretLeft, favorite, onFavorite, onRe
 
 // Every title in a format as a cover grid. Picking one opens it in a panel under its row rather than
 // leaving the screen. Bookstore keeps what's being read over it, and leaves the format to its rail.
-const BookTitlesScreen = ({screen, style, library, data, api, serverUrl, onSelectItem, onOpenGrid, onPlay, onBack, backHandlerRef}) => {
+const BookTitlesScreen = ({screen, style, library, data, api, serverUrl, onSelectItem, onOpenGrid, onPlay, onBack, backHandlerRef, settingsPreview}) => {
 	const bookstore = bookNavFor(style) === 'rail';
 	const mixed = isMixedLibrary(library, data.counts);
 	const [scopeChoice, setScope] = useState(screen.scope || SCOPE_ALL);
@@ -201,12 +201,28 @@ const BookTitlesScreen = ({screen, style, library, data, api, serverUrl, onSelec
 
 	const focusIndex = useCallback((index) => Spotlight.focus(`${ID}-${index}`), []);
 
+	// An opened title's panel comes up near the top with Read or Listen focused. Going back to its card
+	// stops that glide first, so the card's own scroll into view holds.
+	const scrollerRef = useRef(null);
+	useEffect(() => {
+		const scroller = scrollerRef.current;
+		const panel = openIndex >= 0 && scroller && scroller.querySelector(`.${bookCss.panel}`);
+		if (!panel) return;
+		const top = scroller.getBoundingClientRect().top + scroller.clientHeight * 0.05;
+		glideScroll(scroller, 'y', scroller.scrollTop + panel.getBoundingClientRect().top - top);
+		Spotlight.focus(READ_ID);
+	}, [openIndex]);
+	const focusCard = useCallback((index) => {
+		stopScrollAnimation(scrollerRef.current);
+		focusIndex(index);
+	}, [focusIndex]);
+
 	const closePanel = useCallback(() => {
 		if (openIndex < 0) return false;
-		focusIndex(openIndex);
+		focusCard(openIndex);
 		setOpenIndex(-1);
 		return true;
-	}, [openIndex, focusIndex]);
+	}, [openIndex, focusCard]);
 
 	const closeGenres = useCallback(() => {
 		Spotlight.focus(FILTER_ID);
@@ -220,7 +236,7 @@ const BookTitlesScreen = ({screen, style, library, data, api, serverUrl, onSelec
 		}
 		return closePanel();
 	});
-	useScreenFocus('titles', loaded && !showGenres);
+	useScreenFocus('titles', !settingsPreview && loaded && !showGenres);
 
 	const pickSort = useCallback((id) => {
 		setSortChoice(id);
@@ -254,13 +270,13 @@ const BookTitlesScreen = ({screen, style, library, data, api, serverUrl, onSelec
 
 	const handlePanelKey = useCallback((e) => handleSectionKey(e, {
 		chain: [],
-		onUp: () => focusIndex(openIndex),
+		onUp: () => focusCard(openIndex),
 		onDown: () => {
 			const below = gridMove(rows, openRow, openIndex, 'down');
 			if (below != null) focusIndex(below);
 		},
 		onLeft: focusRail
-	}), [rows, openRow, openIndex, focusIndex]);
+	}), [rows, openRow, openIndex, focusIndex, focusCard]);
 
 	const handleRead = useCallback(() => opened && readOrListen(opened, onPlay), [opened, onPlay]);
 	const handleDetails = useCallback(() => opened && onSelectItem?.(opened), [opened, onSelectItem]);
@@ -294,18 +310,18 @@ const BookTitlesScreen = ({screen, style, library, data, api, serverUrl, onSelec
 
 	return (
 		<div className={css.screen}>
-			<div className={css.scroller} onKeyDown={handleContentKey} onFocus={keepFocusInView}>
+			<div ref={scrollerRef} className={css.scroller} onKeyDown={handleContentKey} onFocus={keepFocusInView}>
 				{resume.length > 0 && (
 					<div className={bookCss.continueRow}>
 						<h2 className={bookCss.sectionTitle}>{isAudiobookLibrary(library) ? $L('Continue Listening') : $L('Continue Reading')}</h2>
-						<RowContainer {...continueMenu} className={railCss.continueRow} spotlightId={CONTINUE_ID} onKeyDown={handleContinueKey} onFocus={keepFocusInView}>
+						<RowContainer {...continueMenu} className={railCss.continueRow} spotlightId={settingsPreview ? undefined : CONTINUE_ID} onKeyDown={handleContinueKey} onFocus={keepFocusInView}>
 							{resume.map((item, index) => (
 								<ContinueTile key={item.Id} item={item} index={index} serverUrl={serverUrl} onPlay={readItem} onClick={handleContinueClick} />
 							))}
 						</RowContainer>
 					</div>
 				)}
-				<ScreenHeader screenId="titles" title={titlesHeading(scope)} count={count} onUp={focusContinue}>
+				<ScreenHeader screenId="titles" title={titlesHeading(scope)} count={count} onUp={focusContinue} settingsPreview={settingsPreview}>
 					{!bookstore && mixed && <DetailsTabBar tabs={scopeTabs} activeId={scope} expanded={false} onActivate={setScope} />}
 					<DetailsTabBar tabs={SORTS} activeId={sort.id} expanded={false} onActivate={pickSort} />
 					<SpottableDiv className={css.pill} spotlightId={FILTER_ID} onClick={openGenres}>

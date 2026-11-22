@@ -12,7 +12,9 @@ jest.mock('../../services/mdblistApi', () => ({
 jest.mock('../../services/subtitlePrefs', () => ({
 	getItemSubtitlePref: async () => undefined,
 	getSeriesSubtitlePref: async () => undefined,
-	getSeriesAudioPref: async () => undefined
+	getSeriesAudioPref: async () => undefined,
+	getItemAudioPref: async () => undefined,
+	syncSeriesTrackChoices: async () => false
 }));
 jest.mock('../../services/homeRecommendations', () => ({
 	canScoreSeedLocally: () => false,

@@ -15,7 +15,11 @@ jest.mock('react/jsx-dev-runtime', () => {
 	};
 });
 jest.mock('@enact/i18n/$L', () => (text) => text);
-jest.mock('../../services/jellyfinApi', () => ({getAuthHeader: () => '', getServerUrl: () => '', api: {}}));
+jest.mock('../../services/jellyfinApi', () => ({getApiKey: () => '', getServerUrl: () => '', api: {}}));
+jest.mock('../../services/moonbaseEndpoint', () => ({
+	moonbaseEndpoint: async (base) => ({base, headers: {}}),
+	moonbaseAssetUrl: (base, path) => `${base}${path}`
+}));
 jest.mock('../../utils/requestQueue', () => ({mediaServerQueue: {run: (task) => task()}}));
 
 const mockSettings = {
@@ -29,7 +33,9 @@ const mockSettings = {
 	mediaBarShowRatingLabels: false,
 	mediaBarShowRatingBadges: true
 };
-jest.mock('../../context/SettingsContext', () => ({useSettings: () => ({settings: mockSettings})}));
+// Tests swap in a new settings object like the app does, since the surface copies are kept per object.
+let mockCurrent = mockSettings;
+jest.mock('../../context/SettingsContext', () => ({useSettings: () => ({settings: mockCurrent})}));
 
 const movie = {Id: 'm1', Type: 'Movie', CommunityRating: 7.4, CriticRating: 91};
 
@@ -54,6 +60,19 @@ describe('RatingsRow surfaces', () => {
 		expect(screen.getByText('7.4')).toBeTruthy();
 		expect(screen.queryByText('Community')).toBeNull();
 	});
+
+	test('a screen can leave the names off whatever the setting says', () => {
+		render(<RatingsRow item={movie} serverUrl='http://server' pluginEnabled={false} labels={false} />);
+		expect(screen.getByText('7.4')).toBeTruthy();
+		expect(screen.queryByText('Community')).toBeNull();
+	});
+
+	test('a strip of columns names every source whatever the label setting says', () => {
+		const {container} = render(<RatingsRow item={movie} serverUrl='http://server' pluginEnabled={false} surface='mediaBar' columns />);
+		expect(container.firstChild.children).toHaveLength(2);
+		expect(screen.getByText('Community')).toBeTruthy();
+		expect(screen.getByText('Rotten Tomatoes')).toBeTruthy();
+	});
 });
 
 describe('RatingsRow plugin ratings on a surface', () => {
@@ -71,15 +90,46 @@ describe('RatingsRow plugin ratings on a surface', () => {
 				{source: 'imdb', value: 7.9, score: 79}
 			]})
 		}));
-		const saved = mockSettings.homeRowsMdblistRatingSources;
-		mockSettings.homeRowsMdblistRatingSources = ['imdb', 'tomatoes'];
+		mockCurrent = {...mockSettings, homeRowsMdblistRatingSources: ['imdb', 'tomatoes']};
 		try {
 			render(<RatingsRow item={{...movie, Id: 'm2', ProviderIds: {Tmdb: '19995'}}} serverUrl='http://server' surface='homeRows' />);
 			await screen.findByText('7.9');
 			const values = screen.getAllByRole('img').map((img) => img.getAttribute('alt'));
 			expect(values).toEqual(['IMDb', 'Rotten Tomatoes']);
 		} finally {
-			mockSettings.homeRowsMdblistRatingSources = saved;
+			mockCurrent = mockSettings;
 		}
+	});
+});
+
+describe('RatingsRow sample ratings', () => {
+	const sample = [
+		{source: 'imdb', name: 'IMDb', formatted: '7.8', iconUrl: 'data:image/svg+xml,imdb'},
+		{source: 'tomatoes', name: 'Rotten Tomatoes', formatted: '88%', iconUrl: 'data:image/svg+xml,rt'}
+	];
+
+	afterEach(() => {
+		delete global.fetch;
+	});
+
+	test('stand in for the plugin, in the surface order, without asking the server', () => {
+		global.fetch = jest.fn();
+		mockCurrent = {...mockSettings, homeRowsMdblistRatingSources: ['tomatoes', 'imdb']};
+		try {
+			render(<RatingsRow item={{...movie, Id: 'm3', ProviderIds: {Tmdb: '603'}}} serverUrl='http://server' surface='homeRows' sampleRatings={sample} />);
+			const values = screen.getAllByRole('img').map((img) => img.getAttribute('alt'));
+			expect(values).toEqual(['Rotten Tomatoes', 'IMDb']);
+			expect(screen.getByText('88%')).toBeTruthy();
+			expect(global.fetch).not.toHaveBeenCalled();
+		} finally {
+			mockCurrent = mockSettings;
+		}
+	});
+
+	test('leave the server ratings alone with the plugin off', () => {
+		render(<RatingsRow item={movie} serverUrl='http://server' pluginEnabled={false} sampleRatings={sample} />);
+		expect(screen.queryByText('88%')).toBeNull();
+		expect(screen.getByText('91%')).toBeTruthy();
+		expect(screen.getByText('7.4')).toBeTruthy();
 	});
 });
