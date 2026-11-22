@@ -3,6 +3,7 @@ import {Fragment, useLayoutEffect, useRef, useState} from 'react';
 import $L from '@enact/i18n/$L';
 
 import SpottableInput from '../../components/SpottableInput/SpottableInput';
+import {expandedCardCount, initialCardCount} from '../../utils/rowWindow';
 import {IconSearch, renderSettingsIcon, renderChevron} from './settingsIcons';
 import {SpottableDiv, ViewContainer} from './settingsSpottables';
 import {NavRow, SectionTitle, swatchEdgeClass} from './settingsRows';
@@ -190,11 +191,14 @@ const byLabel = (a, b) => {
 export const ChecklistDialog = ({title, options, picked, max, sortByLabel, onSave, onCancel}) => {
 	const [rows] = useState(() => {
 		const sorted = sortByLabel ? [...options].sort(byLabel) : options;
+		const ticked = new Set(picked);
 		return [
-			...sorted.filter(({value}) => picked.includes(value)),
-			...sorted.filter(({value}) => !picked.includes(value))
+			...sorted.filter(({value}) => ticked.has(value)),
+			...sorted.filter(({value}) => !ticked.has(value))
 		];
 	});
+	// A long list, like a library's studios, mounts a screen of rows and grows as focus nears its end
+	const [mounted, setMounted] = useState(() => initialCardCount(rows.length));
 	// Picks the list doesn't show stay in, as Core's working set keeps them, until Clear
 	const [working, setWorking] = useState(picked);
 	const capped = max != null;
@@ -204,8 +208,12 @@ export const ChecklistDialog = ({title, options, picked, max, sortByLabel, onSav
 		if (prev.includes(value)) return prev.filter((entry) => entry !== value);
 		return capped && prev.length >= max ? prev : [...prev, value];
 	});
-	const selectAll = () => setWorking((prev) => [...prev, ...options.map(({value}) => value).filter((value) => !prev.includes(value))]);
+	const selectAll = () => setWorking((prev) => {
+		const have = new Set(prev);
+		return [...prev, ...options.map(({value}) => value).filter((value) => !have.has(value))];
+	});
 	const save = () => onSave(working);
+	const workingSet = new Set(working);
 
 	return (
 		<div className={css.dialogBarrier}>
@@ -219,13 +227,14 @@ export const ChecklistDialog = ({title, options, picked, max, sortByLabel, onSav
 					<SpottableDiv className={`${css.dialogButton} ${css.dialogFilledButton}`} onClick={save} spotlightId='chk-save'>{$L('Save')}</SpottableDiv>
 				</div>
 				<div className={css.checklistList} onFocus={followFocus}>
-					{rows.map(({value, label}, idx) => {
-						const ticked = working.includes(value);
+					{rows.slice(0, mounted).map(({value, label}, idx) => {
+						const ticked = workingSet.has(value);
 						return (
 							<SpottableDiv
 								key={String(value)}
 								className={css.checkRow}
 								onClick={() => toggle(value)}
+								onFocus={() => setMounted((count) => expandedCardCount(count, idx, rows.length))}
 								spotlightId={`chk-${idx}`}
 							>
 								<span className={`${css.checkBox}${ticked ? ` ${css.checkBoxOn}` : ''}`} />

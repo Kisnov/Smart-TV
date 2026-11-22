@@ -102,4 +102,18 @@ describe('ChecklistDialog', () => {
 		expect(onCancel).toHaveBeenCalled();
 		expect(onSave).not.toHaveBeenCalled();
 	});
+
+	test('a long list mounts a screen of rows and grows as focus nears its end, while Select All reaches every row', () => {
+		const onSave = jest.fn();
+		const many = Array.from({length: 2000}, (_, i) => ({value: `s${i}`, label: `Studio ${String(i).padStart(4, '0')}`}));
+		const {container} = render(
+			<ChecklistDialog title='T' options={many} picked={[]} onSave={onSave} onCancel={() => {}} />
+		);
+		expect(rowLabels(container)).toHaveLength(10);
+		fireEvent.focus(byId(container, 'chk-8'));
+		expect(rowLabels(container)).toHaveLength(18);
+		press(container, 'chk-select-all');
+		press(container, 'chk-save');
+		expect(onSave.mock.calls[0][0]).toHaveLength(2000);
+	});
 });
