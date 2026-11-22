@@ -33,7 +33,8 @@ const getEmbyThumbnailManifest = async (itemId, mediaSourceId, server) => {
 
 export const getTrickplayManifest = async (itemId, mediaSourceId, server = trickplayServer()) => {
     if (server.type === 'emby') return getEmbyThumbnailManifest(itemId, mediaSourceId, server);
-    if (jellyfinApi.getServerType() === 'plex') return jellyfinApi.api.getTrickplayManifest(itemId, mediaSourceId).catch(() => null);
+    const serverType = jellyfinApi.getServerType();
+    if (serverType === 'plex' || serverType === 'silo') return jellyfinApi.api.getTrickplayManifest(itemId, mediaSourceId).catch(() => null);
     try {
         const serverUrl = jellyfinApi.getServerUrl();
         const apiKey = jellyfinApi.getApiKey();
@@ -57,9 +58,21 @@ const MANIFEST_CAP = 20;
 const manifests = new Map();
 const manifestKey = (itemId, mediaSourceId, server) => `${server.url}|${itemId}|${mediaSourceId}`;
 
+// Silo's sheet addresses carry their own credential and stop working at a set time, so a manifest is read again a
+// little before that.
+const EXPIRY_MARGIN_MS = 2 * 60 * 1000;
+const isExpiring = (manifest) => Boolean(manifest) && Object.keys(manifest).some((width) => {
+	const expires = Date.parse(manifest[width]?.SiloExpiresAt);
+	return expires - EXPIRY_MARGIN_MS < Date.now();
+});
+
 const loadTrickplayManifest = (itemId, mediaSourceId, server) => {
 	const key = manifestKey(itemId, mediaSourceId, server);
 	let entry = manifests.get(key);
+	if (entry && isExpiring(entry.value)) {
+		manifests.delete(key);
+		entry = null;
+	}
 	if (!entry) {
 		if (manifests.size >= MANIFEST_CAP) manifests.delete(manifests.keys().next().value);
 		entry = {value: null};
@@ -83,6 +96,8 @@ const loadedSheets = new Set();
 const pendingSheets = new Map();
 
 const whenSheetLoaded = (url, onLoaded) => {
+	// A sheet Silo listed no address for.
+	if (!url) return;
 	if (loadedSheets.has(url)) {
 		onLoaded?.();
 		return;
@@ -115,9 +130,12 @@ const pickWidth = (manifest, preferredWidth) => {
 	return best;
 };
 
-const sheetUrl = (itemId, mediaSourceId, width, imageIndex, info) => (info?.PlexPartId
-	? plexTrickplayFrameUrl(jellyfinApi.getServerUrl(), info, imageIndex)
-	: `${jellyfinApi.getServerUrl()}/Videos/${itemId}/Trickplay/${width}/${imageIndex}.jpg?MediaSourceId=${mediaSourceId}&ApiKey=${jellyfinApi.getApiKey()}`);
+const sheetUrl = (itemId, mediaSourceId, width, imageIndex, info) => {
+	if (info?.SiloSheets) return info.SiloSheets[imageIndex] || null;
+	return info?.PlexPartId
+		? plexTrickplayFrameUrl(jellyfinApi.getServerUrl(), info, imageIndex)
+		: `${jellyfinApi.getServerUrl()}/Videos/${itemId}/Trickplay/${width}/${imageIndex}.jpg?MediaSourceId=${mediaSourceId}&ApiKey=${jellyfinApi.getApiKey()}`;
+};
 
 const embyFrameUrl = (server, itemId, mediaSourceId, width, frame) => `${server.url}/Items/${itemId}/Images/Thumbnail?${embyQuery(server, {
 	maxWidth: width, tag: frame.imageTag, PositionTicks: frame.positionTicks, MediaSourceId: mediaSourceId, quality: 90
