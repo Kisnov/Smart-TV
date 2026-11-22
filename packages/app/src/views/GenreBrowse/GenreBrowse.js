@@ -14,9 +14,12 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import {getImageUrl, getBackdropId, getPrimaryImageId} from '../../utils/helpers';
 import {serverBlurredUrl} from '../../utils/serverBlur';
 import {ModalContainer} from '../../utils/spotlightContainers';
+import {registerThemeSheet} from '../../theme/themeOverrides';
 
 import dialogCss from '../../components/CoreDialog/CoreDialog.module.less';
 import css from './GenreBrowse.module.less';
+
+registerThemeSheet('genreBrowse', css);
 
 const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
@@ -420,7 +423,7 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 				)}
 				{item.UserData?.Played && (
 					<div className={css.watchedBadge}>
-						<svg viewBox="0 0 24 24"><path fill="white" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+						<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
 					</div>
 				)}
 				<div className={css.itemInfo}>

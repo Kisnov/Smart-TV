@@ -2,6 +2,7 @@ import {CancelRequestPopup} from '../../components/seerr/CancelRequestPopup';
 import {ManageRequestsPopup} from '../../components/seerr/ManageRequestsPopup';
 import {ReportIssuePopup} from '../../components/seerr/ReportIssuePopup';
 import SeerrRequestDialog from '../../components/seerr/SeerrRequestDialog';
+import {SwapReleasePopup} from '../../components/seerr/SwapReleasePopup';
 
 // The popups the Seerr actions raise. They all run off the overlay, so a screen with no Seerr
 // side renders nothing at all here.
@@ -23,6 +24,7 @@ const SeerrDialogs = ({seerr, item}) => {
 				<SeerrRequestDialog
 					is4k={seerr.requestDialog.is4k}
 					qualityToggle={seerr.requestDialog.qualityToggle}
+					season={seerr.requestDialog.season}
 					details={seerr.sheetDetails}
 					isTv={isTv}
 					isContinuing={seerr.isContinuing}
@@ -54,6 +56,13 @@ const SeerrDialogs = ({seerr, item}) => {
 				title={title}
 				onConfirm={seerr.handleCancelConfirm}
 				onClose={seerr.handleCloseCancelPopup}
+			/>
+
+			<SwapReleasePopup
+				open={seerr.showSwapPopup}
+				release={seerr.swapRelease}
+				onConfirm={seerr.handleSwapConfirm}
+				onClose={seerr.handleCloseSwapPopup}
 			/>
 
 			{seerr.showsManage && (

@@ -239,7 +239,7 @@ const GenreChip = ({item, onSelect}) => {
 	return <SpottableDiv className={css.chip} onClick={handleClick}><span>{item.Name}</span></SpottableDiv>;
 };
 
-const Shelf = ({shelf, index, serverUrl, onSelect, registerRowRef, onSeeAll, keys}) => {
+const Shelf = ({shelf, index, serverUrl, onSelect, registerRowRef, onSeeAll, keys, settingsPreview}) => {
 	const sectionRef = useCallback((el) => registerRowRef(index, el), [registerRowRef, index]);
 	const handleSeeAll = useCallback(() => onSeeAll(shelf.seeAll), [onSeeAll, shelf.seeAll]);
 	return (
@@ -251,7 +251,7 @@ const Shelf = ({shelf, index, serverUrl, onSelect, registerRowRef, onSeeAll, key
 			onSeeAll={shelf.seeAll ? handleSeeAll : null}
 			{...keys}
 		>
-			<ShelfRow className={css.shelfRow} spotlightId={`book-row-${index}`} onFocus={keepFocusInView}>
+			<ShelfRow className={css.shelfRow} spotlightId={settingsPreview ? undefined : `book-row-${index}`} onFocus={keepFocusInView}>
 				{shelf.items.map((item) => {
 					if (shelf.kind === 'chip') return <GenreChip key={item.Id} item={item} onSelect={onSelect} />;
 					if (shelf.kind === 'avatar') {
@@ -267,7 +267,7 @@ const Shelf = ({shelf, index, serverUrl, onSelect, registerRowRef, onSeeAll, key
 // The Classic book library: the title being read over its blurred cover, a band of counts, the
 // format filter for a library holding more than one, and shelves of titles under it, each See All
 // opening its destination.
-const ClassicBooks = ({library, api, serverUrl, data, onSelectItem, onOpenGrid, onOpenScreen, onPlay}) => {
+const ClassicBooks = ({library, api, serverUrl, data, onSelectItem, onOpenGrid, onOpenScreen, onPlay, settingsPreview, bookFoldersAsSeries}) => {
 	const [extra, setExtra] = useState(null);
 	const [scopeChoice, setScope] = useState(SCOPE_ALL);
 	const initialFocusRef = useRef(false);
@@ -291,8 +291,8 @@ const ClassicBooks = ({library, api, serverUrl, data, onSelectItem, onOpenGrid, 
 	const audioLibrary = isAudiobookLibrary(library);
 
 	const series = useMemo(() => (
-		scope === SCOPE_ALL ? data.series : bookSeriesEntries(data.titles.filter((title) => matchesScope(title, scope)), data.folders)
-	), [data.series, data.titles, data.folders, scope]);
+		scope === SCOPE_ALL ? data.series : bookSeriesEntries(data.titles.filter((title) => matchesScope(title, scope)), data.folders, bookFoldersAsSeries)
+	), [data.series, data.titles, data.folders, scope, bookFoldersAsSeries]);
 	const authors = useMemo(() => {
 		if (!extra) return [];
 		// Authors the title rows only credit as people join the server's list, sorted together.
@@ -336,7 +336,7 @@ const ClassicBooks = ({library, api, serverUrl, data, onSelectItem, onOpenGrid, 
 	// First focus lands on the hero's button, or the first stop without one, then a backstop for
 	// reloads that pull the focused card out from under it.
 	useEffect(() => {
-		if (loading) return;
+		if (settingsPreview || loading) return;
 		const active = document.activeElement;
 		const focused = active && active !== document.body && active.classList?.contains('spottable');
 		// Picked from the strip, Overview opens with focus still on it.
@@ -348,7 +348,7 @@ const ClassicBooks = ({library, api, serverUrl, data, onSelectItem, onOpenGrid, 
 		if (focused) return;
 		const remembered = lastNodeRef.current;
 		if (chain.length) focusNode(chain.includes(remembered) ? remembered : chain[0]);
-	}, [loading, chain, focusNode, lastNodeRef]);
+	}, [loading, chain, focusNode, lastNodeRef, settingsPreview]);
 
 	const stats = [
 		...(mixed
@@ -397,6 +397,7 @@ const ClassicBooks = ({library, api, serverUrl, data, onSelectItem, onOpenGrid, 
 							registerRowRef={registerRowRef}
 							onSeeAll={onOpenScreen}
 							keys={keys}
+							settingsPreview={settingsPreview}
 						/>
 					);
 				}) : (

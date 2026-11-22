@@ -1,4 +1,4 @@
-import {render, screen} from '@testing-library/react';
+import {cleanup, render, screen} from '@testing-library/react';
 
 import {sectionVisibility} from '../../../utils/detailSectionLayout';
 import SpotlightDetailContent from './SpotlightDetailContent';
@@ -57,6 +57,20 @@ const renderSpotlight = ({item = alien3, hidden = [], ...over} = {}) => render(
 	/>
 );
 
+describe('SpotlightDetailContent title', () => {
+	const single = {...alien3, MediaSources: [alien3.MediaSources[0]]};
+
+	it('names the item, and a book series by the series rather than the book it features', () => {
+		const {unmount} = renderSpotlight({item: single, mediaSource: single.MediaSources[0]});
+		expect(screen.getByText('Alien 3')).toBeTruthy();
+		unmount();
+
+		renderSpotlight({item: single, mediaSource: single.MediaSources[0], bookSeriesItem: {Name: 'Dune', Members: []}});
+		expect(screen.getByText('Dune')).toBeTruthy();
+		expect(screen.queryByText('Alien 3')).toBeNull();
+	});
+});
+
 describe('SpotlightDetailContent version badge', () => {
 	it('names the picked version of a movie that has more than one', () => {
 		renderSpotlight();
@@ -71,5 +85,15 @@ describe('SpotlightDetailContent version badge', () => {
 	it('leaves the badge off a movie with a single version', () => {
 		renderSpotlight({item: {...alien3, MediaSources: [alien3.MediaSources[0]]}, mediaSource: alien3.MediaSources[0]});
 		expect(screen.queryByText('[ Theatrical Cut ]')).toBeNull();
+	});
+});
+
+describe('SpotlightDetailContent backdrop', () => {
+	it('draws the backdrop until Details Screen Backdrop turns it off', () => {
+		renderSpotlight({backdropUrl: 'backdrop.jpg'});
+		expect(document.querySelector('.backdropImage')).not.toBeNull();
+		cleanup();
+		renderSpotlight({backdropUrl: 'backdrop.jpg', settings: {detailsBackdropEnabled: false}});
+		expect(document.querySelector('.backdropImage')).toBeNull();
 	});
 });
