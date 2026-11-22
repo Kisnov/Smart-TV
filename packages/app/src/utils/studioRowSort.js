@@ -1,11 +1,32 @@
 // Jellyfin's /Studios takes no SortBy or SortOrder and always lists by name, so the Studios row
 // picks its order from name pages: the first page for A to Z, the last for Z to A, and a page
 // from a random point for Random. Any other sort would need every studio, so it reads as Name,
-// the way the setting shows it.
+// the way the setting shows it. Picked studios are all read, so they can also rank by item count.
+
+import mapBounded from './mapBounded';
 
 export const STUDIO_PAGE_SIZE = 200;
 
-export const studioRowSortBy = (stored) => (stored === 'Random' ? 'Random' : 'SortName');
+export const studioRowSortBy = (stored, picked) => {
+	if (stored === 'Random' || (stored === 'ItemCount' && picked)) return stored;
+	return 'SortName';
+};
+
+// Movies and series, or the total a studio was counted with on its own
+const titleCount = (studio) => (studio.MovieCount == null && studio.SeriesCount == null
+	? studio.ChildCount || 0
+	: (studio.MovieCount || 0) + (studio.SeriesCount || 0));
+
+// Jellyfin before 12 only counts a studio's titles when the list is filtered by type, which drops studios, so each uncounted one is counted with a query of its own.
+export const rankStudiosByCount = async (api, studios, sortOrder) => {
+	const counted = studios.map((studio) => ({...studio}));
+	await mapBounded(counted.filter((studio) => studio.MovieCount == null && studio.SeriesCount == null), 6, async (studio) => {
+		const result = await api.getItems({Studios: studio.Name, IncludeItemTypes: 'Movie,Series', Recursive: true, Limit: 1}).catch(() => null);
+		studio.ChildCount = result?.TotalRecordCount || 0;
+	});
+	const direction = sortOrder === 'Ascending' ? 1 : -1;
+	return counted.sort((a, b) => direction * (titleCount(a) - titleCount(b)) || String(a.Name).localeCompare(String(b.Name)));
+};
 
 const shuffled = (items) => {
 	const copy = [...items];

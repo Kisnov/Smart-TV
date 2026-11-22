@@ -357,9 +357,11 @@ export const getHomeRowSortOptions = () => [
 ];
 
 // Jellyfin lists studios by name only, so these are the orders the Studios row can give.
-export const getStudioSortOptions = () => [
+// Item count needs every studio in the row read, so it is offered once studios are picked
+export const getStudioSortOptions = (ctx) => [
 	{ value: 'SortName', label: $L('Name') },
-	{ value: 'Random', label: $L('Random') }
+	{ value: 'Random', label: $L('Random') },
+	...(ctx?.settings?.studiosRowSelectedIds?.length > 0 ? [{ value: 'ItemCount', label: $L('Item Count') }] : [])
 ];
 
 // Playlist and collection rows can also follow the curated arrangement

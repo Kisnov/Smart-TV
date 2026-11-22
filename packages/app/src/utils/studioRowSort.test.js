@@ -1,4 +1,4 @@
-import {STUDIO_PAGE_SIZE, readStudioRow} from './studioRowSort';
+import {STUDIO_PAGE_SIZE, rankStudiosByCount, readStudioRow, studioRowSortBy} from './studioRowSort';
 
 // A server holding `total` studios that, like Jellyfin, lists them by name whatever it is asked.
 const nameOnlyServer = (total) => {
@@ -69,5 +69,35 @@ describe('reading the studio row', () => {
 		const row = await readStudioRow(server.fetchPage, {limit: 20, sortBy: 'SortName', sortOrder: 'Ascending', picked: ['Studio 0005', 'Removed']});
 		expect(server.calls).toHaveLength(2);
 		expect(row.Items.map((item) => item.Name)).toEqual(['Studio 0005']);
+	});
+});
+
+describe('ranking picked studios by item count', () => {
+	it('is only offered once studios are picked', () => {
+		expect(studioRowSortBy('ItemCount', true)).toBe('ItemCount');
+		expect(studioRowSortBy('ItemCount', false)).toBe('SortName');
+		expect(studioRowSortBy('Random', false)).toBe('Random');
+	});
+
+	it('adds movies and series, counts a studio sent without counts, and breaks ties by name', async () => {
+		const api = {getItems: jest.fn(async ({Studios}) => ({TotalRecordCount: Studios === 'Uncounted' ? 7 : 0}))};
+		const studios = [
+			{Name: 'Small', MovieCount: 1, SeriesCount: 1},
+			{Name: 'Uncounted'},
+			{Name: 'Big', MovieCount: 9, SeriesCount: 3},
+			{Name: 'Also Small', MovieCount: 2, SeriesCount: 0}
+		];
+		const ranked = await rankStudiosByCount(api, studios, 'Descending');
+		expect(ranked.map((studio) => studio.Name)).toEqual(['Big', 'Uncounted', 'Also Small', 'Small']);
+		expect(api.getItems).toHaveBeenCalledTimes(1);
+		expect(api.getItems).toHaveBeenCalledWith({Studios: 'Uncounted', IncludeItemTypes: 'Movie,Series', Recursive: true, Limit: 1});
+		expect(studios[1].ChildCount).toBeUndefined();
+	});
+
+	it('puts the smallest first for Ascending', async () => {
+		const api = {getItems: jest.fn()};
+		const ranked = await rankStudiosByCount(api, [{Name: 'A', MovieCount: 5}, {Name: 'B', SeriesCount: 2}], 'Ascending');
+		expect(ranked.map((studio) => studio.Name)).toEqual(['B', 'A']);
+		expect(api.getItems).not.toHaveBeenCalled();
 	});
 });

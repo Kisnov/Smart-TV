@@ -645,7 +645,7 @@ export const SETTINGS_SCHEMA = [
 						action: (ctx) => ctx.actions.openStudios(),
 						when: (ctx) => ctx.settings.displayStudiosRows
 					},
-					{kind: KIND.OPTION, key: 'studiosRowSortBy', label: () => $L('Studio Row Sorting'), desc: () => $L('Sort the Studio row by name or at random.'), options: getStudioSortOptions, fallback: () => $L('Name'), icon: 'sort_by_alpha', value: (ctx) => studioRowSortBy(ctx.settings.studiosRowSortBy), when: (ctx) => ctx.settings.displayStudiosRows},
+					{kind: KIND.OPTION, key: 'studiosRowSortBy', label: () => $L('Studio Row Sorting'), desc: () => $L('Sort the Studio row by name or at random.'), options: getStudioSortOptions, fallback: () => $L('Name'), icon: 'sort_by_alpha', value: (ctx) => studioRowSortBy(ctx.settings.studiosRowSortBy, ctx.settings.studiosRowSelectedIds?.length > 0), when: (ctx) => ctx.settings.displayStudiosRows},
 					{kind: KIND.OPTION, key: 'studiosRowSortOrder', label: () => $L('Sort Order'), desc: () => $L('Choose Ascending or Descending sort order.'), options: getSortOrderOptions, fallback: () => $L('Auto'), icon: 'swap_vert', when: (ctx) => ctx.settings.displayStudiosRows}
 				]
 			},

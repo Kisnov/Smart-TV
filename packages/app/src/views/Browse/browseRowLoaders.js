@@ -16,7 +16,7 @@ import {collapseLatestTvItems} from '../../utils/latestMediaRowNormalizer';
 import {isPickedRow, isPickedRowShown, isSameServer} from '../../utils/pickedRows';
 import mapBounded from '../../utils/mapBounded';
 import {studioLogoIndex} from '../Details/studioLogos';
-import {studioRowSortBy} from '../../utils/studioRowSort';
+import {rankStudiosByCount, studioRowSortBy} from '../../utils/studioRowSort';
 import {FULL_ROW_READ, pageableRow, readFoldedHead} from './rowPaging';
 import * as gamesApi from '../../services/gamesApi';
 import {isGameLibrary, refreshGameLibraries, resolveGameLibraryId} from '../../utils/gameLibrary';
@@ -314,13 +314,15 @@ export const withStudioLogos = (studios, logoList, serverUrl, token) => {
 export const loadStudios = async (ctx) => {
 	const {api, appendRows, studiosEnabled, settings, serverUrl} = ctx;
 	if (!studiosEnabled) return;
-	const sortBy = studioRowSortBy(settings.studiosRowSortBy);
 	const picked = settings.studiosRowSelectedIds || [];
+	const sortBy = studioRowSortBy(settings.studiosRowSortBy, picked.length > 0);
+	const sortOrder = resolveSortOrder(sortBy, settings.studiosRowSortOrder);
 	try {
 		const logos = settings.useMoonfinPlugin && api.getStudioLogos ? api.getStudioLogos().catch(() => null) : null;
 		// With studios picked the row holds every pick, and a server that lists them all keeps just those.
-		const result = await api.getStudios(picked.length > 0 ? null : 20, sortBy, resolveSortOrder(sortBy, settings.studiosRowSortOrder), picked).catch(() => null);
-		const studios = picked.length > 0 ? (result?.Items || []).filter((studio) => picked.includes(studio.Id)) : result?.Items;
+		const result = await api.getStudios(picked.length > 0 ? null : 20, sortBy, sortOrder, picked).catch(() => null);
+		const listed = picked.length > 0 ? (result?.Items || []).filter((studio) => picked.includes(studio.Id)) : result?.Items;
+		const studios = sortBy === 'ItemCount' ? await rankStudiosByCount(api, listed, sortOrder) : listed;
 		if (studios?.length > 0) {
 			appendRows([{
 				id: 'studios',
