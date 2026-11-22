@@ -188,7 +188,7 @@ const byLabel = (a, b) => {
 // Core's checklist. The ticked rows lead, ordered once on open so a tick never moves the row
 // under focus, and picks stay in the order they were made. At [max] the unticked rows dim and
 // ignore a tick but can still take focus.
-export const ChecklistDialog = ({title, options, picked, max, sortByLabel, onSave, onCancel}) => {
+export const ChecklistDialog = ({title, options, picked, max, sortByLabel, searchable, onSave, onCancel}) => {
 	const [rows] = useState(() => {
 		const sorted = sortByLabel ? [...options].sort(byLabel) : options;
 		const ticked = new Set(picked);
@@ -199,6 +199,13 @@ export const ChecklistDialog = ({title, options, picked, max, sortByLabel, onSav
 	});
 	// A long list, like a library's studios, mounts a screen of rows and grows as focus nears its end
 	const [mounted, setMounted] = useState(() => initialCardCount(rows.length));
+	const [query, setQuery] = useState('');
+	const needle = query.trim().toLowerCase();
+	const shown = needle ? rows.filter(({label}) => label.toLowerCase().includes(needle)) : rows;
+	const search = (ev) => {
+		setQuery(ev.target.value);
+		setMounted(initialCardCount(rows.length));
+	};
 	// Picks the list doesn't show stay in, as Core's working set keeps them, until Clear
 	const [working, setWorking] = useState(picked);
 	const capped = max != null;
@@ -219,6 +226,20 @@ export const ChecklistDialog = ({title, options, picked, max, sortByLabel, onSav
 		<div className={css.dialogBarrier}>
 			<ViewContainer className={`${css.dialog} ${css.checklist}`} spotlightId='options-view'>
 				<div className={css.checklistTitle}>{title}</div>
+				{searchable && (
+					<div className={`${css.searchWrap} ${css.checklistSearch}`}>
+						<SpottableInput
+							className={css.searchInput}
+							type='text'
+							value={query}
+							onChange={search}
+							placeholder={$L('Search')}
+							spotlightId='chk-search'
+							autoComplete='off'
+						/>
+						<div className={css.searchIcon}><IconSearch /></div>
+					</div>
+				)}
 				<div className={css.checklistButtons}>
 					{!capped && (
 						<SpottableDiv className={css.dialogButton} onClick={selectAll} spotlightId='chk-select-all'>{$L('Select All')}</SpottableDiv>
@@ -227,14 +248,14 @@ export const ChecklistDialog = ({title, options, picked, max, sortByLabel, onSav
 					<SpottableDiv className={`${css.dialogButton} ${css.dialogFilledButton}`} onClick={save} spotlightId='chk-save'>{$L('Save')}</SpottableDiv>
 				</div>
 				<div className={css.checklistList} onFocus={followFocus}>
-					{rows.slice(0, mounted).map(({value, label}, idx) => {
+					{shown.slice(0, mounted).map(({value, label}, idx) => {
 						const ticked = workingSet.has(value);
 						return (
 							<SpottableDiv
 								key={String(value)}
 								className={css.checkRow}
 								onClick={() => toggle(value)}
-								onFocus={() => setMounted((count) => expandedCardCount(count, idx, rows.length))}
+								onFocus={() => setMounted((count) => expandedCardCount(count, idx, shown.length))}
 								spotlightId={`chk-${idx}`}
 							>
 								<span className={`${css.checkBox}${ticked ? ` ${css.checkBoxOn}` : ''}`} />

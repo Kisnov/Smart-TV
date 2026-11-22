@@ -1,4 +1,4 @@
-import {fireEvent, render} from '@testing-library/react';
+import {fireEvent, render, screen} from '@testing-library/react';
 
 import {ChecklistDialog} from './BrowseViews';
 
@@ -16,6 +16,11 @@ jest.mock('react/jsx-dev-runtime', () => {
 });
 jest.mock('@enact/i18n/$L', () => (text) => text);
 jest.mock('@enact/spotlight', () => ({focus: jest.fn(() => true)}));
+// The real field reaches for the settings and the TV keyboard, and a plain input is all this needs.
+jest.mock('../../components/SpottableInput/SpottableInput', () => ({
+	__esModule: true,
+	default: ({spotlightId, ...props}) => require('react').createElement('input', props) // eslint-disable-line no-unused-vars
+}));
 // Containers and spottables become plain elements that carry their spotlight id.
 jest.mock('@enact/spotlight/SpotlightContainerDecorator', () => (config, type) => {
 	const React = require('react');
@@ -115,5 +120,20 @@ describe('ChecklistDialog', () => {
 		press(container, 'chk-select-all');
 		press(container, 'chk-save');
 		expect(onSave.mock.calls[0][0]).toHaveLength(2000);
+	});
+
+	test('a search narrows the list, and a pick made while searching stays after the search is cleared', () => {
+		const onSave = jest.fn();
+		const {container} = render(
+			<ChecklistDialog title='T' options={OPTIONS} picked={[]} sortByLabel searchable onSave={onSave} onCancel={() => {}} />
+		);
+		const input = screen.getByPlaceholderText('Search');
+		fireEvent.change(input, {target: {value: 'HA'}});
+		expect(rowLabels(container)).toEqual(['alpha', 'Charlie']);
+		press(container, 'chk-1');
+		fireEvent.change(input, {target: {value: ''}});
+		expect(rowLabels(container)).toEqual(['alpha', 'Bravo', 'Charlie', 'Delta']);
+		press(container, 'chk-save');
+		expect(onSave).toHaveBeenCalledWith(['c']);
 	});
 });

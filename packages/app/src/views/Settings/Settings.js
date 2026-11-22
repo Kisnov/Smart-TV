@@ -567,6 +567,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 			options: asOptions(studios),
 			picked: settings.studiosRowSelectedIds || [],
 			sortByLabel: true,
+			searchable: true,
 			onSave: (picked) => updateSetting('studiosRowSelectedIds', picked),
 			returnFocusTo: 'setting-studiosRowSelectedIds'
 		})
@@ -1770,6 +1771,7 @@ const Settings = ({ onBack, onLibrariesChanged, onRunSetupWizard, onSelectItem, 
 					picked={currentView.picked}
 					max={currentView.max}
 					sortByLabel={currentView.sortByLabel}
+					searchable={currentView.searchable}
 					onSave={saveChecklist}
 					onCancel={popView}
 				/>
