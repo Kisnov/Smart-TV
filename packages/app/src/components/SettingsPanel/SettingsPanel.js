@@ -223,7 +223,7 @@ const LiveSettingsLayout = ({closing, onClose, onLibrariesChanged, onRunSetupWiz
 
 	return (
 		<div className={closing ? `${css.overlay} ${css.closing}` : css.overlay}>
-			<PanelContainer className={css.livePanel} spotlightId='settings-panel-container'>
+			<PanelContainer className={css.livePanel} spotlightId='settings-panel-container' spotlightRestrict="self-only">
 				{top}
 				<div className={css.liveBody}>
 					<div className={css.listColumn} ref={listRef} onFocus={handleListFocus}>

@@ -41,6 +41,13 @@ describe('selfOnly', () => {
 		expect(getContainerConfig('held').restrict).toBe('self-only');
 	});
 
+	test('a weaker restriction passed in does not loosen it', () => {
+		const Container = selfOnly(SpotlightContainerDecorator({}, 'div'));
+		render(<Container spotlightId="held-anyway" spotlightRestrict="self-first" />);
+
+		expect(getContainerConfig('held-anyway').restrict).toBe('self-only');
+	});
+
 	test('the shared modal and panel containers hold focus', () => {
 		render(
 			<>

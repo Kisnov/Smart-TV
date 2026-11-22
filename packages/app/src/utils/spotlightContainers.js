@@ -5,7 +5,7 @@ import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDeco
 // also keeps a pointer resting on the sidebar from making that the active container the next
 // arrow press lands in.
 export const selfOnly = (Container) => {
-	const SelfOnlyContainer = (props) => <Container spotlightRestrict="self-only" {...props} />;
+	const SelfOnlyContainer = (props) => <Container {...props} spotlightRestrict="self-only" />;
 	return SelfOnlyContainer;
 };
 
